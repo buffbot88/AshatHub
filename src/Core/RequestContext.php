@@ -352,6 +352,15 @@ class RequestContext
     public function jsonResponse(mixed $data, int $status = 200): never
     {
         $this->responded = true;
+
+        // Discard any buffered output (PHP warnings, stray whitespace)
+        // before sending JSON. Without this, PHP errors with display_errors=On
+        // get prepended to the JSON payload, breaking the client's JSON parser.
+        // ErrorController::show() does the same for HTML error pages.
+        while (ob_get_level() > 0) {
+            ob_end_clean();
+        }
+
         http_response_code($status);
         header('Content-Type: application/json; charset=utf-8');
         header('X-Content-Type-Options: nosniff');

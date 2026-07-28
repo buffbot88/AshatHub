@@ -84,6 +84,13 @@ final class ErrorController
      */
     public function showJson(int $code, ?string $message = null): void
     {
+        // Discard buffered output before sending JSON (same rationale as
+        // RequestContext::jsonResponse — prevents PHP warnings from being
+        // prepended to the JSON body).
+        while (ob_get_level() > 0) {
+            ob_end_clean();
+        }
+
         $code = self::normaliseCode($code);
         $entry = ErrorPages::get($code);
 

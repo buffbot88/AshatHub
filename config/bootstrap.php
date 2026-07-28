@@ -17,7 +17,35 @@ declare(strict_types=1);
 define('ASHAT_ROOT', dirname(__DIR__));
 define('ASHAT_PUBLIC', ASHAT_ROOT . '/public');
 
-// ─── 1. .env loader (no external deps) ──────────────────────────────
+// ─── 1. server_config.json loader (shared-host-friendly, no dotfiles) ─
+// On hosts where .env uploads don't work (ByetHost free, VistaPanel,
+// many shared-host panels that block dotfiles), users create
+// config/server_config.json instead. It covers ALL the same keys.
+// If this file exists, .env is skipped entirely.
+function ashat_load_json_config(string $path): bool {
+    if (!is_file($path)) return false;
+    $json = json_decode(file_get_contents($path), true);
+    if (!is_array($json)) return false;
+    foreach ($json as $k => $v) {
+        // Keys starting with // are comments — skip them
+        if (str_starts_with((string) $k, '//')) continue;
+        // Only scalar values are valid for putenv()
+        if (!is_scalar($v)) continue;
+        $strVal = match (true) {
+            is_bool($v) => $v ? 'true' : 'false',
+            default     => (string) $v,
+        };
+        if (!array_key_exists($k, $_ENV)) $_ENV[$k] = $strVal;
+        if (!array_key_exists($k, $_SERVER)) $_SERVER[$k] = $strVal;
+        putenv("$k=$strVal");
+    }
+    return true;
+}
+$__jsonConfigLoaded = ashat_load_json_config(ASHAT_ROOT . '/config/server_config.json');
+
+// ─── 1b. .env loader (skipped if server_config.json was loaded) ─────────
+// Only runs when server_config.json does not exist — so users on hosts
+// that DO support .env can keep using it without changes.
 function ashat_load_env(string $path): void {
     if (!is_file($path)) return;
     foreach (file($path, FILE_IGNORE_NEW_LINES | FILE_SKIP_EMPTY_LINES) ?: [] as $line) {
@@ -30,7 +58,10 @@ function ashat_load_env(string $path): void {
         putenv("$k=$v");
     }
 }
-ashat_load_env(ASHAT_ROOT . '/.env');
+if (!$__jsonConfigLoaded) {
+    ashat_load_env(ASHAT_ROOT . '/.env');
+}
+unset($__jsonConfigLoaded);
 
 // Defaults
 $defaults = [

@@ -592,8 +592,15 @@
       // Invalidate cache on network error so next load retries fresh
       invalidateCache();
       setDot('bg-err', false);
-      statusText.textContent = 'Network error.';
-      showOutput('Network error: ' + (err.message || 'Unknown') + '\n\nMake sure the server has outgoing HTTP access (allow_url_fopen or cURL).', true);
+      statusText.textContent = 'Server returned bad data.';
+      var catchMsg = 'The server sent something the browser could not parse as JSON.\n';
+      catchMsg += 'This usually means PHP is outputting warnings/errors before the JSON payload.\n\n';
+      catchMsg += 'Common causes:\n';
+      catchMsg += '1. PHP display_errors is On — a warning/notice appears before the JSON\n';
+      catchMsg += '2. PHP memory_limit or max_execution_time hit during the request\n';
+      catchMsg += '3. allow_url_fopen or cURL extension is disabled (no outgoing HTTP)\n\n';
+      catchMsg += 'Technical detail: ' + (err.message || 'Unknown');
+      showOutput(catchMsg, true);
       pendingApply = false;
       setButtons(true);
       checkLabel.textContent = 'Check for Updates';

@@ -2,8 +2,6 @@
 
 A browser-based AI coding platform, rewritten from the original React SPA into **vanilla PHP + PDO + MySQL** with a clean "Midnight Protocol" redesign.
 
-> The previous React/Vite SPA at this path is preserved in [`AshatOS_Old/`](AshatOS_Old/) for reference and rollback.
-
 ---
 
 ## Stack
@@ -208,16 +206,6 @@ If the home page returns a plain 500, three diagnostic paths ship with the proje
 - **BYO API keys**: stored **only in the user's browser** (`localStorage["ashat.api"]`). The server never sees them.
 - **Roles**: `Member` (default), `Pro`, `Admin` — enforced by middleware (`pro-or-admin`, `admin-gate`).
 
-## What changed from `AshatOS_Old/`
-
-| Concern        | Old (React/Vite)              | New (PHP/MySQL)                     |
-|----------------|------------------------------|-------------------------------------|
-| Rendering      | Client SPA, Vite build        | Server-rendered PHP                 |
-| Persistence    | localStorage                  | MySQL via PDO                       |
-| Auth           | localStorage user record      | PHP sessions + bcrypt               |
-| Styling        | Tailwind via PostCSS          | Tailwind Play CDN + custom CSS      |
-| Studio         | Monaco + React state          | Monaco + vanilla JS + AJAX          |
-| Coding Agent   | React hook talking to OpenAI  | Browser-side `agent.js` calling any OpenAI-compatible endpoint |
 
 ## License
 

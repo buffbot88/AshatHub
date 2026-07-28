@@ -35,6 +35,15 @@ final class ErrorController
      */
     public function show(int $code, ?string $message = null): void
     {
+        // Discard any partial page output that may have been sent before
+        // the error occurred (e.g. an exception thrown mid-render after
+        // the header/navbar already started output). Without this, the
+        // http_response_code() and header() calls below would fail with
+        // "headers already sent" warnings.
+        while (ob_get_level() > 0) {
+            ob_end_clean();
+        }
+
         $code = self::normaliseCode($code);
 
         http_response_code($code);

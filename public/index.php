@@ -9,6 +9,18 @@
 
 declare(strict_types=1);
 
+// ── Output buffering ──────────────────────────────────────────────
+// Buffer ALL output so response headers (http_response_code, Location,
+// Content-Type, etc.) can be set at any point during request processing,
+// even after page rendering has started. Without this, an exception
+// thrown mid-render would cause "headers already sent" warnings because
+// the navbar/header HTML was already emitted.
+//
+// PHP automatically flushes the buffer when the script terminates
+// (after Router::dispatch returns). On error, ErrorController::show()
+// cleans this buffer before rendering the error page.
+ob_start();
+
 // ── Quick health check (?__diag) ──────────────────────────────────
 // Accessible BEFORE bootstrap runs. Use this to diagnose 500 errors
 // on shared hosting. Visit: https://yoursite.com/?__diag=1

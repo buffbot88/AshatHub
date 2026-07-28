@@ -9,10 +9,12 @@ $user = $view->__user ?? [];
 <div style="background: rgba(15,15,23,0.85); border-bottom: 1px solid var(--gold-line);" class="sticky top-0 z-30">
   <div class="container mx-auto px-6 h-12 flex items-center justify-between gap-4">
     <div class="flex items-center gap-3">
-      <img srcset="<?= e(asset('/images/lion-logo-32.png')) ?> 1x, <?= e(asset('/images/lion-logo-48.png')) ?> 2x"
-           src="<?= e(asset('/images/lion-logo-32.png')) ?>"
-           alt="ASHAT" width="24" height="24">
-      <span style="font-family: var(--font-heading); font-weight: 600; letter-spacing: 0.05em;">ASHAT <span style="color: var(--gold);">Studio</span></span>
+      <a href="/" class="flex items-center gap-3 group">
+        <img srcset="<?= e(asset('/images/lion-logo-32.png')) ?> 1x, <?= e(asset('/images/lion-logo-48.png')) ?> 2x"
+             src="<?= e(asset('/images/lion-logo-32.png')) ?>"
+             alt="ASHAT" width="24" height="24">
+        <span style="font-family: var(--font-heading); font-weight: 600; letter-spacing: 0.05em;" class="group-hover:text-accent transition">ASHAT <span style="color: var(--gold);">Studio</span></span>
+      </a>
       <span class="text-xs font-mono" style="color: var(--gold-muted);"><?= e(APP_VERSION_DISPLAY) ?></span>
       <span class="chip-gold" style="font-size: 10px; padding: 2px 8px;">
         <span class="dot"></span> Online

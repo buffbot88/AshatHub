@@ -26,11 +26,15 @@ final class AdminController
         $stats        = self::gatherStats();
         $recentBuilds = RepositoryRegistry::build()->recent(10);
 
+        // Get git status (GitUpdater handles all errors internally)
+        $gitStatus = (new GitUpdater())->status();
+
         $ctx->view('pages/admin/dashboard', [
             'title'        => 'Admin · Dashboard · ' . APP_NAME,
             'user'         => $user,
             'stats'        => $stats,
             'recent_builds' => $recentBuilds,
+            'git'          => $gitStatus,
         ]);
     }
 

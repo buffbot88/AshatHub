@@ -1,6 +1,7 @@
 <?php
   /** @var Core\ViewContext $view */
   $s = $view->stats ?? [];
+  $git = $view->git ?? [];
 ?>
 <section style="border-bottom: 1px solid var(--gold-line);">
   <div class="container mx-auto px-6 py-12">
@@ -19,14 +20,21 @@
 
 <section class="container mx-auto px-6 py-10">
   <!-- ─── Stats Grid ────────────────────────────────────────────── -->
-  <div class="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-4">
+  <div class="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-4">
     <?php
+      // Determine git tile state
+      $gitOk    = !empty($git['ok']);
+      $gitLabel = 'Git';
+      $gitValue = $gitOk ? ($git['branch'] ?? '') . ' @ ' . ($git['commit'] ?? '') : '—';
+      $gitDirty = $gitOk && !empty($git['dirty']);
+
       $cards = [
         ['label' => 'Total Users',       'value' => $s['users'] ?? 0,           'icon' => '👥', 'color' => 'from-cyan-500/20 to-transparent'],
         ['label' => 'Active Sessions',   'value' => $s['active_sessions'] ?? 0,  'icon' => '🟢', 'color' => 'from-ok/20 to-transparent'],
         ['label' => 'Specs',             'value' => $s['specs'] ?? 0,           'icon' => '📋', 'color' => 'from-accent/20 to-transparent'],
         ['label' => 'Builds',            'value' => $s['builds'] ?? 0,          'icon' => '🏗️', 'color' => 'from-violet-500/20 to-transparent'],
         ['label' => 'Files',             'value' => $s['files'] ?? 0,           'icon' => '📄', 'color' => 'from-blue-500/20 to-transparent'],
+        ['label' => $gitLabel,           'value' => $gitValue,                  'icon' => $gitDirty ? '⚠️' : ($gitOk ? '🔀' : '⏸️'), 'color' => 'from-slate-500/20 to-transparent'],
       ];
       foreach ($cards as $card):
     ?>
@@ -43,7 +51,7 @@
   <!-- ─── Quick Actions ─────────────────────────────────────────── -->
   <div class="mt-12">
     <h2 class="text-lg font-display font-semibold mb-4">Quick Actions</h2>
-    <div class="grid md:grid-cols-3 gap-4">
+    <div class="grid sm:grid-cols-2 lg:grid-cols-4 gap-4">
       <a href="/admin/users/" class="glass-card-solid p-5" style="display: block;">
         <div class="flex items-center gap-3">
           <span class="text-2xl">👤</span>
@@ -68,6 +76,15 @@
           <div>
             <div style="font-weight: 500; color: var(--gold-text);">Active Users</div>
             <div class="text-xs mt-0.5" style="color: var(--gold-muted);">See who's online right now</div>
+          </div>
+        </div>
+      </a>
+      <a href="/admin/settings/" class="glass-card-solid p-5" style="display: block;">
+        <div class="flex items-center gap-3">
+          <span class="text-2xl">📥</span>
+          <div>
+            <div style="font-weight: 500; color: var(--gold-text);">Update from GitHub</div>
+            <div class="text-xs mt-0.5" style="color: var(--gold-muted);">Pull latest code from the repository</div>
           </div>
         </div>
       </a>

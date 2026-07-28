@@ -1,0 +1,50 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" fill="none">
+  <defs>
+    <linearGradient id="bg512" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#11111a"/>
+      <stop offset="100%" stop-color="#06060b"/>
+    </linearGradient>
+    <linearGradient id="gold512" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#f4c55d"/>
+      <stop offset="100%" stop-color="#c9a23e"/>
+    </linearGradient>
+  </defs>
+  <rect width="512" height="512" rx="60" fill="url(#bg512)" stroke="#1c1c2a" stroke-width="2"/>
+  <!-- Outer mane ring -->
+  <path d="M256 80L120 140v112c0 72 54 136 136 152 82-16 136-80 136-152V140L256 80z" fill="url(#gold512)" opacity="0.08"/>
+  <!-- Mid mane -->
+  <path d="M256 100L144 152v104c0 64 48 120 112 134 64-14 112-70 112-134V152L256 100z" fill="url(#gold512)" opacity="0.12"/>
+  <!-- Inner face -->
+  <path d="M256 130L170 176v90c0 50 36 94 86 106 50-12 86-56 86-106v-90L256 130z" fill="url(#gold512)" opacity="0.18"/>
+  <!-- Core -->
+  <path d="M256 160L190 196v70c0 38 28 72 66 82 38-10 66-44 66-82v-70L256 160z" fill="url(#gold512)" opacity="0.28"/>
+  <!-- Eyes -->
+  <ellipse cx="194" cy="250" rx="20" ry="24" fill="url(#gold512)"/>
+  <ellipse cx="318" cy="250" rx="20" ry="24" fill="url(#gold512)"/>
+  <circle cx="198" cy="254" r="10" fill="#06060b"/>
+  <circle cx="322" cy="254" r="10" fill="#06060b"/>
+  <!-- Nose -->
+  <path d="M248 294h16l-8 16z" fill="url(#gold512)"/>
+  <!-- Mouth -->
+  <path d="M226 310q30 20 60 0" stroke="url(#gold512)" stroke-width="6" fill="none" stroke-linecap="round"/>
+  <!-- Brow -->
+  <path d="M172 232q22-12 44-6" stroke="url(#gold512)" stroke-width="4" fill="none" stroke-linecap="round" opacity="0.6"/>
+  <path d="M296 226q22-6 44 6" stroke="url(#gold512)" stroke-width="4" fill="none" stroke-linecap="round" opacity="0.6"/>
+  <!-- Ears -->
+  <path d="M138 134l24-36v36z" fill="url(#gold512)" opacity="0.35"/>
+  <path d="M116 156l-14-22v22z" fill="url(#gold512)" opacity="0.2"/>
+  <path d="M374 134l-24-36v36z" fill="url(#gold512)" opacity="0.35"/>
+  <path d="M396 156l14-22v22z" fill="url(#gold512)" opacity="0.2"/>
+  <!-- Mane spikes left -->
+  <path d="M84 226l22-14v20z" fill="url(#gold512)" opacity="0.12"/>
+  <path d="M72 276l20-10v16z" fill="url(#gold512)" opacity="0.12"/>
+  <path d="M78 326l20-14v16z" fill="url(#gold512)" opacity="0.10"/>
+  <path d="M96 370l18-16v16z" fill="url(#gold512)" opacity="0.08"/>
+  <!-- Mane spikes right -->
+  <path d="M428 226l-22-14v20z" fill="url(#gold512)" opacity="0.12"/>
+  <path d="M440 276l-20-10v16z" fill="url(#gold512)" opacity="0.12"/>
+  <path d="M434 326l-20-14v16z" fill="url(#gold512)" opacity="0.10"/>
+  <path d="M416 370l-18-16v16z" fill="url(#gold512)" opacity="0.08"/>
+  <!-- Chin tuft -->
+  <path d="M256 376l-6-12h12z" fill="url(#gold512)" opacity="0.3"/>
+</svg>

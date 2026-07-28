@@ -1,0 +1,231 @@
+<?php
+  /** @var Core\ViewContext $view */
+  $brainstem  = $view->brainstem ?? [];
+  $env_url    = $view->env_url ?? '';
+  $env_key_set = $view->env_key_set ?? false;
+  $active     = $view->active ?? [];
+  $configured = !empty($brainstem['url'] ?? '');
+  $maint      = $view->maint ?? ['enabled' => false, 'message' => ''];
+?>
+
+<section class="border-b border-ink-line">
+  <div class="container mx-auto px-6 py-12">
+    <div class="flex items-end justify-between flex-wrap gap-4">
+      <div>
+        <h1 class="text-3xl md:text-4xl font-display font-semibold">System Settings</h1>
+        <p class="text-chalk-mute mt-2">Manage BrainStem host and view environment configuration.</p>
+      </div>
+      <a href="/admin/" class="px-3 py-1.5 text-sm border border-ink-line rounded-md hover:border-accent transition">&larr; Dashboard</a>
+    </div>
+  </div>
+</section>
+
+<section class="container mx-auto px-6 py-10 grid lg:grid-cols-2 gap-8">
+  <!-- ─── BrainStem Config ──────────────────────────────────────── -->
+  <div class="space-y-6">
+    <div class="p-6 rounded-xl bg-ink-panel border border-ink-line">
+      <h2 class="text-lg font-display font-semibold mb-1">BrainStem Host</h2>
+      <p class="text-sm text-chalk-mute mb-5">
+        Configure the BrainStem inference backend. Leave fields blank to use
+        the <code class="text-chalk text-xs">BRAINSTEM_URL</code> /
+        <code class="text-chalk text-xs">BRAINSTEM_KEY</code> environment defaults.
+      </p>
+
+      <form method="post" action="/admin/settings/brainstem/" class="space-y-4">
+        <?= csrf_field() ?>
+        <label class="text-sm block">
+          <span class="text-xs font-mono uppercase tracking-wider text-chalk-mute">URL</span>
+          <input name="url" type="url"
+                 value="<?= e($brainstem['url'] ?? '') ?>"
+                 placeholder="<?= e($env_url) ?>"
+                 class="mt-1 w-full px-3 py-2 rounded-md bg-ink-soft border border-ink-line focus:outline-none focus:border-accent font-mono text-sm">
+        </label>
+        <label class="text-sm block">
+          <span class="text-xs font-mono uppercase tracking-wider text-chalk-mute">API Key</span>
+          <?php if (!empty($brainstem['api_key_masked'])): ?>
+            <div class="mt-1 text-xs text-chalk-mute font-mono mb-1">
+              Current: <span class="text-chalk"><?= e($brainstem['api_key_masked']) ?></span>
+              <span class="text-chalk-dim">(leave blank to keep)</span>
+            </div>
+          <?php endif; ?>
+          <input name="api_key" type="password"
+                 placeholder="<?= $env_key_set ? '(using env key)' : 'sk-…' ?>"
+                 class="mt-1 w-full px-3 py-2 rounded-md bg-ink-soft border border-ink-line focus:outline-none focus:border-accent font-mono text-sm">
+        </label>
+        <div class="flex items-center justify-between pt-2">
+          <div class="text-xs text-chalk-mute">
+            Status:
+            <?php if ($configured): ?>
+              <span class="text-ok">DB override active</span>
+              <span class="text-chalk-dim ml-1">(updated by <?= e($brainstem['updated_by'] ?? '?') ?>)</span>
+            <?php elseif ($env_key_set): ?>
+              <span class="text-warn">Using env defaults</span>
+            <?php else: ?>
+              <span class="text-err">Not configured</span>
+            <?php endif; ?>
+          </div>
+          <div class="flex gap-2">
+            <button class="px-4 py-2 bg-accent text-ink-deep rounded-md font-medium hover:bg-accent-soft transition">Save</button>
+          </div>
+        </div>
+      </form>
+      <!-- Reset form is separate (never nest forms in HTML) -->
+      <?php if ($configured): ?>
+        <div class="mt-4 flex justify-end">
+          <form method="post" action="/admin/settings/brainstem/reset/"
+                onsubmit="return confirm('Reset to environment defaults? This will clear the stored DB config.')">
+            <?= csrf_field() ?>
+            <button class="px-3 py-2 border border-err/40 text-err rounded-md text-sm hover:bg-err/10 transition">Reset to defaults</button>
+          </form>
+        </div>
+      <?php endif; ?>
+    </div>
+
+    <!-- ─── Resolved Active Config ───────────────────────────────── -->
+    <div class="p-6 rounded-xl bg-ink-panel border border-ink-line">
+      <h2 class="text-lg font-display font-semibold mb-1">Active Configuration</h2>
+      <p class="text-sm text-chalk-mute mb-4">The URL and key the system will actually use.</p>
+      <div class="space-y-3 text-sm">
+        <div>
+          <span class="text-xs font-mono uppercase tracking-wider text-chalk-mute">Active URL</span>
+          <div class="mt-1 font-mono text-xs bg-ink-soft rounded px-3 py-2 border border-ink-line break-all">
+            <?= e($active['url'] ?: '(none)') ?>
+          </div>
+        </div>
+        <div>
+          <span class="text-xs font-mono uppercase tracking-wider text-chalk-mute">Active Key</span>
+          <div class="mt-1 font-mono text-xs bg-ink-soft rounded px-3 py-2 border border-ink-line">
+            <?php if ($active['api_key'] !== ''): ?>
+              <span class="text-ok">&#9679; Key is set</span>
+              <span class="text-chalk-dim">(<?= strlen($active['api_key']) ?> chars)</span>
+            <?php else: ?>
+              <span class="text-err">No key configured</span>
+            <?php endif; ?>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ─── Environment Info ──────────────────────────────────────── -->
+  <div class="space-y-6">
+    <div class="p-6 rounded-xl bg-ink-panel border border-ink-line">
+      <h2 class="text-lg font-display font-semibold mb-1">Environment</h2>
+      <p class="text-sm text-chalk-mute mb-4">Current runtime configuration from <code class="text-chalk text-xs">.env</code> or defaults.</p>
+      <dl class="space-y-3 text-sm">
+        <?php
+          $envItems = [
+            'APP_NAME'         => APP_NAME,
+            'APP_ENV'          => APP_ENV,
+            'APP_DEBUG'        => APP_DEBUG ? 'true' : 'false',
+            'APP_URL'          => APP_URL,
+            'APP_VERSION'      => APP_VERSION,
+            'DB_HOST'          => DB_HOST,
+            'DB_NAME'          => DB_NAME,
+            'SESSION_LIFETIME' => SESSION_LIFETIME . 's',
+            'BRAINSTEM_URL'    => $view->env_url,
+            'BRAINSTEM_KEY'    => $view->env_key_set ? '(set)' : '(not set)',
+          ];
+          foreach ($envItems as $key => $value):
+        ?>
+          <div class="flex items-center justify-between py-1.5 border-b border-ink-line/50 last:border-0">
+            <dt class="font-mono text-xs text-chalk-mute"><?= e($key) ?></dt>
+            <dd class="font-mono text-xs text-right ml-4 max-w-[280px] truncate" title="<?= e((string) $value) ?>">
+              <?= e((string) $value) ?>
+            </dd>
+          </div>
+        <?php endforeach; ?>
+      </dl>
+    </div>
+
+    <!-- ─── PHP Info ─────────────────────────────────────────────── -->
+    <div class="p-6 rounded-xl bg-ink-panel border border-ink-line">
+      <h2 class="text-lg font-display font-semibold mb-1">PHP Runtime</h2>
+      <dl class="space-y-3 text-sm mt-4">
+        <div class="flex items-center justify-between py-1.5 border-b border-ink-line/50">
+          <dt class="font-mono text-xs text-chalk-mute">PHP Version</dt>
+          <dd class="font-mono text-xs"><?= e(PHP_VERSION) ?></dd>
+        </div>
+        <div class="flex items-center justify-between py-1.5 border-b border-ink-line/50">
+          <dt class="font-mono text-xs text-chalk-mute">Server</dt>
+          <dd class="font-mono text-xs"><?= e($_SERVER['SERVER_SOFTWARE'] ?? 'built-in') ?></dd>
+        </div>
+        <div class="flex items-center justify-between py-1.5 border-b border-ink-line/50">
+          <dt class="font-mono text-xs text-chalk-mute">Memory limit</dt>
+          <dd class="font-mono text-xs"><?= e(ini_get('memory_limit') ?: '?') ?></dd>
+        </div>
+        <div class="flex items-center justify-between py-1.5 border-b border-ink-line/50">
+          <dt class="font-mono text-xs text-chalk-mute">Max upload</dt>
+          <dd class="font-mono text-xs"><?= e(ini_get('upload_max_filesize') ?: '?') ?></dd>
+        </div>
+        <div class="flex items-center justify-between py-1.5">
+          <dt class="font-mono text-xs text-chalk-mute">Max POST</dt>
+          <dd class="font-mono text-xs"><?= e(ini_get('post_max_size') ?: '?') ?></dd>
+        </div>
+      </dl>
+    </div>
+
+    <!-- ─── Database ─────────────────────────────────────────────── -->
+    <div class="p-6 rounded-xl bg-ink-panel border border-ink-line">
+      <h2 class="text-lg font-display font-semibold mb-1">Database</h2>
+      <dl class="space-y-3 text-sm mt-4">
+        <div class="flex items-center justify-between py-1.5 border-b border-ink-line/50">
+          <dt class="font-mono text-xs text-chalk-mute">Server</dt>
+          <dd class="font-mono text-xs"><?= e(DB_HOST) ?>:<?= DB_PORT ?></dd>
+        </div>
+        <div class="flex items-center justify-between py-1.5">
+          <dt class="font-mono text-xs text-chalk-mute">Database</dt>
+          <dd class="font-mono text-xs"><?= e(DB_NAME) ?></dd>
+        </div>
+      </dl>
+    </div>
+
+    <!-- ─── Maintenance Mode ─────────────────────────────────────── -->
+    <div class="p-6 rounded-xl bg-ink-panel border border-ink-line">
+      <h2 class="text-lg font-display font-semibold mb-1">Maintenance Mode</h2>
+      <p class="text-sm text-chalk-mute mb-4">
+        When enabled, non-admin users see a themed maintenance page.
+        Admins can still browse the full site normally.
+      </p>
+
+      <form method="post" action="/admin/settings/maintenance/" class="space-y-4">
+        <?= csrf_field() ?>
+        <div class="flex items-center gap-4">
+          <label class="relative inline-flex items-center cursor-pointer">
+            <input type="hidden" name="enabled" value="0">
+            <input type="checkbox" name="enabled" value="1"
+                   class="sr-only peer"
+                   <?= !empty($maint['enabled']) ? 'checked' : '' ?>
+                   onchange="document.getElementById('maint-msg').disabled = !this.checked">
+            <div class="w-11 h-6 rounded-full peer
+                        bg-ink-soft border border-ink-line
+                        peer-checked:bg-accent/30 peer-checked:border-accent
+                        after:content-[''] after:absolute after:top-0.5 after:start-[2px]
+                        after:bg-chalk after:rounded-full after:h-5 after:w-5
+                        after:transition-all peer-checked:after:translate-x-full
+                        peer-checked:after:bg-accent"></div>
+          </label>
+          <span class="text-sm font-mono <?= !empty($maint['enabled']) ? 'text-accent' : 'text-chalk-mute' ?>">
+            <?= !empty($maint['enabled']) ? 'Maintenance Active' : 'Site Live' ?>
+          </span>
+        </div>
+
+        <label class="text-sm block">
+          <span class="text-xs font-mono uppercase tracking-wider text-chalk-mute">Maintenance message</span>
+          <textarea name="message" rows="2" maxlength="500"
+                    id="maint-msg"
+                    <?= !empty($maint['enabled']) ? '' : 'disabled' ?>
+                    class="mt-1 w-full px-3 py-2 rounded-md bg-ink-soft border border-ink-line
+                           focus:outline-none focus:border-accent text-sm
+                           <?= !empty($maint['enabled']) ? '' : 'opacity-50' ?>"><?= e($maint['message'] ?? '') ?></textarea>
+        </label>
+
+        <div class="flex justify-end">
+          <button class="px-4 py-2 <?= !empty($maint['enabled']) ? 'bg-err text-white hover:bg-err/80' : 'bg-accent text-ink-deep hover:bg-accent-soft' ?> rounded-md font-medium transition">
+            <?= !empty($maint['enabled']) ? 'Disable Maintenance' : 'Enable Maintenance' ?>
+          </button>
+        </div>
+      </form>
+    </div>
+  </div>
+</section>

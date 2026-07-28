@@ -1,0 +1,89 @@
+# ═══════════════════════════════════════════════════════════════════════
+# ASHAT Hub — Apache rules for SHARED-HOSTING / FLAT deploy
+# ═══════════════════════════════════════════════════════════════════════
+# When the entire project is in your webroot (e.g. /htdocs/):
+#   1. Denies direct access to private directories (src/, config/,
+#      db/, storage/) and sensitive files (*.env, *.sql, composer.*)
+#   2. Routes EVERYTHING through the front controller (index.php)
+#      — even non-existent URLs like /login/ — via ErrorDocument.
+#   3. Static assets (CSS, JS, images) are served by the PHP
+#      StaticFileServer fallback in public/index.php.
+#
+# IMPORTANT: This file works WITHOUT mod_rewrite (which is disabled
+# on many shared hosts like ByetHost free). It uses ErrorDocument +
+# mod_alias instead, which are virtually always available.
+#
+# For canonical "webroot = public/" deployments (Apache vhosts, Docker)
+# this file is bypassed — the .htaccess inside public/ takes over.
+# ═══════════════════════════════════════════════════════════════════════
+
+# ── ErrorDocument routing (works WITHOUT mod_rewrite) ────────────────
+# When Apache can't find a file/directory for a URL like /login/, it
+# would normally return a plain 404. Instead, we tell it to run index.php
+# as a custom error handler. PHP then reads the original URL from
+# $_SERVER['REDIRECT_URL'] and routes it correctly.
+#
+# The 403 handler also catches blocked private directories (see below).
+ErrorDocument 404 /index.php
+ErrorDocument 403 /index.php
+
+# ── Block private directories and sensitive files ───────────────────
+# RedirectMatch is part of mod_alias, which is available on virtually
+# every Apache install (unlike mod_rewrite). These fire BEFORE the
+# ErrorDocument, so /src/, /config/, .env etc. get a proper 403.
+<IfModule mod_alias.c>
+  RedirectMatch 403 ^/(src|config|db|storage|AshatOS_Old|vendor|node_modules)(/.*)?$
+  RedirectMatch 403 \.(env|sql|md|json|lock|yml|yaml)$
+  RedirectMatch 403 ^composer\.(json|lock)$
+  RedirectMatch 403 ^\.git
+  RedirectMatch 403 ^(README|CHANGELOG|CONTRIBUTING|LICENSE).*$
+</IfModule>
+
+# ── Optional: mod_rewrite rules (applied on top if available) ───────
+# These only fire if mod_rewrite IS available. They serve static assets
+# directly from public/ instead of going through PHP, which is faster.
+# If mod_rewrite is disabled (the common case for free shared hosts),
+# these blocks are silently ignored and the ErrorDocument routing above
+# handles everything.
+<IfModule mod_rewrite.c>
+  RewriteEngine On
+
+  # ── Block private directories and sensitive files ─────────────
+  RewriteRule ^(src|config|db|storage|AshatOS_Old|vendor|node_modules)/ - [F,L]
+  RewriteRule \.env$                        - [F,L]
+  RewriteRule \.(sql|md|json|lock|yml|yaml)$ - [F,L]
+  RewriteRule ^\.                          - [F,L]
+  RewriteRule ^composer\.(json|lock)$      - [F,L]
+
+  # ── Serve static assets from public/ subfolder ────────────────
+  RewriteCond %{REQUEST_FILENAME} !-f
+  RewriteRule ^(favicon\.ico|robots\.txt)$   public/$1 [L]
+  RewriteCond %{REQUEST_FILENAME} !-f
+  RewriteRule ^css/(.*)$                     public/css/$1 [L]
+  RewriteCond %{REQUEST_FILENAME} !-f
+  RewriteRule ^js/(.*)$                      public/js/$1 [L]
+  RewriteCond %{REQUEST_FILENAME} !-f
+  RewriteRule ^images/(.*)$                  public/assets/images/$1 [L]
+  RewriteCond %{REQUEST_FILENAME} !-f
+  RewriteRule ^assets/(.*)$                  public/assets/$1 [L]
+
+  # ── Fallback: serve from public/ for any file existing there ─
+  RewriteCond %{REQUEST_FILENAME} !-f
+  RewriteCond %{DOCUMENT_ROOT}/public%{REQUEST_URI} -f
+  RewriteRule ^ public%{REQUEST_URI} [L]
+
+  # ── Route everything else to front controller ────────────────
+  RewriteCond %{REQUEST_FILENAME} !-f
+  RewriteCond %{REQUEST_FILENAME} !-d
+  RewriteRule ^ index.php [L,QSA]
+</IfModule>
+
+# Disable directory listing
+Options -Indexes
+
+# Hiding server signature
+ServerSignature Off
+
+# NOTE: display_errors is governed by APP_DEBUG in config/bootstrap.php.
+# We intentionally do not force it on/off here — bootstrap decides at
+# runtime so the same code works for dev and prod hosts.

@@ -1,0 +1,63 @@
+<?php
+declare(strict_types=1);
+/**
+ * ASHAT Hub — Runtime Configuration Override
+ *
+ * On hosts where `.env` uploads DO NOT work (ByetHost free, VistaPanel,
+ * and many other "free shared hosting" providers often block or hide
+ * dotfile uploads), copy this file to `config/conn.php` and edit your
+ * real values below. Each `putenv()` here OVERRIDES both `.env` and
+ * the hardcoded defaults in `config/bootstrap.php` — so your edits win.
+ *
+ * Steps:
+ *   1. cp config/conn.php.example config/conn.php
+ *   2. Edit each value below (uncomment by removing the leading //).
+ *   3. Save, re-upload. Done.
+ *
+ * Notes:
+ *   - Keep `config/conn.php` OUT of git. Add it to your .gitignore.
+ *   - Do NOT include a closing `?>` — it would emit a stray newline that
+ *     can corrupt binary downloads / session cookies.
+ *   - Values are picked up via `putenv()`, so PHP `getenv()` reads them
+ *     just like .env-loaded values.
+ */
+
+// ─── Database ─────────────────────────────────────────────────────────
+// ByetHost free-style (NOTE the prefixed DB name + non-localhost host!):
+putenv('DB_HOST=sqlXXX.byethost.com');
+putenv('DB_NAME=b7_XXXXXXX_ashat_hub');
+putenv('DB_USER=b7_XXXXXXX');
+putenv('DB_PASS=YourPassword');
+
+// Generic shared cPanel / managed MySQL:
+// putenv('DB_HOST=localhost');
+// putenv('DB_NAME=youruser_ashat_hub');
+// putenv('DB_USER=youruser_db');
+// putenv('DB_PASS=YourPassword');
+
+// Local docker / dev / VPS:
+// putenv('DB_HOST=127.0.0.1');
+// putenv('DB_NAME=ashat_hub');
+// putenv('DB_USER=root');
+// putenv('DB_PASS=');
+
+// ─── Debug ────────────────────────────────────────────────────────────
+// Show PHP fatals and the styled "Something went wrong" page in browser.
+// Flip to 'false' in a public environment once everything's working.
+putenv('APP_DEBUG=true');
+
+// ─── Debug-Token (used together with APP_DEBUG for the ?debug=1 lever)
+// ───
+// Set to a long random string, then visit ?debug=1&t=THIS_TOKEN for
+// in-browser fatal-error stack traces, even when display_errors is
+// forced off by the host via php_admin_flag.
+// Generate one with:   openssl rand -hex 32
+putenv('DEBUG_TOKEN=');
+
+// ─── App URL ──────────────────────────────────────────────────────────
+// Base URL the app is served from. Used by the asset() and url() helpers.
+putenv('APP_URL=https://yourname.byethost.com');
+
+// ─── Session cookie security (optional) ──────────────────────────────
+// Flip SESSION_SECURE_COOKIE=true if your site is HTTPS-only.
+putenv('SESSION_SECURE_COOKIE=false');

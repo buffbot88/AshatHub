@@ -1,0 +1,35 @@
+# ═══════════════════════════════════════════════════════════════════════
+# ASHAT OS — .gitignore (vanilla PHP)
+# ═══════════════════════════════════════════════════════════════════════
+
+# Secrets
+.env
+.env.local
+.env.*.local
+
+# Free-host fallback config — ships as .example only, the real file
+# carries live DB credentials and must NEVER be committed to git.
+config/conn.php
+
+# Logs
+storage/logs/*.log
+
+# Runtime
+storage/cache/*
+!storage/cache/.gitkeep
+storage/maintenance.json
+
+# Editor / OS noise
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Build artifacts (in case Tailwind CLI is added later)
+public/css/build/
+public/js/build/
+
+# AshatOS_Old archive should NOT be committed
+AshatOS_Old/

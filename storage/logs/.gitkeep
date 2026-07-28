@@ -1,0 +1,2 @@
+# Storage directory — runtime logs go here. The gitkeep keeps the directory
+# present when the project is fresh-cloned.

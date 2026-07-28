@@ -72,7 +72,7 @@
 <body class="min-h-screen flex flex-col" data-mode="<?= e($view->mode ?? '') ?>"
       style="background: radial-gradient(ellipse at center, #1a1408 0%, #0a0a0a 60%, #000 100%); color: #d4c590; font-family: 'Quicksand', sans-serif; font-weight: 500;">
 <?php
-  // Inline the navbar partial (skipped when __hide_navbar is set, e.g. Studio)
+  // Inline the navbar partial (skipped when __hide_navbar is set, e.g. IDE)
   if (empty($view->__hide_navbar)) {
       require __DIR__ . '/../partials/navbar.php';
   }

@@ -635,7 +635,7 @@ Quick build from the Studio dashboard.
     'dashboard': [
       {
         target: '#studio-dashboard h1',
-        title: '🎉 Welcome to the Studio!',
+        title: '🎉 Welcome to the IDE!',
         desc: 'This is your mission control for building software with AI. You can create specs, generate code, manage files, and deploy — all from here. Let\'s take a quick tour!',
         position: 'bottom',
       },

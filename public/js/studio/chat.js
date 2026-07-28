@@ -1,5 +1,5 @@
 /* ═══════════════════════════════════════════════════════════════════════
-   ASHAT Hub — Studio Spec Chat module (v2 · ChatGPT-like)
+   ASHAT Hub — IDE Spec Chat module (v2 · ChatGPT-like)
    Handles SSE streaming chat with BrainStem for spec brainstorming.
    Features:
    - Multi-conversation management (CRUD) persisted to localStorage

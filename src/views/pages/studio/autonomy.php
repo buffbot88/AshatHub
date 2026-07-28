@@ -217,7 +217,7 @@ $recentBuilds = array_slice($builds, 0, 5);
       <!-- Drill-down panel -->
       <div class="autonomy-drilldown" style="display: none; margin-top: 12px; padding-top: 12px; border-top: 1px solid var(--gold-line);">
         <div class="text-xs space-y-2" style="color: var(--gold-muted);">
-          <div class="flex justify-between"><span>Studio</span><span class="text-gold">✓ loaded</span></div>
+          <div class="flex justify-between"><span>IDE</span><span class="text-gold">✓ loaded</span></div>
           <div class="flex justify-between"><span>Spec Chat</span><span class="text-gold">✓ loaded</span></div>
           <div class="flex justify-between"><span>Planner</span><span class="text-gold">✓ loaded</span></div>
           <div class="flex justify-between"><span>File Manager</span><span class="text-gold">✓ loaded</span></div>

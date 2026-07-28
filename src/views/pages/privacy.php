@@ -26,7 +26,7 @@
         <ul class="mt-2 space-y-1.5" style="color: var(--gold-muted); line-height: 1.7; padding-left: 1.25rem; list-style: disc;">
           <li><strong>Account information:</strong> username, email address, and a hashed (bcrypt) password when you register</li>
           <li><strong>Profile information:</strong> display name, preferences, and account settings</li>
-          <li><strong>Usage data:</strong> specifications, files, and build metadata you create within the Studio</li>
+          <li><strong>Usage data:</strong> specifications, files, and build metadata you create within the IDE</li>
           <li><strong>Session data:</strong> IP address, user agent, and session timestamps for authentication</li>
           <li><strong>Community content:</strong> projects, descriptions, and tags you submit to the community showcase</li>
         </ul>

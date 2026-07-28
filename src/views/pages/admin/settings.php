@@ -497,35 +497,35 @@
   // ── Check for updates (GET, no exec needed) ─────────────────────
   async function checkUpdates(force) {
     if (busy) return;
-
-    // Check cache first (only on auto-load, not on manual click)
-    if (!force) {
-      var cached = loadCache();
-      if (cached) {
-        setButtons(false);
-        renderCheckResult(cached);
-        setButtons(true);
-        checkLabel.textContent = 'Check for Updates';
-        statusText.textContent = (cached.behind > 0 ? cached.summary : 'Up to date \u2705') + ' (cached)';
-        return;
-      }
-    }
-
-    hideOutput();
-    summary.classList.add('hidden');
-
-    setDot('bg-ink-line', true);
-    statusText.textContent = 'Checking for updates...';
-    checkLabel.textContent = 'Checking\u2026';
-    setButtons(false);
+    busy = true;
 
     try {
+      // Check cache first (only on auto-load, not on manual click)
+      if (!force) {
+        var cached = loadCache();
+        if (cached) {
+          setButtons(false);
+          renderCheckResult(cached);
+          setButtons(true);
+          checkLabel.textContent = 'Check for Updates';
+          statusText.textContent = (cached.behind > 0 ? cached.summary : 'Up to date \u2705') + ' (cached)';
+          return;
+        }
+      }
+
+      hideOutput();
+      summary.classList.add('hidden');
+
+      setDot('bg-ink-line', true);
+      statusText.textContent = 'Checking for updates...';
+      checkLabel.textContent = 'Checking\u2026';
+      setButtons(false);
       // ── Manual redirect mode ─────────────────────────────────
       // If the admin session expires, the middleware redirects to /login/.
       // With default redirect:'follow', fetch would silently follow the
       // redirect and try to parse the login page HTML as JSON. Instead,
       // we catch redirects explicitly and show a meaningful message.
-      const r = await fetch('/admin/settings/github-check/', {
+      var r = await fetch('/admin/settings/github-check/', {
         headers: { 'Accept': 'application/json' },
         credentials: 'same-origin',
         redirect: 'manual',
@@ -556,6 +556,27 @@
         return;
       }
 
+      // ── Check Content-Type before parsing JSON ────────────────
+      // If PHP outputs warnings/errors before the JSON, the body is
+      // HTML despite HTTP 200. Reading the body as text first would
+      // consume it, so check the header before touching the body.
+      var checkContentType = (r.headers.get('content-type') || '').toLowerCase();
+      if (!checkContentType.includes('application/json') && !checkContentType.includes('text/json')) {
+        invalidateCache();
+        setDot('bg-err', false);
+        var htmlBody = await r.text();
+        statusText.textContent = 'Server returned HTML (status ' + r.status + ')';
+        showOutput(
+          'The server returned non-JSON content (Content-Type: ' + checkContentType + ')\n\n' +
+          htmlBody.slice(0, 1000),
+          true
+        );
+        pendingApply = false;
+        setButtons(true);
+        checkLabel.textContent = 'Check for Updates';
+        return;
+      }
+
       const data = await r.json();
 
       renderCheckResult(data);
@@ -572,10 +593,12 @@
       invalidateCache();
       setDot('bg-err', false);
       statusText.textContent = 'Network error.';
-      showOutput('Network error: ' + (err.message || 'Unknown'), true);
+      showOutput('Network error: ' + (err.message || 'Unknown') + '\n\nMake sure the server has outgoing HTTP access (allow_url_fopen or cURL).', true);
       pendingApply = false;
       setButtons(true);
       checkLabel.textContent = 'Check for Updates';
+    } finally {
+      busy = false;
     }
   }
 
@@ -606,6 +629,32 @@
         body: body,
         credentials: 'same-origin',
       });
+
+      // ── Handle non-JSON responses ────────────────────────────────
+      // If the server returns HTML (PHP crash, redirect to login, etc.),
+      // show the HTTP status and a body preview instead of failing with
+      // a cryptic "Unexpected token" JSON parse error.
+      var contentType = (r.headers.get('content-type') || '').toLowerCase();
+      if (!contentType.includes('application/json') && !contentType.includes('text/json')) {
+        var bodyPreview = await r.text().then(function (t) { return t.slice(0, 500); }).catch(function () { return '(unable to read body)'; });
+        setDot('bg-err', false);
+        statusText.textContent = 'Server returned ' + r.status + ' (' + r.statusText + ')';
+        showOutput(
+          'Apply request failed — the server returned non-JSON content.\n\n' +
+          'HTTP ' + r.status + ' ' + r.statusText + '\n' +
+          'Content-Type: ' + contentType + '\n\n' +
+          bodyPreview,
+          true
+        );
+        applyLabel.textContent = 'Retry Apply';
+        busy = false;
+        setButtons(true);
+        applyIcon.innerHTML = '<svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">' +
+          '<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"/>' +
+          '</svg>';
+        return;
+      }
+
       const data = await r.json();
 
       if (data.ok) {
@@ -614,6 +663,8 @@
         if (data.output) showOutput(data.output);
         pendingApply = false;
         applyLabel.textContent = 'Apply Updates';
+        // Invalidate cache so the next auto-check fetches fresh
+        invalidateCache();
       } else {
         setDot('bg-err', false);
         statusText.textContent = data.summary || 'Update failed.';
@@ -626,7 +677,14 @@
     } catch (err) {
       setDot('bg-err', false);
       statusText.textContent = 'Network error during update.';
-      showOutput('Network error: ' + (err.message || 'Unknown'), true);
+      showOutput(
+        'Network error: ' + (err.message || 'Unknown') + '\n\n' +
+        'Troubleshooting tips:\n' +
+        '1. Ensure the GitHub repo is public (or add a token for private repos)\n' +
+        '2. The server must have allow_url_fopen or cURL enabled\n' +
+        '3. Check PHP error logs for max_execution_time limits',
+        true
+      );
       applyLabel.textContent = 'Retry Apply';
     }
 

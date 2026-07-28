@@ -516,10 +516,42 @@
     setButtons(false);
 
     try {
+      // ── Manual redirect mode ─────────────────────────────────
+      // If the admin session expires, the middleware redirects to /login/.
+      // With default redirect:'follow', fetch would silently follow the
+      // redirect and try to parse the login page HTML as JSON. Instead,
+      // we catch redirects explicitly and show a meaningful message.
       const r = await fetch('/admin/settings/github-check/', {
         headers: { 'Accept': 'application/json' },
         credentials: 'same-origin',
+        redirect: 'manual',
       });
+
+      // Redirect (session expired)
+      if (r.type === 'opaqueredirect' || r.status === 302 || r.status === 301) {
+        invalidateCache();
+        setDot('bg-err', false);
+        statusText.textContent = 'Session expired';
+        showOutput('Your admin session has expired. Refresh the page, sign in again, then try checking for updates.', true);
+        pendingApply = false;
+        setButtons(true);
+        checkLabel.textContent = 'Check for Updates';
+        return;
+      }
+
+      // Other non-OK response (500, 403, etc.)
+      if (!r.ok) {
+        invalidateCache();
+        setDot('bg-err', false);
+        const bodyPreview = await r.text().then(function (t) { return t.slice(0, 500); }).catch(function () { return '(unable to read body)'; });
+        statusText.textContent = 'Server returned ' + r.status;
+        showOutput('HTTP ' + r.status + ' ' + r.statusText + '\n\n' + bodyPreview, true);
+        pendingApply = false;
+        setButtons(true);
+        checkLabel.textContent = 'Check for Updates';
+        return;
+      }
+
       const data = await r.json();
 
       renderCheckResult(data);

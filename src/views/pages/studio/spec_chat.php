@@ -56,7 +56,7 @@
           </button>
         </form>
         <div class="flex items-center justify-between mt-2">
-          <span class="text-[10px] font-mono" style="color: var(--gold-dim);">BrainStem · GPT-4o-mini fallback</span>
+          <span class="text-[10px] font-mono" style="color: var(--gold-dim);">BrainStem · Neural Host</span>
           <span id="chat-token-count" class="text-[10px] font-mono" style="color: var(--gold-dim);"></span>
         </div>
       </div>

@@ -6,6 +6,11 @@ declare(strict_types=1);
  * ═══════════════════════════════════════════════════════════════════════
  */
 
+// ── Flash messages partial (type-aware banner rendering) ─────────
+// Loaded here so it's available globally, before any layout template
+// tries to call partial_flash().
+require_once __DIR__ . '/../views/partials/flash_messages.php';
+
 /**
  * HTML-escape shorthand. Mirrors the React world's e()/esc().
  */

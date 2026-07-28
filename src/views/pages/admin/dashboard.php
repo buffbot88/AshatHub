@@ -79,7 +79,10 @@
           </div>
         </div>
       </a>
-      <a href="/admin/settings/" class="glass-card-solid p-5" style="display: block;">
+      <a href="/admin/settings/" class="glass-card-solid p-5 relative" style="display: block;">
+        <span id="github-update-badge"
+              class="hidden absolute -top-2 -right-2 bg-err text-white text-[10px] font-bold font-mono px-2 py-0.5 rounded-full shadow-lg z-10"
+              style="box-shadow: 0 0 8px rgba(248,113,113,0.5);"></span>
         <div class="flex items-center gap-3">
           <span class="text-2xl">📥</span>
           <div>
@@ -141,3 +144,64 @@
     <?php endif; ?>
   </div>
 </section>
+
+<script>
+(function () {
+  'use strict';
+
+  var badge = document.getElementById('github-update-badge');
+  if (!badge) return;
+
+  var CACHE_KEY = 'ashat.github_check';
+  var CACHE_TTL = 60000;
+
+  function loadCache() {
+    try {
+      var raw = sessionStorage.getItem(CACHE_KEY);
+      if (!raw) return null;
+      var entry = JSON.parse(raw);
+      if (!entry || !entry.data || !entry.ts) return null;
+      if (Date.now() - entry.ts > CACHE_TTL) {
+        sessionStorage.removeItem(CACHE_KEY);
+        return null;
+      }
+      return entry.data;
+    } catch (_) { return null; }
+  }
+
+  function render(data) {
+    if (data && data.ok && data.behind > 0) {
+      badge.textContent = '+' + data.behind;
+      badge.classList.remove('hidden');
+    } else {
+      badge.classList.add('hidden');
+    }
+  }
+
+  // Check cache first (shares with settings page)
+  var cached = loadCache();
+  if (cached) {
+    render(cached);
+    return;
+  }
+
+  // Fetch fresh
+  fetch('/admin/settings/github-check/', {
+    headers: { 'Accept': 'application/json' },
+    credentials: 'same-origin',
+  })
+  .then(function (r) { return r.json(); })
+  .then(function (data) {
+    render(data);
+    if (data.ok) {
+      try {
+        sessionStorage.setItem(CACHE_KEY, JSON.stringify({ ts: Date.now(), data: data }));
+      } catch (_) {}
+    }
+  })
+  .catch(function () {
+    badge.classList.add('hidden');
+  });
+
+})();
+</script>

@@ -62,7 +62,92 @@ final class GitUpdater
             return $httpCheck;
         }
 
-        // ── Fetch recent commits from GitHub API ───────────────────
+        // ── Read stored state ──────────────────────────────────────
+        $state = $this->readState();
+        $lastSha = $state['last_commit_sha'] ?? '';
+
+        // ── GitHub Compare API: single call for commits + files ────
+        // If we have a stored SHA, the compare endpoint returns ALL
+        // new commits and ALL changed files in one response — instead
+        // of N+1 calls (1 commits list + N commit details).
+        if ($lastSha !== '') {
+            $compareUrl = "https://api.github.com/repos/{$this->repoOwner}/{$this->repoName}/compare/{$lastSha}...{$this->branch}";
+            $compare = $this->githubGet($compareUrl);
+
+            if ($compare === null) {
+                return [
+                    'ok'      => false,
+                    'summary' => 'Failed to reach GitHub API.',
+                    'error'   => 'Could not reach the GitHub Compare API. The server may be blocking outgoing connections.',
+                ];
+            }
+
+            if (!is_array($compare) || !isset($compare['status'])) {
+                return [
+                    'ok'      => false,
+                    'summary' => 'Invalid response from GitHub.',
+                    'error'   => 'GitHub Compare API returned an invalid response.',
+                ];
+            }
+
+            // 'behind' means local is behind remote (has unpulled commits)
+            // 'identical' means up to date
+            // 'diverged' means branches have diverged (unlikely with --ff-only)
+            $behind = $compare['behind_by'] ?? 0;
+
+            // Build commit list from compare response
+            $newCommits = [];
+            $rawCommits = $compare['commits'] ?? [];
+            foreach ($rawCommits as $commit) {
+                $sha = $commit['sha'] ?? '';
+                $newCommits[] = [
+                    'sha'     => $sha,
+                    'message' => explode("\n", $commit['commit']['message'] ?? '')[0],
+                    'date'    => $commit['commit']['committer']['date'] ?? '',
+                    'author'  => $commit['commit']['author']['name'] ?? '',
+                ];
+            }
+
+            // Build file list from compare response (single call!)
+            $changedFiles = [];
+            $rawFiles = $compare['files'] ?? [];
+            foreach ($rawFiles as $file) {
+                $path = $file['filename'] ?? '';
+                if ($path !== '' && !$this->isProtected($path)) {
+                    $changedFiles[$path] = [
+                        'path'       => $path,
+                        'status'     => $file['status'] ?? 'modified',
+                        'additions'  => $file['additions'] ?? 0,
+                        'deletions'  => $file['deletions'] ?? 0,
+                        'raw_url'    => $file['raw_url'] ?? '',
+                    ];
+                }
+            }
+
+            // The tip of the branch (latest HEAD SHA) is the last
+            // commit in the Compare API's commits array.
+            $latestSha = $lastSha;
+            if (!empty($rawCommits)) {
+                $last = end($rawCommits);
+                $latestSha = $last['sha'] ?? $lastSha;
+            }
+
+            return [
+                'ok'          => true,
+                'behind'      => $behind,
+                'commits'     => $newCommits,
+                'files'       => array_values($changedFiles),
+                'last_sha'    => $lastSha,
+                'latest_sha'  => $headSha,
+                'summary'     => $behind > 0
+                    ? "{$behind} new commit(s) · " . count($changedFiles) . " file(s) changed"
+                    : 'Up to date.',
+            ];
+        }
+
+        // ── First-time check (no stored SHA yet) ───────────────────
+        // Without a known starting point we can't use the Compare API.
+        // Just fetch the recent commits list to show what's available.
         $commits = $this->githubGet(
             "https://api.github.com/repos/{$this->repoOwner}/{$this->repoName}/commits?sha={$this->branch}&per_page=10"
         );
@@ -85,41 +170,15 @@ final class GitUpdater
 
         $latestSha = $commits[0]['sha'] ?? '';
 
-        // ── Read stored state ──────────────────────────────────────
-        $state = $this->readState();
-        $lastSha = $state['last_commit_sha'] ?? '';
-
-        // ── Count new commits ──────────────────────────────────────
         $newCommits = [];
-        $changedFiles = [];
-
         foreach ($commits as $commit) {
             $sha = $commit['sha'] ?? '';
-            if ($sha === $lastSha) break; // We've seen this one before
-
             $newCommits[] = [
                 'sha'     => $sha,
                 'message' => explode("\n", $commit['commit']['message'] ?? '')[0],
                 'date'    => $commit['commit']['committer']['date'] ?? '',
                 'author'  => $commit['commit']['author']['name'] ?? '',
             ];
-
-            // Collect changed files for each new commit
-            $detail = $this->githubGet($commit['url']);
-            if (is_array($detail) && isset($detail['files'])) {
-                foreach ($detail['files'] as $file) {
-                    $path = $file['filename'] ?? '';
-                    if ($path !== '' && !$this->isProtected($path)) {
-                        $changedFiles[$path] = [
-                            'path'       => $path,
-                            'status'     => $file['status'] ?? 'modified',
-                            'additions'  => $file['additions'] ?? 0,
-                            'deletions'  => $file['deletions'] ?? 0,
-                            'raw_url'    => $file['raw_url'] ?? '',
-                        ];
-                    }
-                }
-            }
         }
 
         $behind = count($newCommits);
@@ -128,12 +187,10 @@ final class GitUpdater
             'ok'          => true,
             'behind'      => $behind,
             'commits'     => $newCommits,
-            'files'       => array_values($changedFiles),
-            'last_sha'    => $lastSha ?: '(first time — will download all files)',
+            'files'       => [],
+            'last_sha'    => '(first time — will download all files)',
             'latest_sha'  => $latestSha,
-            'summary'     => $behind > 0
-                ? "{$behind} new commit(s) · " . count($changedFiles) . " file(s) changed"
-                : 'Up to date.',
+            'summary'     => "{$behind} recent commit(s) — run Apply to start tracking",
         ];
     }
 

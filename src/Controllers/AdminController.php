@@ -168,6 +168,73 @@ final class AdminController
     }
 
     /**
+     * Get the current webhook secret status (masked).
+     */
+    public function webhookSecret(RequestContext $ctx): void
+    {
+        $file = ASHAT_ROOT . '/storage/webhook-secret.json';
+        $configured = false;
+        $masked = '';
+
+        if (is_file($file)) {
+            $data = json_decode(file_get_contents($file), true);
+            if (is_array($data) && !empty($data['secret'])) {
+                $configured = true;
+                $secret = (string) $data['secret'];
+                $masked = substr($secret, 0, 4) . '••••' . substr($secret, -4);
+            }
+        }
+
+        // Derive the webhook URL from APP_URL
+        $webhookUrl = rtrim(APP_URL, '/') . '/webhook.php';
+
+        $ctx->jsonResponse([
+            'ok'          => true,
+            'configured'  => $configured,
+            'masked'      => $masked,
+            'webhook_url' => $webhookUrl,
+        ]);
+    }
+
+    /**
+     * Generate or update the webhook secret (POST).
+     */
+    public function saveWebhookSecret(RequestContext $ctx): void
+    {
+        $action = $ctx->str('action'); // 'generate' or 'clear'
+        $dir = ASHAT_ROOT . '/storage';
+        if (!is_dir($dir)) {
+            @mkdir($dir, 0775, true);
+        }
+
+        $file = $dir . '/webhook-secret.json';
+
+        if ($action === 'clear') {
+            if (is_file($file)) {
+                unlink($file);
+            }
+            $ctx->flash('success', 'Webhook secret cleared. GitHub webhook will no longer be accepted.');
+            $ctx->redirect('/admin/settings/');
+        }
+
+        // Generate a cryptographically secure random secret
+        $secret = bin2hex(random_bytes(32)); // 64 hex chars
+
+        file_put_contents(
+            $file,
+            json_encode(['secret' => $secret, 'created_at' => date('c')], JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES)
+        );
+
+        // Return the secret so the admin can copy it into GitHub's webhook settings
+        $webhookUrl = rtrim(APP_URL, '/') . '/webhook.php';
+        $ctx->jsonResponse([
+            'ok'           => true,
+            'secret'       => $secret,
+            'webhook_url'  => $webhookUrl,
+        ]);
+    }
+
+    /**
      * Toggle maintenance mode on/off (POST).
      * Writes to a JSON flag file so no DB schema change is needed.
      */

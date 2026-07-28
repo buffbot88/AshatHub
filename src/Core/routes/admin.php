@@ -23,4 +23,8 @@ $router->group('/admin', ['middleware' => ['admin-gate']], function () use ($rou
     // GitHub update — incremental API mode (no exec/git required, works on any host)
     $router->get('/settings/github-check',  [\Controllers\AdminController::class, 'checkGitHubUpdates']);
     $router->post('/settings/github-apply', [\Controllers\AdminController::class, 'applyGitHubUpdates']);
+
+    // Webhook secret management
+    $router->get('/settings/webhook-secret',  [\Controllers\AdminController::class, 'webhookSecret']);
+    $router->post('/settings/webhook-secret', [\Controllers\AdminController::class, 'saveWebhookSecret']);
 });

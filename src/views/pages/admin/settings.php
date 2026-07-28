@@ -232,6 +232,81 @@
         <pre id="github-output-text"
              class="text-xs font-mono bg-ink-deep rounded-lg p-4 border border-ink-line overflow-x-auto max-h-64 overflow-y-auto whitespace-pre-wrap"></pre>
       </div>
+
+      <!-- ═══ Webhook Auto-Update ═══ -->
+      <hr class="my-5 border-ink-line/50">
+      <div class="pt-2">
+        <div class="flex items-center justify-between flex-wrap gap-2 mb-1">
+          <h3 class="text-base font-display font-semibold">
+            <span>🔔</span> Auto-Update via Webhook
+          </h3>
+          <span id="wh-status-chip" class="chip-gold text-[10px]">
+            <span class="dot"></span> <span id="wh-status-text">loading</span>
+          </span>
+        </div>
+        <p class="text-xs text-chalk-mute mb-3">
+          When configured, GitHub automatically notifies this endpoint on every push.
+          The site updates itself &mdash; no manual clicking needed.
+        </p>
+
+        <!-- Webhook URL display -->
+        <div class="mb-3">
+          <span class="text-[10px] font-mono uppercase tracking-wider text-chalk-mute">Webhook URL</span>
+          <div id="wh-url-display"
+               class="mt-0.5 font-mono text-xs bg-ink-soft rounded px-3 py-2 border border-ink-line break-all text-chalk-dim select-all">
+            loading…
+          </div>
+          <p class="text-[10px] text-chalk-mute mt-1">
+            Enter this URL in GitHub → Settings → Webhooks → Add webhook.
+            Set Content type to <code class="text-chalk">application/json</code>.
+          </p>
+        </div>
+
+        <!-- Secret display -->
+        <div class="mb-3">
+          <span class="text-[10px] font-mono uppercase tracking-wider text-chalk-mute">Secret</span>
+          <div id="wh-secret-display"
+               class="mt-0.5 font-mono text-xs bg-ink-soft rounded px-3 py-2 border border-ink-line break-all text-chalk-dim">
+            <span id="wh-secret-value">—</span>
+          </div>
+          <p class="text-[10px] text-chalk-mute mt-1">
+            GitHub uses this secret to sign the request payload. The server verifies
+            the signature before applying updates.
+          </p>
+        </div>
+
+        <!-- Actions -->
+        <div class="flex flex-wrap items-center gap-2">
+          <button id="wh-generate-btn"
+                  class="px-3 py-1.5 border border-accent/50 text-accent rounded-md text-xs font-medium hover:bg-accent/10 transition disabled:opacity-30 disabled:cursor-not-allowed inline-flex items-center gap-1.5">
+            <span>🔑</span>
+            <span id="wh-generate-text">Generate New Secret</span>
+          </button>
+          <button id="wh-clear-btn"
+                  class="px-3 py-1.5 border border-err/40 text-err rounded-md text-xs font-medium hover:bg-err/10 transition disabled:opacity-30 disabled:cursor-not-allowed inline-flex items-center gap-1.5">
+            <span>🗑️</span>
+            <span>Clear Secret</span>
+          </button>
+          <span id="wh-new-secret" class="hidden font-mono text-xs text-accent bg-accent/10 px-3 py-1.5 rounded-md border border-accent/30 break-all max-w-full"></span>
+        </div>
+
+        <!-- GitHub setup instructions (collapsible) -->
+        <details class="mt-4 text-xs text-chalk-mute">
+          <summary class="cursor-pointer hover:text-accent transition font-medium">
+            📖 Setup instructions
+          </summary>
+          <ol class="mt-2 space-y-1.5 pl-4 list-decimal leading-relaxed">
+            <li>Go to your GitHub repo: <code class="text-chalk">github.com/buffbot88/AshatHub</code></li>
+            <li>Click <strong>Settings</strong> → <strong>Webhooks</strong> → <strong>Add webhook</strong></li>
+            <li>Paste the <strong>Webhook URL</strong> (shown above) into the <em>Payload URL</em> field</li>
+            <li>Set <strong>Content type</strong> to <code class="text-chalk">application/json</code></li>
+            <li>Paste the <strong>Secret</strong> (shown above) into the <em>Secret</em> field</li>
+            <li>Select <strong>Just the push event</strong></li>
+            <li>Check <strong>Active</strong> and click <strong>Add webhook</strong></li>
+            <li>GitHub will send a <code class="text-chalk">ping</code> event to verify the connection</li>
+          </ol>
+        </details>
+      </div>
     </div>
 
     <!-- ─── Maintenance Mode ─────────────────────────────────────── -->
@@ -308,6 +383,8 @@
   // ── State ────────────────────────────────────────────────────────
   let busy = false;
   let pendingApply = false;
+  const CACHE_KEY = 'ashat.github_check';
+  const CACHE_TTL = 60000; // 60 seconds
 
   // ── Helpers ───────────────────────────────────────────────────────
   function setDot(color, pulse) {
@@ -330,15 +407,112 @@
     applyBtn.disabled = !on || busy || !pendingApply;
   }
 
+  // ── sessionStorage cache helpers ────────────────────────────────
+  function loadCache() {
+    try {
+      var raw = sessionStorage.getItem(CACHE_KEY);
+      if (!raw) return null;
+      var entry = JSON.parse(raw);
+      if (!entry || !entry.data || !entry.ts) return null;
+      if (Date.now() - entry.ts > CACHE_TTL) {
+        sessionStorage.removeItem(CACHE_KEY);
+        return null;
+      }
+      return entry.data;
+    } catch (_) {
+      return null;
+    }
+  }
+
+  function saveCache(data) {
+    try {
+      sessionStorage.setItem(CACHE_KEY, JSON.stringify({ ts: Date.now(), data: data }));
+    } catch (_) { /* storage full or unavailable — fine to fail silently */ }
+  }
+
+  function invalidateCache() {
+    try { sessionStorage.removeItem(CACHE_KEY); } catch (_) {}
+  }
+
+  // ── Render check result into the DOM (shared by cache + fresh) ──
+  function renderCheckResult(data) {
+    if (!data.ok) {
+      setDot('bg-err', false);
+      statusText.textContent = data.summary || 'Check failed.';
+      if (data.error) showOutput(data.error, true);
+      pendingApply = false;
+      return;
+    }
+
+    if (data.behind === 0) {
+      setDot('bg-ok', false);
+      statusText.textContent = 'Up to date \u2705';
+      pendingApply = false;
+      return;
+    }
+
+    // ── New commits available ───────────────────────────────────
+    setDot('bg-accent', false);
+    statusText.textContent = data.summary || data.behind + ' new commit(s) available';
+
+    // Render commit list
+    commitList.innerHTML = '';
+    if (data.commits && data.commits.length) {
+      data.commits.forEach(function (c) {
+        var el = document.createElement('div');
+        el.className = 'flex items-start gap-2 py-1.5 border-b border-ink-line/40 text-xs';
+        el.innerHTML = '<span class="text-accent shrink-0 mt-0.5">\u2713</span>' +
+          '<div><div class="text-chalk leading-tight">' + esc(c.message) + '</div>' +
+          '<div class="text-chalk-mute mt-0.5">' + esc(c.sha.slice(0, 7)) +
+          ' \u00b7 ' + esc(c.author) + '</div></div>';
+        commitList.appendChild(el);
+      });
+    }
+
+    // Render file list
+    fileList.innerHTML = '';
+    if (data.files && data.files.length) {
+      data.files.forEach(function (f) {
+        var el = document.createElement('div');
+        el.className = 'flex items-center gap-2';
+        var statusSym = f.status === 'added' ? '\u2795' :
+                        f.status === 'removed' ? '\u2796' :
+                        f.status === 'renamed' ? '\u2194' : '\u270F\uFE0F';
+        el.innerHTML = '<span>' + statusSym + '</span> ' +
+          '<span class="text-chalk-dim truncate" title="' + esc(f.path) + '">' + esc(f.path) + '</span>' +
+          (f.additions > 0 ? ' <span class="text-ok shrink-0">+' + f.additions + '</span>' : '') +
+          (f.deletions > 0 ? ' <span class="text-err shrink-0">\u2212' + f.deletions + '</span>' : '');
+        fileList.appendChild(el);
+      });
+    }
+
+    summary.classList.remove('hidden');
+    pendingApply = true;
+  }
+
   // ── Check for updates (GET, no exec needed) ─────────────────────
-  async function checkUpdates() {
+  async function checkUpdates(force) {
     if (busy) return;
+
+    // Check cache first (only on auto-load, not on manual click)
+    if (!force) {
+      var cached = loadCache();
+      if (cached) {
+        setButtons(false);
+        renderCheckResult(cached);
+        setButtons(true);
+        checkLabel.textContent = 'Check for Updates';
+        statusText.textContent = (cached.behind > 0 ? cached.summary : 'Up to date \u2705') + ' (cached)';
+        return;
+      }
+    }
+
     hideOutput();
     summary.classList.add('hidden');
 
     setDot('bg-ink-line', true);
     statusText.textContent = 'Checking for updates...';
-    checkLabel.textContent = 'Checking…';
+    checkLabel.textContent = 'Checking\u2026';
     setButtons(false);
 
     try {
@@ -348,66 +522,18 @@
       });
       const data = await r.json();
 
-      if (!data.ok) {
-        setDot('bg-err', false);
-        statusText.textContent = data.summary || 'Check failed.';
-        if (data.error) showOutput(data.error, true);
-        pendingApply = false;
-        setButtons(true);
-        checkLabel.textContent = 'Check for Updates';
-        return;
+      renderCheckResult(data);
+
+      if (data.ok) {
+        saveCache(data); // only cache successful results
       }
 
-      if (data.behind === 0) {
-        setDot('bg-ok', false);
-        statusText.textContent = 'Up to date \u2705';
-        pendingApply = false;
-        setButtons(true);
-        checkLabel.textContent = 'Check for Updates';
-        return;
-      }
-
-      // ── New commits available ───────────────────────────────────
-      setDot('bg-accent', false);
-      statusText.textContent = data.summary || data.behind + ' new commit(s) available';
-
-      // Render commit list
-      commitList.innerHTML = '';
-      if (data.commits && data.commits.length) {
-        data.commits.forEach(function (c) {
-          var el = document.createElement('div');
-          el.className = 'flex items-start gap-2 py-1.5 border-b border-ink-line/40 text-xs';
-          el.innerHTML = '<span class="text-accent shrink-0 mt-0.5">\u2713</span>' +
-            '<div><div class="text-chalk leading-tight">' + esc(c.message) + '</div>' +
-            '<div class="text-chalk-mute mt-0.5">' + esc(c.sha.slice(0, 7)) +
-            ' \u00b7 ' + esc(c.author) + '</div></div>';
-          commitList.appendChild(el);
-        });
-      }
-
-      // Render file list
-      fileList.innerHTML = '';
-      if (data.files && data.files.length) {
-        data.files.forEach(function (f) {
-          var el = document.createElement('div');
-          el.className = 'flex items-center gap-2';
-          var statusSym = f.status === 'added' ? '\u2795' :
-                          f.status === 'removed' ? '\u2796' :
-                          f.status === 'renamed' ? '\u2194' : '\u270F\uFE0F';
-          el.innerHTML = '<span>' + statusSym + '</span> ' +
-            '<span class="text-chalk-dim truncate" title="' + esc(f.path) + '">' + esc(f.path) + '</span>' +
-            (f.additions > 0 ? ' <span class="text-ok shrink-0">+' + f.additions + '</span>' : '') +
-            (f.deletions > 0 ? ' <span class="text-err shrink-0">\u2212' + f.deletions + '</span>' : '');
-          fileList.appendChild(el);
-        });
-      }
-
-      summary.classList.remove('hidden');
-      pendingApply = true;
       setButtons(true);
       checkLabel.textContent = 'Check for Updates';
 
     } catch (err) {
+      // Invalidate cache on network error so next load retries fresh
+      invalidateCache();
       setDot('bg-err', false);
       statusText.textContent = 'Network error.';
       showOutput('Network error: ' + (err.message || 'Unknown'), true);
@@ -483,12 +609,125 @@
     return d.innerHTML;
   }
 
+  // ══════════════════════════════════════════════════════════════════
+  //  WEBHOOK AUTO-UPDATE
+  // ══════════════════════════════════════════════════════════════════
+
+  var whStatusChip  = document.getElementById('wh-status-chip');
+  var whStatusText  = document.getElementById('wh-status-text');
+  var whUrlDisplay  = document.getElementById('wh-url-display');
+  var whSecretVal   = document.getElementById('wh-secret-value');
+  var whSecretDisp  = document.getElementById('wh-secret-display');
+  var whGenerateBtn = document.getElementById('wh-generate-btn');
+  var whClearBtn    = document.getElementById('wh-clear-btn');
+  var whNewSecret   = document.getElementById('wh-new-secret');
+  var whGenerateText = document.getElementById('wh-generate-text');
+  var csrfToken     = csrf;
+
+  function setWhStatus(configured, masked) {
+    if (configured) {
+      whStatusChip.style.borderColor = 'rgba(74,222,128,0.3)';
+      whStatusChip.style.color = 'var(--gold-ok)';
+      whStatusText.textContent = 'active';
+      whSecretVal.textContent = masked || '••••••••';
+      whClearBtn.disabled = false;
+    } else {
+      whStatusChip.style.borderColor = '';
+      whStatusChip.style.color = '';
+      whStatusText.textContent = 'not configured';
+      whSecretVal.textContent = '\u2014';
+      whClearBtn.disabled = true;
+    }
+  }
+
+  function loadWebhookStatus() {
+    fetch('/admin/settings/webhook-secret/', {
+      headers: { 'Accept': 'application/json' },
+      credentials: 'same-origin',
+    })
+    .then(function (r) { return r.json(); })
+    .then(function (data) {
+      if (data.ok) {
+        whUrlDisplay.textContent = data.webhook_url || '\u2014';
+        setWhStatus(data.configured, data.masked);
+      }
+    })
+    .catch(function () {
+      whStatusText.textContent = 'error loading';
+    });
+  }
+
+  whGenerateBtn.addEventListener('click', function () {
+    if (whGenerateBtn.disabled) return;
+    whGenerateBtn.disabled = true;
+    whGenerateText.textContent = 'Generating\u2026';
+    whNewSecret.classList.add('hidden');
+
+    var body = new URLSearchParams();
+    body.set('action', 'generate');
+    body.set('_csrf', csrfToken);
+
+    fetch('/admin/settings/webhook-secret/', {
+      method: 'POST',
+      headers: { 'Accept': 'application/json' },
+      body: body,
+      credentials: 'same-origin',
+    })
+    .then(function (r) { return r.json(); })
+    .then(function (data) {
+      if (data.ok && data.secret) {
+        whNewSecret.textContent = '🔑 New secret: ' + data.secret;
+        whNewSecret.classList.remove('hidden');
+        setWhStatus(true, data.secret.slice(0, 4) + '\u2022\u2022\u2022\u2022' + data.secret.slice(-4));
+        whUrlDisplay.textContent = data.webhook_url || '\u2014';
+      } else {
+        whNewSecret.textContent = 'Failed to generate secret.';
+        whNewSecret.classList.remove('hidden');
+      }
+      whGenerateBtn.disabled = false;
+      whGenerateText.textContent = 'Generate New Secret';
+    })
+    .catch(function () {
+      whNewSecret.textContent = 'Network error generating secret.';
+      whNewSecret.classList.remove('hidden');
+      whGenerateBtn.disabled = false;
+      whGenerateText.textContent = 'Generate New Secret';
+    });
+  });
+
+  whClearBtn.addEventListener('click', function () {
+    if (whClearBtn.disabled) return;
+    if (!confirm('Clear the webhook secret? GitHub will no longer be able to trigger auto-updates.')) return;
+
+    var body = new URLSearchParams();
+    body.set('action', 'clear');
+    body.set('_csrf', csrfToken);
+
+    fetch('/admin/settings/webhook-secret/', {
+      method: 'POST',
+      headers: { 'Accept': 'application/json' },
+      body: body,
+      credentials: 'same-origin',
+    })
+    .then(function (r) { return r.json(); })
+    .then(function () {
+      setWhStatus(false);
+      whNewSecret.classList.add('hidden');
+    })
+    .catch(function () {
+      // Even on network error, the server-side clear may have succeeded
+      // (the redirect happened before the fetch response). Reload to sync.
+      window.location.reload();
+    });
+  });
+
   // ── Wire up ───────────────────────────────────────────────────────
-  checkBtn.addEventListener('click', checkUpdates);
+  checkBtn.addEventListener('click', function () { checkUpdates(true); });
   applyBtn.addEventListener('click', applyUpdates);
 
   // ── Auto-check on page load ──────────────────────────────────────
   checkUpdates();
+  loadWebhookStatus();
 
 })();
 </script>

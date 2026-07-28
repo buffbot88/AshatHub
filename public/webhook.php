@@ -25,12 +25,12 @@
 
 declare(strict_types=1);
 
-// ─── Lightweight bootstrap (no session, no DB, no ConfigBag) ─────
-// The full bootstrap at config/bootstrap.php starts a session, loads
-// database config, instantiates ConfigBag, and registers a themed
-// error handler — none of which the webhook needs.  This lightweight
-// version is ~25% the size and skips all of that overhead.
-require __DIR__ . '/../config/webhook-bootstrap.php';
+// ─── Lightweight bootstrap (LITE_MODE — no session, no DB, no ConfigBag)
+// ASHAT_LITE_BOOT tells bootstrap.php to skip Session, ConfigBag,
+// and the themed error handler — saving ~75% overhead. The webhook
+// only needs the autoloader + constants to run GitUpdater.
+define('ASHAT_LITE_BOOT', true);
+require __DIR__ . '/../config/bootstrap.php';
 
 // ─── Only accept POST ─────────────────────────────────────────────
 if (($_SERVER['REQUEST_METHOD'] ?? 'GET') !== 'POST') {

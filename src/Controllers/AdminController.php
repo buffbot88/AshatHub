@@ -254,7 +254,7 @@ final class AdminController
         file_put_contents($dir . '/maintenance.json', json_encode($config, JSON_PRETTY_PRINT));
 
         // Also update the runtime constant so the current request sees it
-        // (normally the constant is set once in config.php, but the next
+        // (normally the constant is set once in constants.php, but the next
         // request will read the file via bootstrap).
         if ($enabled) {
             $ctx->flash('success', 'Maintenance mode enabled. Non-admin users will see the maintenance page.');

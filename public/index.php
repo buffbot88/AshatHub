@@ -39,7 +39,7 @@ if (isset($_GET['__diag'])) {
     $files = [
         'public/index.php' => __FILE__,
         'config/bootstrap.php' => __DIR__ . '/../config/bootstrap.php',
-        'config/config.php' => __DIR__ . '/../config/config.php',
+        'config/constants.php' => __DIR__ . '/../config/constants.php',
         'src/Core/Router.php' => __DIR__ . '/../src/Core/Router.php',
         'src/Core/RequestContext.php' => __DIR__ . '/../src/Core/RequestContext.php',
         'src/Core/StaticFileServer.php' => __DIR__ . '/../src/Core/StaticFileServer.php',

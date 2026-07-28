@@ -1,8 +1,16 @@
 <?php
 /**
  * ═══════════════════════════════════════════════════════════════════════
- * ASHAT Hub — Config
- * Constants and the App facade.
+ * ASHAT Hub — Constants
+ *
+ * Defines all application-level constants (APP_*, DB_*, SESSION_*,
+ * MAINTENANCE_*, APP_VERSION). Reads values from getenv(), which is
+ * populated by config/bootstrap.php from server_config.json, .env,
+ * or hardcoded defaults.
+ *
+ * NOTE: This file is always loaded, even in LITE_BOOT mode (webhook).
+ * DB_* and SESSION_* constants are harmless to define when unused —
+ * they just won't be referenced during webhook processing.
  * ═══════════════════════════════════════════════════════════════════════
  */
 
@@ -30,8 +38,6 @@ if (APP_ENV === 'production' && strlen(base64_decode($appKey) ?: '') < 32) {
     throw new RuntimeException('APP_KEY must be set to a 32+ byte base64 value in production.');
 }
 define('APP_KEY', $appKey);
-
-
 
 define('MAINTENANCE_MODE', filter_var(getenv('MAINTENANCE_MODE') ?: 'false', FILTER_VALIDATE_BOOLEAN));
 define('MAINTENANCE_MESSAGE', (string) (getenv('MAINTENANCE_MESSAGE') ?: 'Our little AI is busy upgrading the hub with brand-new magic!'));

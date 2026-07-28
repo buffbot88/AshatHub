@@ -2,8 +2,6 @@
 
 A browser-based AI coding platform, rewritten from the original React SPA into **vanilla PHP + PDO + MySQL** with a clean "Midnight Protocol" redesign.
 
-> The previous React/Vite SPA at this path is preserved in [`AshatOS_Old/`](AshatOS_Old/) for reference and rollback.
-
 ---
 
 ## Stack

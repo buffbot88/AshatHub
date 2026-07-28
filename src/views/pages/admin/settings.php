@@ -191,30 +191,39 @@
         </a>
       </div>
       <p class="text-sm text-chalk-mute mb-4">
-        Pull the latest code from your GitHub repository. The server must have
-        <code class="text-chalk text-xs">git</code> installed and this project must be a cloned repo.
+        Pull only the files changed in recent commits &mdash; no shell access or git required.
+        Protected files (<code class="text-xs">.env</code>, <code class="text-xs">config/conn.php</code>, <code class="text-xs">storage/</code>) are never overwritten.
       </p>
 
-      <!-- Git status line -->
-      <div id="git-status-line" class="flex items-center gap-3 mb-5 text-xs font-mono">
-        <span class="inline-block w-3 h-3 rounded-full bg-ink-line animate-pulse" id="git-status-dot"></span>
-        <span id="git-status-text" class="text-chalk-mute">Checking git status...</span>
+      <!-- Status line -->
+      <div id="github-status-line" class="flex items-center gap-3 mb-5 text-xs font-mono">
+        <span class="inline-block w-3 h-3 rounded-full bg-ink-line animate-pulse" id="github-status-dot"></span>
+        <span id="github-status-text" class="text-chalk-mute">Ready</span>
+      </div>
+
+      <!-- Available updates summary -->
+      <div id="github-updates-summary" class="hidden mb-4">
+        <div id="github-commit-list" class="space-y-2 mb-3"></div>
+        <div id="github-file-list" class="text-xs font-mono max-h-32 overflow-y-auto space-y-1" style="color: var(--gold-muted);"></div>
       </div>
 
       <!-- Action area -->
       <div class="flex flex-wrap items-center gap-3">
-        <button id="github-pull-btn"
-                class="px-4 py-2 bg-accent text-ink-deep rounded-md font-medium hover:bg-accent-soft transition disabled:opacity-30 disabled:cursor-not-allowed inline-flex items-center gap-2">
-          <span id="github-pull-icon">
+        <button id="github-check-btn"
+                class="px-4 py-2 border border-accent/50 text-accent rounded-md font-medium hover:bg-accent/10 transition disabled:opacity-30 disabled:cursor-not-allowed inline-flex items-center gap-2">
+          <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/>
+          </svg>
+          <span id="github-check-text">Check for Updates</span>
+        </button>
+        <button id="github-apply-btn"
+                class="px-4 py-2 bg-accent text-ink-deep rounded-md font-medium hover:bg-accent-soft transition disabled:opacity-30 disabled:cursor-not-allowed inline-flex items-center gap-2" disabled>
+          <span id="github-apply-icon">
             <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"/>
             </svg>
           </span>
-          <span id="github-pull-text">Pull from GitHub</span>
-        </button>
-        <button id="github-refresh-btn"
-                class="px-3 py-2 border border-ink-line rounded-md text-sm hover:border-accent transition text-chalk-mute hover:text-chalk">
-          Refresh status
+          <span id="github-apply-text">Apply Updates</span>
         </button>
       </div>
 
@@ -279,152 +288,207 @@
 (function () {
   'use strict';
 
-  const csrf = document.querySelector('meta[name="csrf-token"]')?.content || '';
-  const pullBtn = document.getElementById('github-pull-btn');
-  const refreshBtn = document.getElementById('github-refresh-btn');
-  const statusDot = document.getElementById('git-status-dot');
-  const statusText = document.getElementById('git-status-text');
-  const outputContainer = document.getElementById('github-output');
-  const outputText = document.getElementById('github-output-text');
-  const pullIcon = document.getElementById('github-pull-icon');
-  const pullLabel = document.getElementById('github-pull-text');
+  const csrf = document.querySelector('meta[name="csrf-token"]')?.getAttribute('content') ||
+               document.querySelector('input[name="_csrf"]')?.value || '';
+
+  // ── DOM refs ─────────────────────────────────────────────────────
+  const checkBtn    = document.getElementById('github-check-btn');
+  const applyBtn    = document.getElementById('github-apply-btn');
+  const statusDot   = document.getElementById('github-status-dot');
+  const statusText  = document.getElementById('github-status-text');
+  const checkLabel  = document.getElementById('github-check-text');
+  const applyLabel  = document.getElementById('github-apply-text');
+  const applyIcon   = document.getElementById('github-apply-icon');
+  const summary     = document.getElementById('github-updates-summary');
+  const commitList  = document.getElementById('github-commit-list');
+  const fileList    = document.getElementById('github-file-list');
+  const outCont     = document.getElementById('github-output');
+  const outText     = document.getElementById('github-output-text');
 
   // ── State ────────────────────────────────────────────────────────
-  let updating = false;
+  let busy = false;
+  let pendingApply = false;
 
   // ── Helpers ───────────────────────────────────────────────────────
-  function setDot(colorClass, pulse) {
-    statusDot.className = 'inline-block w-3 h-3 rounded-full ' + colorClass + (pulse ? ' animate-pulse' : '');
+  function setDot(color, pulse) {
+    statusDot.className = 'inline-block w-3 h-3 rounded-full ' + color + (pulse ? ' animate-pulse' : '');
   }
 
-  function showOutput(msg, isError) {
-    outputText.textContent = msg;
-    outputText.className = 'text-xs font-mono bg-ink-deep rounded-lg p-4 border overflow-x-auto max-h-64 overflow-y-auto whitespace-pre-wrap';
-    if (isError) {
-      outputText.classList.add('border-err/30', 'text-err');
-    } else {
-      outputText.classList.add('border-ink-line', 'text-chalk');
-    }
-    outputContainer.classList.remove('hidden');
+  function showOutput(msg, isErr) {
+    outText.textContent = msg;
+    outText.className = 'text-xs font-mono bg-ink-deep rounded-lg p-4 border overflow-x-auto max-h-64 overflow-y-auto whitespace-pre-wrap';
+    outText.classList.add(isErr ? 'border-err/30 text-err' : 'border-ink-line text-chalk');
+    outCont.classList.remove('hidden');
   }
 
   function hideOutput() {
-    outputContainer.classList.add('hidden');
+    outCont.classList.add('hidden');
   }
 
-  function setButtonsEnabled(enabled) {
-    pullBtn.disabled = !enabled;
-    refreshBtn.disabled = !enabled;
+  function setButtons(on) {
+    checkBtn.disabled = !on || busy;
+    applyBtn.disabled = !on || busy || !pendingApply;
   }
 
-  // ── Fetch git status ─────────────────────────────────────────────
-  async function fetchStatus() {
+  // ── Check for updates (GET, no exec needed) ─────────────────────
+  async function checkUpdates() {
+    if (busy) return;
     hideOutput();
+    summary.classList.add('hidden');
+
     setDot('bg-ink-line', true);
-    statusText.textContent = 'Checking git status...';
+    statusText.textContent = 'Checking for updates...';
+    checkLabel.textContent = 'Checking…';
+    setButtons(false);
 
     try {
-      const r = await fetch('/admin/settings/git-status/', {
-        headers: {
-          'X-Requested-With': 'XMLHttpRequest',
-          'X-CSRF-Token': csrf,
-          'Accept': 'application/json',
-        },
+      const r = await fetch('/admin/settings/github-check/', {
+        headers: { 'Accept': 'application/json' },
         credentials: 'same-origin',
       });
       const data = await r.json();
 
       if (!data.ok) {
         setDot('bg-err', false);
-        statusText.textContent = data.summary || 'Git not available';
-        if (data.error) {
-          showOutput(data.error + (data.output ? '\n\n' + data.output : ''), true);
-        }
-        setButtonsEnabled(false);
+        statusText.textContent = data.summary || 'Check failed.';
+        if (data.error) showOutput(data.error, true);
+        pendingApply = false;
+        setButtons(true);
+        checkLabel.textContent = 'Check for Updates';
         return;
       }
 
-      setDot('bg-ok', false);
-      const dirtyLabel = data.dirty ? ' (has uncommitted changes)' : '';
-      statusText.textContent = data.branch + ' @ ' + data.commit + dirtyLabel;
-      setButtonsEnabled(true);
+      if (data.behind === 0) {
+        setDot('bg-ok', false);
+        statusText.textContent = 'Up to date \u2705';
+        pendingApply = false;
+        setButtons(true);
+        checkLabel.textContent = 'Check for Updates';
+        return;
+      }
+
+      // ── New commits available ───────────────────────────────────
+      setDot('bg-accent', false);
+      statusText.textContent = data.summary || data.behind + ' new commit(s) available';
+
+      // Render commit list
+      commitList.innerHTML = '';
+      if (data.commits && data.commits.length) {
+        data.commits.forEach(function (c) {
+          var el = document.createElement('div');
+          el.className = 'flex items-start gap-2 py-1.5 border-b border-ink-line/40 text-xs';
+          el.innerHTML = '<span class="text-accent shrink-0 mt-0.5">\u2713</span>' +
+            '<div><div class="text-chalk leading-tight">' + esc(c.message) + '</div>' +
+            '<div class="text-chalk-mute mt-0.5">' + esc(c.sha.slice(0, 7)) +
+            ' \u00b7 ' + esc(c.author) + '</div></div>';
+          commitList.appendChild(el);
+        });
+      }
+
+      // Render file list
+      fileList.innerHTML = '';
+      if (data.files && data.files.length) {
+        data.files.forEach(function (f) {
+          var el = document.createElement('div');
+          el.className = 'flex items-center gap-2';
+          var statusSym = f.status === 'added' ? '\u2795' :
+                          f.status === 'removed' ? '\u2796' :
+                          f.status === 'renamed' ? '\u2194' : '\u270F\uFE0F';
+          el.innerHTML = '<span>' + statusSym + '</span> ' +
+            '<span class="text-chalk-dim truncate" title="' + esc(f.path) + '">' + esc(f.path) + '</span>' +
+            (f.additions > 0 ? ' <span class="text-ok shrink-0">+' + f.additions + '</span>' : '') +
+            (f.deletions > 0 ? ' <span class="text-err shrink-0">\u2212' + f.deletions + '</span>' : '');
+          fileList.appendChild(el);
+        });
+      }
+
+      summary.classList.remove('hidden');
+      pendingApply = true;
+      setButtons(true);
+      checkLabel.textContent = 'Check for Updates';
 
     } catch (err) {
       setDot('bg-err', false);
-      statusText.textContent = 'Failed to check git status.';
+      statusText.textContent = 'Network error.';
       showOutput('Network error: ' + (err.message || 'Unknown'), true);
-      setButtonsEnabled(false);
+      pendingApply = false;
+      setButtons(true);
+      checkLabel.textContent = 'Check for Updates';
     }
   }
 
-  // ── Run git pull ─────────────────────────────────────────────────
-  async function runPull() {
-    if (updating) return;
-    updating = true;
+  // ── Apply updates (POST, downloads + extracts changed files) ────
+  async function applyUpdates() {
+    if (busy || !pendingApply) return;
+    busy = true;
     hideOutput();
 
     setDot('bg-accent', true);
-    statusText.textContent = 'Pulling from GitHub...';
-    pullLabel.textContent = 'Pulling...';
-    setButtonsEnabled(false);
+    statusText.textContent = 'Downloading updates...';
+    applyLabel.textContent = 'Applying…';
+    setButtons(false);
 
-    // Rotate the download icon
-    pullIcon.innerHTML = '<svg class="w-4 h-4 animate-spin" fill="none" stroke="currentColor" viewBox="0 0 24 24">' +
+    applyIcon.innerHTML = '<svg class="w-4 h-4 animate-spin" fill="none" stroke="currentColor" viewBox="0 0 24 24">' +
       '<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/>' +
       '</svg>';
 
     try {
-      const r = await fetch('/admin/settings/git-pull/', {
+      const body = new URLSearchParams();
+      body.set('_csrf', csrf);
+
+      const r = await fetch('/admin/settings/github-apply/', {
         method: 'POST',
         headers: {
-          'X-Requested-With': 'XMLHttpRequest',
-          'X-CSRF-Token': csrf,
           'Accept': 'application/json',
-          'Content-Type': 'application/x-www-form-urlencoded',
         },
-        body: '_csrf=' + encodeURIComponent(csrf),
+        body: body,
         credentials: 'same-origin',
       });
       const data = await r.json();
 
       if (data.ok) {
         setDot('bg-ok', false);
-        statusText.textContent = data.summary || 'Updated successfully.';
-        if (data.output) {
-          showOutput(data.output);
-        }
-        // Re-fetch full status after a moment
-        setTimeout(fetchStatus, 2000);
+        statusText.textContent = data.summary || 'Update complete.';
+        if (data.output) showOutput(data.output);
+        pendingApply = false;
+        applyLabel.textContent = 'Apply Updates';
       } else {
         setDot('bg-err', false);
         statusText.textContent = data.summary || 'Update failed.';
-        const errorParts = [];
-        if (data.error) errorParts.push('⚠ ' + data.error);
-        if (data.output) errorParts.push('── Output ──\n' + data.output);
-        showOutput(errorParts.join('\n\n'), true);
-        setButtonsEnabled(true);
+        var errMsg = [];
+        if (data.error) errMsg.push('\u26A0 ' + data.error);
+        if (data.output) errMsg.push('\u2500\u2500 Output \u2500\u2500\n' + data.output);
+        showOutput(errMsg.join('\n\n'), true);
+        applyLabel.textContent = 'Retry Apply';
       }
     } catch (err) {
       setDot('bg-err', false);
       statusText.textContent = 'Network error during update.';
       showOutput('Network error: ' + (err.message || 'Unknown'), true);
-      setButtonsEnabled(true);
+      applyLabel.textContent = 'Retry Apply';
     }
 
-    // Restore button state
-    pullIcon.innerHTML = '<svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">' +
+    applyIcon.innerHTML = '<svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">' +
       '<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"/>' +
       '</svg>';
-    pullLabel.textContent = 'Pull from GitHub';
-    updating = false;
+    busy = false;
+    setButtons(true);
   }
 
-  // ── Wire up buttons ───────────────────────────────────────────────
-  pullBtn.addEventListener('click', runPull);
-  refreshBtn.addEventListener('click', fetchStatus);
+  // ── Mini escape for text content ─────────────────────────────────
+  function esc(s) {
+    if (typeof s !== 'string') return '';
+    var d = document.createElement('div');
+    d.textContent = s;
+    return d.innerHTML;
+  }
 
-  // ── Load status on page load ─────────────────────────────────────
-  fetchStatus();
+  // ── Wire up ───────────────────────────────────────────────────────
+  checkBtn.addEventListener('click', checkUpdates);
+  applyBtn.addEventListener('click', applyUpdates);
+
+  // ── Auto-check on page load ──────────────────────────────────────
+  checkUpdates();
 
 })();
 </script>

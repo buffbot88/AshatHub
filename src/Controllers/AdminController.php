@@ -148,53 +148,23 @@ final class AdminController
     }
 
     /**
-     * Update project from GitHub via git pull (POST).
-     * Runs the full fetch + pull sequence and returns JSON with output.
+     * Check for available updates via GitHub API (no exec/git needed).
      */
-    public function updateFromGitHub(RequestContext $ctx): void
+    public function checkGitHubUpdates(RequestContext $ctx): void
     {
         $updater = new GitUpdater();
-
-        // First check status (no fetch, just current state)
-        $status = $updater->status();
-        if (!$status['ok']) {
-            $ctx->jsonResponse([
-                'ok'      => false,
-                'output'  => $status['output'] ?? '',
-                'summary' => $status['summary'] ?? 'Git check failed.',
-                'error'   => $status['error'] ?? '',
-            ]);
-        }
-
-        // Run the pull
-        $result = $updater->pull();
+        $result  = $updater->check();
         $ctx->jsonResponse($result);
     }
 
     /**
-     * Get current git status without pulling (GET).
+     * Apply incremental updates from GitHub via API download (no exec/git needed).
      */
-    public function gitStatus(RequestContext $ctx): void
+    public function applyGitHubUpdates(RequestContext $ctx): void
     {
         $updater = new GitUpdater();
-        $status  = $updater->status();
-
-        if (!$status['ok']) {
-            $ctx->jsonResponse([
-                'ok'      => false,
-                'output'  => $status['output'] ?? '',
-                'summary' => $status['summary'] ?? 'Git check failed.',
-                'error'   => $status['error'] ?? '',
-            ]);
-        }
-
-        $ctx->jsonResponse([
-            'ok'      => true,
-            'branch'  => $status['branch'] ?? '',
-            'commit'  => $status['commit'] ?? '',
-            'dirty'   => $status['dirty'] ?? false,
-            'summary' => $status['summary'] ?? '',
-        ]);
+        $result  = $updater->incremental();
+        $ctx->jsonResponse($result);
     }
 
     /**

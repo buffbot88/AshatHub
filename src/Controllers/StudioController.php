@@ -28,14 +28,14 @@ final class StudioController
 
     public function dashboard(RequestContext $ctx): void
     {
-        $ctx->requireRole('Member', 'Pro', 'Admin');
+        $ctx->requireRole('Pro', 'Admin');
 
         $user = $ctx->user();
         // Note: 'has_api_cfg' was removed — the BYO API key now lives in
         // browser localStorage only. The dashboard's "API configured"
         // indicator is hydrated client-side from localStorage["ashat.api"].
         $ctx->view('pages/studio', [
-            'title'          => 'Studio · ' . APP_NAME,
+            'title'          => 'IDE · ' . APP_NAME,
             'mode'           => 'dashboard',
             '__hide_navbar'  => true,
             'specs'          => self::safeRepo(fn() => RepositoryRegistry::spec()->allForUser($user['id'])),
@@ -46,7 +46,7 @@ final class StudioController
 
     public function planner(RequestContext $ctx): void
     {
-        $ctx->requireRole('Member', 'Pro', 'Admin');
+        $ctx->requireRole('Pro', 'Admin');
         $user = $ctx->user();
 
         $ctx->view('pages/studio', [
@@ -60,7 +60,7 @@ final class StudioController
 
     public function autonomy(RequestContext $ctx): void
     {
-        $ctx->requireRole('Member', 'Pro', 'Admin');
+        $ctx->requireRole('Pro', 'Admin');
         $user = $ctx->user();
 
         $ctx->view('pages/studio', [
@@ -75,7 +75,7 @@ final class StudioController
 
     public function files(RequestContext $ctx): void
     {
-        $ctx->requireRole('Member', 'Pro', 'Admin');
+        $ctx->requireRole('Pro', 'Admin');
         $user = $ctx->user();
         $ctx->view('pages/studio', [
             'title'          => 'File Manager · ' . APP_NAME,
@@ -87,7 +87,7 @@ final class StudioController
 
     public function specChat(RequestContext $ctx): void
     {
-        $ctx->requireRole('Member', 'Pro', 'Admin');
+        $ctx->requireRole('Pro', 'Admin');
 
         $ctx->view('pages/studio', [
             'title'          => 'Spec Chat · ' . APP_NAME,

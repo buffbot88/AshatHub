@@ -17,7 +17,7 @@
         <div style="color: var(--gold-text); font-weight: 600; margin-bottom: 12px;">Product</div>
         <ul style="color: var(--gold-muted); line-height: 2.2;">
           <li><a href="/" class="hover:text-accent">Home</a></li>
-          <li><a href="/ide/" class="hover:text-accent">Studio</a></li>
+          <li><a href="/ide/" class="hover:text-accent">IDE</a></li>
           <li><a href="/docs/" class="hover:text-accent">Docs</a></li>
           <li><a href="/community/" class="hover:text-accent">Community</a></li>
         </ul>
@@ -27,7 +27,7 @@
         <ul style="color: var(--gold-muted); line-height: 2.2;">
           <?php if ($view->__user): ?>
             <li><a href="/account/" class="hover:text-accent">Profile</a></li>
-            <li><a href="/ide/" class="hover:text-accent">Open Studio</a></li>
+            <li><a href="/ide/" class="hover:text-accent">Open IDE</a></li>
             <li>
               <form method="post" action="/logout/" class="inline">
                 <?= csrf_field() ?>

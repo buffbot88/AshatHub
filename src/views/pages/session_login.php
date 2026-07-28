@@ -63,7 +63,7 @@
     <!-- Login card -->
     <div class="p-6 rounded-xl bg-ink-panel border border-ink-line">
       <h1 class="text-xl font-display font-semibold text-center mb-1">Sign in to connect</h1>
-      <p class="text-xs text-chalk-mute text-center mb-5">Authenticate to link ASHAT Studio with this Hub.</p>
+      <p class="text-xs text-chalk-mute text-center mb-5">Authenticate to link ASHAT IDE with this Hub.</p>
 
       <form method="post" action="/auth/session/" class="space-y-4">
         <?php if ($view->callback ?? ''): ?>

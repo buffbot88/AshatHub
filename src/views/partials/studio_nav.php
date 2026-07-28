@@ -1,6 +1,6 @@
 <?php
 /**
- * Shared Studio navigation bar — used by all Studio mode pages.
+ * Shared IDE navigation bar — used by all IDE mode pages.
  * Expects $view (Core\ViewContext) with mode, __user.
  */
 $mode = $view->mode ?? 'dashboard';
@@ -13,7 +13,7 @@ $user = $view->__user ?? [];
         <img srcset="<?= e(asset('/images/lion-logo-32.png')) ?> 1x, <?= e(asset('/images/lion-logo-48.png')) ?> 2x"
              src="<?= e(asset('/images/lion-logo-32.png')) ?>"
              alt="ASHAT" width="24" height="24">
-        <span style="font-family: var(--font-heading); font-weight: 600; letter-spacing: 0.05em;" class="group-hover:text-accent transition">ASHAT <span style="color: var(--gold);">Studio</span></span>
+        <span style="font-family: var(--font-heading); font-weight: 600; letter-spacing: 0.05em;" class="group-hover:text-accent transition">ASHAT <span style="color: var(--gold);">IDE</span></span>
       </a>
       <span class="text-xs font-mono" style="color: var(--gold-muted);"><?= e(APP_VERSION_DISPLAY) ?></span>
       <span class="chip-gold" style="font-size: 10px; padding: 2px 8px;">
@@ -42,7 +42,7 @@ $user = $view->__user ?? [];
         <?= e($user['username']) ?>
         <?= role_badge($user['role']) ?>
       </span>
-      <button id="btn-tour" class="btn-outline" style="font-size: 11px; padding: 4px 10px;" title="Restart Studio tour">🎓 Tour</button>
+      <button id="btn-tour" class="btn-outline" style="font-size: 11px; padding: 4px 10px;" title="Restart IDE tour">🎓 Tour</button>
       <button id="btn-build" class="btn-gold" style="font-size: 12px; padding: 6px 14px;">⊞ Build</button>
     </div>
   </div>

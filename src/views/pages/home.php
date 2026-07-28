@@ -28,7 +28,7 @@
     <div class="mt-9 flex justify-center gap-3 flex-wrap">
       <a href="/ide/" class="btn-gold inline-flex items-center gap-2 px-5 py-3">
         <span aria-hidden>🚀</span>
-        Launch ASHAT Studio
+        Launch ASHAT IDE
       </a>
       <a href="https://discord.gg/gJ8mreeAT4" target="_blank" rel="noopener" class="btn-outline inline-flex items-center gap-2 px-5 py-3">
         <span aria-hidden>💬</span>
@@ -67,7 +67,7 @@
   <p class="text-center" style="color: var(--gold-muted); max-width: 640px; margin: 0 auto 48px;">ASHAT combines a powerful AI coding engine with a browser-based workspace — giving you everything you need to go from idea to working code.</p>
   <div class="grid md:grid-cols-2 lg:grid-cols-3 gap-5">
     <?php foreach ([
-      ['🖥️', 'ASHAT Studio IDE', 'Your command center. Monaco editor, file tree, spec browser, build viewer, and a built-in console — all in the browser.', ['Monaco Editor','File Tree','Built-in Console']],
+      ['🖥️', 'ASHAT IDE', 'Your command center. Monaco editor, file tree, spec browser, build viewer, and a built-in console — all in the browser.', ['Monaco Editor','File Tree','Built-in Console']],
       ['🎮', 'Game Server Ready', 'First-class support for game servers, Godot 4 GDScript, Python game frameworks, and multiplayer backends.', ['Godot','GDScript','Game Backends']],
       ['📋', 'Spec-Driven Development', 'Describe what you want in markdown. ASHAT reads it, generates a structured build plan, builds code, validates, and reports.', ['Markdown','Auto-Planning','Validation']],
       ['🧠', 'BrainStem Architecture', 'Our unified inference engine running on the Neural Host — handling classification, routing, chat, and code generation.', ['BrainStem','Neural Host','LFM2.5']],
@@ -129,7 +129,7 @@
       ['🔨','SpecBuild Engine','Spec → Plan → Approve → Run → Validate → Repair → Report pipeline.'],
       ['🛠️','S.U.E. — Self-Update Engine','Integrated toolchain for debugging, validation, and repair.'],
       ['🤖','Coding Agent','Autonomous build agent that plans, generates, validates, and repairs code.'],
-      ['🖥️','ASHAT Studio IDE','Browser-based workspace — Monaco editor, file tree, spec browser, build viewer.'],
+      ['🖥️','ASHAT IDE','Browser-based workspace — Monaco editor, file tree, spec browser, build viewer.'],
       ['📦','Module Manager','Auto-discovery, lifecycle hooks, and health checks for plug-and-play modules.'],
       ['🔐','Safety & Policy','14 safety gates, consent enforcement, risk scoring, moderation, and failsafe guards.'],
     ] as $item): ?>
@@ -207,9 +207,9 @@
 <section class="border-t border-ink-line bg-gradient-to-b from-ink-soft to-transparent">
   <div class="container mx-auto px-6 py-20 text-center max-w-2xl">
     <h2 class="text-3xl md:text-4xl font-display font-semibold mb-3">Ready to build with <span class="text-accent">ASHAT</span>?</h2>
-    <p class="text-base text-chalk-muted max-w-md mx-auto mb-8 leading-relaxed">Open the Studio, write a spec, and let ASHAT build it for you. Join our Discord for help, support, and community discussions.</p>
+    <p class="text-base text-chalk-muted max-w-md mx-auto mb-8 leading-relaxed">Open the IDE, write a spec, and let ASHAT build it for you. Join our Discord for help, support, and community discussions.</p>
     <div class="flex justify-center gap-3 flex-wrap">
-      <a href="/ide/" class="inline-flex items-center gap-2 px-5 py-3 bg-accent text-ink-deep rounded-lg font-medium hover:bg-accent-soft transition"><span aria-hidden>🚀</span> Launch ASHAT Studio</a>
+      <a href="/ide/" class="inline-flex items-center gap-2 px-5 py-3 bg-accent text-ink-deep rounded-lg font-medium hover:bg-accent-soft transition"><span aria-hidden>🚀</span> Launch ASHAT IDE</a>
       <a href="https://discord.gg/gJ8mreeAT4" target="_blank" rel="noopener" class="inline-flex items-center gap-2 px-5 py-3 border border-ink-line rounded-lg text-chalk hover:border-accent transition"><span aria-hidden>💬</span> Join our Community</a>
     </div>
   </div>

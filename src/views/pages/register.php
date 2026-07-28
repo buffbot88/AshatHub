@@ -4,7 +4,7 @@
     <h1 class="section-title mb-3" style="font-size: clamp(28px, 4vw, 36px);">Create your account</h1>
     <p style="color: var(--gold-muted);">Free to start. Upgrade later for Pro features.</p>
     <ul class="mt-8 space-y-3 text-sm" style="color: var(--gold-muted);">
-      <li class="flex gap-3"><span style="color: var(--gold);">✓</span> Open the Studio and write specs.</li>
+      <li class="flex gap-3"><span style="color: var(--gold);">✓</span> Open the IDE and write specs.</li>
       <li class="flex gap-3"><span style="color: var(--gold);">✓</span> Save files, runs, and builds to your account.</li>
       <li class="flex gap-3"><span style="color: var(--gold);">✓</span> Join the community and ship projects.</li>
       <li class="flex gap-3" style="color: var(--gold-dim);"><span>+</span> Pro: wire your own AI provider.</li>

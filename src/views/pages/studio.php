@@ -1,9 +1,9 @@
 <?php /** @var Core\ViewContext $view */
   /**
    * ═══════════════════════════════════════════════════════════════════════
-   * ASHAT Studio — modular shell.
+   * ASHAT IDE — modular shell.
    *
-   * The Studio was split from a single ~1300-line monolith into
+   * The IDE was split from a single ~1300-line monolith into
    * independent mode partials under pages/studio/:
    *
    *   studio/dashboard.php  — stats tiles, quick-spec form, recent builds
@@ -34,8 +34,8 @@
   }
 ?>
 
-<!-- ── Studio Tour overlay ───────────────────────────────────────── -->
-<div id="tour-overlay" class="tour-overlay" role="dialog" aria-label="Studio tour" style="display:none;">
+<!-- ── IDE Tour overlay ───────────────────────────────────────── -->
+<div id="tour-overlay" class="tour-overlay" role="dialog" aria-label="IDE tour" style="display:none;">
   <div id="tour-highlight" class="tour-highlight"></div>
   <div id="tour-card" class="tour-card">
     <div class="tour-card-header">

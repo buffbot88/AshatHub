@@ -26,7 +26,7 @@
       <h2 style="font-family: var(--font-heading); font-weight: 600; font-size: 20px; color: var(--gold);">Stack</h2>
       <pre class="glass-card-solid rounded-lg px-4 py-3 text-sm font-mono overflow-x-auto" style="color: var(--gold-text);"><?= e($p['stack'] ?: '—') ?></pre>
       <h2 style="font-family: var(--font-heading); font-weight: 600; font-size: 20px; color: var(--gold);">Get started</h2>
-      <p style="color: var(--gold-text);">Visit the live demo to spin up this project. From there, you can fork it in the Studio and adapt it to your own use case.</p>
+      <p style="color: var(--gold-text);">Visit the live demo to spin up this project. From there, you can fork it in the IDE and adapt it to your own use case.</p>
     </article>
   </div>
 
@@ -61,7 +61,7 @@
     <div class="glass-card-solid p-5">
       <div class="label-gold mb-3">Links</div>
       <div class="space-y-2 text-sm">
-        <a href="/ide/" style="color: var(--gold); display: block;" onmouseover="this.style.color='var(--gold-light)'" onmouseout="this.style.color='var(--gold)'">Open in Studio →</a>
+        <a href="/ide/" style="color: var(--gold); display: block;" onmouseover="this.style.color='var(--gold-light)'" onmouseout="this.style.color='var(--gold)'">Open in IDE →</a>
         <a href="/community/" style="color: var(--gold-text); display: block;" onmouseover="this.style.color='var(--gold)'" onmouseout="this.style.color='var(--gold-text)'">More in Community →</a>
       </div>
     </div>

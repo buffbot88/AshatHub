@@ -7,9 +7,10 @@
 .env.local
 .env.*.local
 
-# Free-host fallback config — ships as .example only, the real file
-# carries live DB credentials and must NEVER be committed to git.
+# Free-host fallback config files — ship as .example only, the real files
+# carry live credentials and must NEVER be committed to git.
 config/conn.php
+config/server_config.json
 
 # Logs
 storage/logs/*.log

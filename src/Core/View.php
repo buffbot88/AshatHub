@@ -38,7 +38,17 @@ final class View
     {
         $vars['__view']  = $viewName;
         $vars['__title'] = $vars['title'] ?? ($vars['__title'] ?? APP_NAME);
-        $vars['__flash'] = $vars['__flash'] ?? self::resolveFlash();
+        if ($layout === 'raw') {
+            // Raw layout: page handles its own flash from $_SESSION
+            $vars['__flash'] = null;
+        } elseif (array_key_exists('__flash', $vars)) {
+            // Controller passed flash explicitly — keep it, no type info
+            $vars['__flash_type'] ??= 'flash';
+        } else {
+            $resolvedFlash = self::resolveFlash();
+            $vars['__flash']      = $resolvedFlash['message'] ?? null;
+            $vars['__flash_type'] = $resolvedFlash['type'] ?? null;
+        }
         $vars['__user']  = $vars['__user'] ?? self::resolveUser();
 
         $view = new ViewContext($vars);
@@ -85,14 +95,22 @@ final class View
     }
 
     /**
-     * Read the 'flash' message from $_SESSION (one-shot, cleared on read).
+     * Read the flash message from $_SESSION (one-shot, cleared on read).
+     * Checks known keys in priority order: error, success, info, flash.
+     *
+     * @return array{message: string, type: string}|null
      */
-    private static function resolveFlash(): ?string
+    private static function resolveFlash(): ?array
     {
-        if (!isset($_SESSION['_flash']['flash'])) return null;
-        $msg = $_SESSION['_flash']['flash'];
-        unset($_SESSION['_flash']['flash']);
-        return $msg;
+        $priorities = ['error', 'success', 'info', 'flash'];
+        foreach ($priorities as $key) {
+            if (isset($_SESSION['_flash'][$key])) {
+                $msg = $_SESSION['_flash'][$key];
+                unset($_SESSION['_flash'][$key]);
+                return ['message' => $msg, 'type' => $key];
+            }
+        }
+        return null;
     }
 
     /**

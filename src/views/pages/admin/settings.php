@@ -180,6 +180,44 @@
       </dl>
     </div>
 
+    <!-- ─── Update from GitHub ──────────────────────────────────── -->
+    <div class="p-6 rounded-xl bg-ink-panel border border-ink-line" id="github-update-card">
+      <h2 class="text-lg font-display font-semibold mb-1">Update from GitHub</h2>
+      <p class="text-sm text-chalk-mute mb-4">
+        Pull the latest code from your GitHub repository. The server must have
+        <code class="text-chalk text-xs">git</code> installed and this project must be a cloned repo.
+      </p>
+
+      <!-- Git status line -->
+      <div id="git-status-line" class="flex items-center gap-3 mb-5 text-xs font-mono">
+        <span class="inline-block w-3 h-3 rounded-full bg-ink-line animate-pulse" id="git-status-dot"></span>
+        <span id="git-status-text" class="text-chalk-mute">Checking git status...</span>
+      </div>
+
+      <!-- Action area -->
+      <div class="flex flex-wrap items-center gap-3">
+        <button id="github-pull-btn"
+                class="px-4 py-2 bg-accent text-ink-deep rounded-md font-medium hover:bg-accent-soft transition disabled:opacity-30 disabled:cursor-not-allowed inline-flex items-center gap-2">
+          <span id="github-pull-icon">
+            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"/>
+            </svg>
+          </span>
+          <span id="github-pull-text">Pull from GitHub</span>
+        </button>
+        <button id="github-refresh-btn"
+                class="px-3 py-2 border border-ink-line rounded-md text-sm hover:border-accent transition text-chalk-mute hover:text-chalk">
+          Refresh status
+        </button>
+      </div>
+
+      <!-- Output display -->
+      <div id="github-output" class="mt-4 hidden">
+        <pre id="github-output-text"
+             class="text-xs font-mono bg-ink-deep rounded-lg p-4 border border-ink-line overflow-x-auto max-h-64 overflow-y-auto whitespace-pre-wrap"></pre>
+      </div>
+    </div>
+
     <!-- ─── Maintenance Mode ─────────────────────────────────────── -->
     <div class="p-6 rounded-xl bg-ink-panel border border-ink-line">
       <h2 class="text-lg font-display font-semibold mb-1">Maintenance Mode</h2>
@@ -229,3 +267,157 @@
     </div>
   </div>
 </section>
+
+<script>
+(function () {
+  'use strict';
+
+  const csrf = document.querySelector('meta[name="csrf-token"]')?.content || '';
+  const pullBtn = document.getElementById('github-pull-btn');
+  const refreshBtn = document.getElementById('github-refresh-btn');
+  const statusDot = document.getElementById('git-status-dot');
+  const statusText = document.getElementById('git-status-text');
+  const outputContainer = document.getElementById('github-output');
+  const outputText = document.getElementById('github-output-text');
+  const pullIcon = document.getElementById('github-pull-icon');
+  const pullLabel = document.getElementById('github-pull-text');
+
+  // ── State ────────────────────────────────────────────────────────
+  let updating = false;
+
+  // ── Helpers ───────────────────────────────────────────────────────
+  function setDot(colorClass, pulse) {
+    statusDot.className = 'inline-block w-3 h-3 rounded-full ' + colorClass + (pulse ? ' animate-pulse' : '');
+  }
+
+  function showOutput(msg, isError) {
+    outputText.textContent = msg;
+    outputText.className = 'text-xs font-mono bg-ink-deep rounded-lg p-4 border overflow-x-auto max-h-64 overflow-y-auto whitespace-pre-wrap';
+    if (isError) {
+      outputText.classList.add('border-err/30', 'text-err');
+    } else {
+      outputText.classList.add('border-ink-line', 'text-chalk');
+    }
+    outputContainer.classList.remove('hidden');
+  }
+
+  function hideOutput() {
+    outputContainer.classList.add('hidden');
+  }
+
+  function setButtonsEnabled(enabled) {
+    pullBtn.disabled = !enabled;
+    refreshBtn.disabled = !enabled;
+  }
+
+  // ── Fetch git status ─────────────────────────────────────────────
+  async function fetchStatus() {
+    hideOutput();
+    setDot('bg-ink-line', true);
+    statusText.textContent = 'Checking git status...';
+
+    try {
+      const r = await fetch('/admin/settings/git-status/', {
+        headers: {
+          'X-Requested-With': 'XMLHttpRequest',
+          'X-CSRF-Token': csrf,
+          'Accept': 'application/json',
+        },
+        credentials: 'same-origin',
+      });
+      const data = await r.json();
+
+      if (!data.ok) {
+        setDot('bg-err', false);
+        statusText.textContent = data.summary || 'Git not available';
+        if (data.error) {
+          showOutput(data.error + (data.output ? '\n\n' + data.output : ''), true);
+        }
+        setButtonsEnabled(false);
+        return;
+      }
+
+      setDot('bg-ok', false);
+      const dirtyLabel = data.dirty ? ' (has uncommitted changes)' : '';
+      statusText.textContent = data.branch + ' @ ' + data.commit + dirtyLabel;
+      setButtonsEnabled(true);
+
+    } catch (err) {
+      setDot('bg-err', false);
+      statusText.textContent = 'Failed to check git status.';
+      showOutput('Network error: ' + (err.message || 'Unknown'), true);
+      setButtonsEnabled(false);
+    }
+  }
+
+  // ── Run git pull ─────────────────────────────────────────────────
+  async function runPull() {
+    if (updating) return;
+    updating = true;
+    hideOutput();
+
+    setDot('bg-accent', true);
+    statusText.textContent = 'Pulling from GitHub...';
+    pullLabel.textContent = 'Pulling...';
+    setButtonsEnabled(false);
+
+    // Rotate the download icon
+    pullIcon.innerHTML = '<svg class="w-4 h-4 animate-spin" fill="none" stroke="currentColor" viewBox="0 0 24 24">' +
+      '<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/>' +
+      '</svg>';
+
+    try {
+      const r = await fetch('/admin/settings/git-pull/', {
+        method: 'POST',
+        headers: {
+          'X-Requested-With': 'XMLHttpRequest',
+          'X-CSRF-Token': csrf,
+          'Accept': 'application/json',
+          'Content-Type': 'application/x-www-form-urlencoded',
+        },
+        body: '_csrf=' + encodeURIComponent(csrf),
+        credentials: 'same-origin',
+      });
+      const data = await r.json();
+
+      if (data.ok) {
+        setDot('bg-ok', false);
+        statusText.textContent = data.summary || 'Updated successfully.';
+        if (data.output) {
+          showOutput(data.output);
+        }
+        // Re-fetch full status after a moment
+        setTimeout(fetchStatus, 2000);
+      } else {
+        setDot('bg-err', false);
+        statusText.textContent = data.summary || 'Update failed.';
+        const errorParts = [];
+        if (data.error) errorParts.push('⚠ ' + data.error);
+        if (data.output) errorParts.push('── Output ──\n' + data.output);
+        showOutput(errorParts.join('\n\n'), true);
+        setButtonsEnabled(true);
+      }
+    } catch (err) {
+      setDot('bg-err', false);
+      statusText.textContent = 'Network error during update.';
+      showOutput('Network error: ' + (err.message || 'Unknown'), true);
+      setButtonsEnabled(true);
+    }
+
+    // Restore button state
+    pullIcon.innerHTML = '<svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">' +
+      '<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"/>' +
+      '</svg>';
+    pullLabel.textContent = 'Pull from GitHub';
+    updating = false;
+  }
+
+  // ── Wire up buttons ───────────────────────────────────────────────
+  pullBtn.addEventListener('click', runPull);
+  refreshBtn.addEventListener('click', fetchStatus);
+
+  // ── Load status on page load ─────────────────────────────────────
+  fetchStatus();
+
+})();
+</script>

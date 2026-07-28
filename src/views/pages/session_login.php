@@ -58,17 +58,7 @@
     </div>
 
     <!-- Flash messages -->
-    <?php
-      $flashError   = $_SESSION['_flash']['error']   ?? null;
-      $flashSuccess = $_SESSION['_flash']['success'] ?? null;
-      unset($_SESSION['_flash']['error'], $_SESSION['_flash']['success']);
-    ?>
-    <?php if ($flashError): ?>
-      <div class="mb-4 p-3 rounded border border-err/30 bg-err/5 text-err text-sm text-center"><?= e($flashError) ?></div>
-    <?php endif; ?>
-    <?php if ($flashSuccess): ?>
-      <div class="mb-4 p-3 rounded border border-ok/30 bg-ok/5 text-ok text-sm text-center"><?= e($flashSuccess) ?></div>
-    <?php endif; ?>
+    <?php partial_flash(null, ['error', 'success'], true); ?>
 
     <!-- Login card -->
     <div class="p-6 rounded-xl bg-ink-panel border border-ink-line">

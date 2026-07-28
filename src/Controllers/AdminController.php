@@ -3,6 +3,7 @@ declare(strict_types=1);
 namespace Controllers;
 
 use Core\ConfigBag;
+use Core\GitUpdater;
 use Core\RequestContext;
 use Repositories\RepositoryRegistry;
 
@@ -140,6 +141,56 @@ final class AdminController
         RepositoryRegistry::brainstemConfig()->upsert('', '', $ctx->user()['username']);
         $ctx->flash('success', 'BrainStem config reset to environment defaults.');
         $ctx->redirect('/admin/settings/');
+    }
+
+    /**
+     * Update project from GitHub via git pull (POST).
+     * Runs the full fetch + pull sequence and returns JSON with output.
+     */
+    public function updateFromGitHub(RequestContext $ctx): void
+    {
+        $updater = new GitUpdater();
+
+        // First check status (no fetch, just current state)
+        $status = $updater->status();
+        if (!$status['ok']) {
+            $ctx->jsonResponse([
+                'ok'      => false,
+                'output'  => $status['output'] ?? '',
+                'summary' => $status['summary'] ?? 'Git check failed.',
+                'error'   => $status['error'] ?? '',
+            ]);
+        }
+
+        // Run the pull
+        $result = $updater->pull();
+        $ctx->jsonResponse($result);
+    }
+
+    /**
+     * Get current git status without pulling (GET).
+     */
+    public function gitStatus(RequestContext $ctx): void
+    {
+        $updater = new GitUpdater();
+        $status  = $updater->status();
+
+        if (!$status['ok']) {
+            $ctx->jsonResponse([
+                'ok'      => false,
+                'output'  => $status['output'] ?? '',
+                'summary' => $status['summary'] ?? 'Git check failed.',
+                'error'   => $status['error'] ?? '',
+            ]);
+        }
+
+        $ctx->jsonResponse([
+            'ok'      => true,
+            'branch'  => $status['branch'] ?? '',
+            'commit'  => $status['commit'] ?? '',
+            'dirty'   => $status['dirty'] ?? false,
+            'summary' => $status['summary'] ?? '',
+        ]);
     }
 
     /**

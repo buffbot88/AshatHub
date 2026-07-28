@@ -79,12 +79,6 @@
 ?>
 
 <!-- Flash messages -->
-<?php if (!empty($view->__flash)): ?>
-  <div class="container mx-auto px-6 pt-4">
-    <div class="rounded border border-accent/30 bg-accent/5 text-accent px-4 py-2 text-sm">
-      <?= e($view->__flash) ?>
-    </div>
-  </div>
-<?php endif; ?>
+<?php partial_flash($view ?? null); ?>
 
 <main class="flex-1" style="position: relative;">

@@ -14,15 +14,18 @@
   <form method="post" action="/register/" class="glass-card p-6 space-y-4" style="border-image: none; border: 1px solid var(--gold-line);">
     <label class="block">
       <span class="label-gold">Username</span>
-      <input name="username" required minlength="3" maxlength="30" pattern="[a-zA-Z0-9_]+" class="field mt-1">
+      <input name="username" required minlength="3" maxlength="30" pattern="[a-zA-Z0-9_]+"
+             value="<?= e($view->old['username'] ?? '') ?>" class="field mt-1">
     </label>
     <label class="block">
       <span class="label-gold">Email</span>
-      <input name="email" type="email" required class="field mt-1">
+      <input name="email" type="email" required
+             value="<?= e($view->old['email'] ?? '') ?>" class="field mt-1">
     </label>
     <label class="block">
       <span class="label-gold">Display name (optional)</span>
-      <input name="display_name" maxlength="100" class="field mt-1">
+      <input name="display_name" maxlength="100"
+             value="<?= e($view->old['display_name'] ?? '') ?>" class="field mt-1">
     </label>
     <label class="block">
       <span class="label-gold">Password (min 8 chars)</span>
@@ -30,7 +33,7 @@
     </label>
     <label class="flex items-start gap-2 text-xs" style="color: var(--gold-muted); margin-top: 8px;">
       <input type="checkbox" required class="mt-0.5">
-      <span>I agree to the <a href="#" style="color: var(--gold);">terms</a> and understand my API key (if I add one) is stored encrypted.</span>
+      <span>I agree to the <a href="/terms/" style="color: var(--gold);">terms</a> and understand my API key (if I add one) is stored encrypted.</span>
     </label>
     <?= csrf_field() ?>
     <button class="btn-gold w-full">Create account</button>

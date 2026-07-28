@@ -48,7 +48,17 @@ final class AuthController
 
     public function registerForm(RequestContext $ctx): void
     {
-        $ctx->view('pages/register', ['title' => 'Create your account · ' . APP_NAME]);
+        // Read and clear persisted old input from a failed registration attempt
+        $old = [];
+        if (isset($_SESSION['_old_input'])) {
+            $old = $_SESSION['_old_input'];
+            unset($_SESSION['_old_input']);
+        }
+
+        $ctx->view('pages/register', [
+            'title' => 'Create your account · ' . APP_NAME,
+            'old'   => $old,
+        ]);
     }
 
     public function register(RequestContext $ctx): void
@@ -65,6 +75,13 @@ final class AuthController
             $ctx->flash('success', 'Welcome to ' . APP_NAME . '!');
             $ctx->redirect('/account/');
         } catch (\InvalidArgumentException $e) {
+            // Persist submitted values so the form can pre-fill them on redirect
+            $_SESSION['_old_input'] = [
+                'username'     => $req->string('username'),
+                'email'        => $req->string('email'),
+                'display_name' => $req->string('display_name'),
+                // Password intentionally NOT persisted — never echo back a password
+            ];
             $ctx->flash('error', $e->getMessage());
             $ctx->redirect('/register/');
         }

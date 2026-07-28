@@ -19,4 +19,8 @@ $router->group('/admin', ['middleware' => ['admin-gate']], function () use ($rou
 
     // Maintenance mode toggle
     $router->post('/settings/maintenance', [\Controllers\AdminController::class, 'toggleMaintenance']);
+
+    // GitHub update
+    $router->get('/settings/git-status',  [\Controllers\AdminController::class, 'gitStatus']);
+    $router->post('/settings/git-pull',   [\Controllers\AdminController::class, 'updateFromGitHub']);
 });

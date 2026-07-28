@@ -47,6 +47,11 @@
   var SUMMARY_AFTER    = 40;          // Summarize after this many messages
   var MAX_TOKENS_EST   = 12000;       // Rough max token estimate before summarization
 
+  // ── Session ──────────────────────────────────────────────────────
+  var SESSION_DURATION = 3600000;     // 1 hour in ms — session auto-expiry
+  var SESSION_KEY      = 'ashat.spec_session';
+  var PAST_CONV_PREFIX = '[Prior Conversations — Previous Sessions]';
+
   // ── System prompt ────────────────────────────────────────────────
   var SYSTEM_PROMPT = {
     role: 'system',
@@ -316,6 +321,155 @@
   function getByoConfig() {
     return window.ASHAT && window.ASHAT.agent && window.ASHAT.agent.getByoConfig
       ? window.ASHAT.agent.getByoConfig() : null;
+  }
+
+  // ══════════════════════════════════════════════════════════════════
+  //  SESSION MANAGEMENT
+  // ══════════════════════════════════════════════════════════════════
+
+  /**
+   * Get the current session info from sessionStorage.
+   * Returns { id, started_at } or null if no session exists.
+   */
+  function getSession() {
+    try {
+      var raw = sessionStorage.getItem(SESSION_KEY);
+      if (raw) return JSON.parse(raw);
+    } catch (_) {}
+    return null;
+  }
+
+  /**
+   * Save a new session with current timestamp.
+   */
+  function startNewSession() {
+    var session = {
+      id: uuid(),
+      started_at: Date.now(),
+    };
+    try {
+      sessionStorage.setItem(SESSION_KEY, JSON.stringify(session));
+    } catch (_) {}
+    return session;
+  }
+
+  /**
+   * Check if the current session is still valid (within 1 hour).
+   * If expired or missing, start a new session.
+   * Returns the (new or existing) session.
+   */
+  function ensureSession() {
+    var session = getSession();
+    if (session && (Date.now() - session.started_at) < SESSION_DURATION) {
+      return session;
+    }
+    return startNewSession();
+  }
+
+  /**
+   * Check whether a conversation belongs to an expired (past) session.
+   * Any conversation not updated in the last hour is considered "past".
+   */
+  function isPastSession(conv) {
+    if (!conv || !conv.updated_at) return false;
+    var age = Date.now() - new Date(conv.updated_at).getTime();
+    return age >= SESSION_DURATION;
+  }
+
+  // ══════════════════════════════════════════════════════════════════
+  //  PRIOR CONVERSATION HISTORY INJECTION
+  // ══════════════════════════════════════════════════════════════════
+
+  /**
+   * Build a system message summarizing ALL previous conversations
+   * (from past sessions) so the AI can reference what was discussed
+   * before. Only conversations NOT in the current session are included.
+   */
+  function buildPriorConversationsSummary() {
+    var now = Date.now();
+    var cutoff = now - SESSION_DURATION;
+
+    // Find conversations older than 1 hour
+    var pastConvs = [];
+    for (var i = 0; i < conversations.length; i++) {
+      var c = conversations[i];
+      if (c.id === activeId) continue; // Skip active conversation
+      var updated = new Date(c.updated_at || c.created_at).getTime();
+      if (updated < cutoff) {
+        pastConvs.push(c);
+      }
+    }
+
+    if (pastConvs.length === 0) return null;
+
+    var lines = [
+      PAST_CONV_PREFIX,
+      'The user has previously discussed the following projects in past sessions.',
+      'Use this as context to avoid repeating questions and to build on prior discussions.',
+      '',
+    ];
+
+    // Show up to 5 past conversations (newest first)
+    pastConvs.sort(function (a, b) {
+      return new Date(b.updated_at || b.created_at) - new Date(a.updated_at || a.created_at);
+    });
+    var shown = pastConvs.slice(0, 5);
+
+    for (var j = 0; j < shown.length; j++) {
+      var conv = shown[j];
+      var title = conv.title || 'Untitled';
+      lines.push('### ' + (j + 1) + '. ' + title);
+
+      // Extract key user asks from this conversation (up to 3)
+      var userAsks = [];
+      if (Array.isArray(conv.messages)) {
+        for (var k = 0; k < conv.messages.length; k++) {
+          var m = conv.messages[k];
+          if (m.role === 'user' && m.content) {
+            userAsks.push(m.content.slice(0, 200));
+            if (userAsks.length >= 3) break;
+          }
+        }
+      }
+      if (userAsks.length > 0) {
+        for (var u = 0; u < userAsks.length; u++) {
+          lines.push('  - User: ' + userAsks[u]);
+        }
+      }
+
+      // If there's a spec, note it
+      var specContent = null;
+      if (Array.isArray(conv.messages)) {
+        for (var s = 0; s < conv.messages.length; s++) {
+          var msg = conv.messages[s];
+          if (msg.role === 'assistant' && msg.content) {
+            var extracted = extractSpec(msg.content);
+            if (extracted) { specContent = extracted; break; }
+          }
+        }
+      }
+      if (specContent) {
+        var specTitle = 'Generated spec';
+        var titleMatch = specContent.match(/^#\s+Project:\s+(.+)$/m);
+        if (titleMatch) specTitle = titleMatch[1].trim();
+        lines.push('  ✅ **Spec generated:** ' + specTitle);
+      }
+
+      lines.push('');
+    }
+
+    if (pastConvs.length > 5) {
+      lines.push('... and ' + (pastConvs.length - 5) + ' more past conversations.');
+      lines.push('');
+    }
+
+    lines.push('[End of Prior Conversations]');
+    lines.push('Build on what was already discussed. Avoid asking for information the user already provided in past conversations.');
+
+    return {
+      role: 'system',
+      content: lines.join('\n'),
+    };
   }
 
   // ══════════════════════════════════════════════════════════════════
@@ -754,8 +908,7 @@
     var sysIdx = -1;
     for (var i = 0; i < msgs.length; i++) {
       if (msgs[i].role === 'system' && !msgs[i].content.startsWith('[Project Context')) {
-        // Skip any existing project context messages
-        if (!msgs[i].content.startsWith('[Earlier conversation summary')) {
+        if (!msgs[i].content.startsWith('[Earlier conversation summary') && !msgs[i].content.startsWith(PAST_CONV_PREFIX)) {
           sysIdx = i; break;
         }
       }
@@ -765,7 +918,14 @@
       msgs.splice(sysIdx, 1);
     }
 
-    // 2. Inject project context (if available) between system prompt and conversation
+    // 2. Inject prior conversations summary (past sessions)
+    //    This tells the AI about what was discussed in previous sessions
+    var priorSummary = buildPriorConversationsSummary();
+    if (priorSummary) {
+      result.push(priorSummary);
+    }
+
+    // 4. Inject project context (if available) after system prompt and prior history
     var ctxMsg = null;
     if (projectContext) {
       ctxMsg = buildContextSystemMessage(projectContext);
@@ -782,7 +942,7 @@
     msgs = msgs.filter(function (m) {
       if (m.role !== 'system') return true;
       // Keep only genuine system messages (not auto-injected ones)
-      return !m.content.startsWith('[Project Context') && !m.content.startsWith('[Earlier conversation summary');
+      return !m.content.startsWith('[Project Context') && !m.content.startsWith('[Earlier conversation summary') && !m.content.startsWith(PAST_CONV_PREFIX);
     });
 
     // If few messages, return all
@@ -1372,10 +1532,15 @@
           if (eventType === 'error') {
             try {
               var errObj = JSON.parse(eventData);
-              bubble.thinkingContent.textContent = '⚠ Error: ' + (errObj.message || 'Unknown error');
-              return '⚠️ **Error:** ' + (errObj.message || 'Unknown error');
+              var errMsg = errObj.message || 'Unknown error';
+              var diag = '';
+              if (errMsg.indexOf('no_backend') !== -1 || errMsg.indexOf('No AI backend') !== -1) {
+                diag = '\n\n📋 **How to fix:** Configure BrainStem in Account → BrainStem Settings, or add your own API key in Account → API Settings.';
+              }
+              bubble.thinkingContent.textContent = '⚠ Error: ' + errMsg;
+              return '⚠️ **Error:** ' + errMsg + diag;
             } catch (_) {
-              bubble.thinkingContent.textContent = '⚠ Error from AI backend.';
+              bubble.thinkingContent.textContent = '⚠ Error from AI backend. Check Account → BrainStem Settings.';
               return '⚠️ **Error from AI backend.**';
             }
           }
@@ -1485,7 +1650,7 @@
       if (bubble.streamingCursor && bubble.streamingCursor.parentNode) {
         bubble.streamingCursor.parentNode.removeChild(bubble.streamingCursor);
       }
-      bubble.thinkingContent.textContent = '⚠ Request failed — check your connection and API configuration.';
+      bubble.thinkingContent.textContent = '⚠ Could not reach the AI backend.\n\nMake sure:\n1. BrainStem is configured in Account → BrainStem Settings, OR\n2. You have a valid API key in Account → API Settings\n\nThen try sending your message again.';
 
       // Mark as failed in header
       bubble.thinkingLabel.textContent = 'Request failed';
@@ -1566,10 +1731,18 @@
       // Check for spec markers in the response
       var spec = extractSpec(content);
       if (spec) setSpec(spec);
-    } else if (content === null) {
+    } else    if (content === null) {
       // Both methods failed entirely — tryNonStream already created the bubble
-      conv.messages.push({ role: 'assistant', content: 'Sorry, I had trouble reaching the AI backend. Please check your API configuration in Account settings.' });
+      var accountLink = window.ASHAT && window.ASHAT.accountUrl
+        ? '[' + window.ASHAT.accountUrl + '?tab=brainstem](Account settings → BrainStem)'
+        : 'Account settings';
+      conv.messages.push({ role: 'assistant', content: 'I couldn\'t reach the AI backend. To use Spec Chat:\n\n1. **Configure BrainStem** in ' + accountLink + ' (server-side)\n2. **Or add a BYO API key** in Account → API Settings (e.g. OpenAI, Groq, etc.)\n\nOnce configured, send your message again.' });
       touchConversation();
+      // Show a status message in the chat header too
+      if (headerInfo) {
+        headerInfo.innerHTML = headerInfo.innerHTML +
+          '<div style="color:var(--gold-err);font-size:10px;margin-top:4px;">⚠ AI backend not configured — check Account settings</div>';
+      }
     }
 
     updateTokenCount();
@@ -1619,7 +1792,8 @@
       var isActive = c.id === activeId;
 
       var item = document.createElement('div');
-      item.className = 'chat-conversation-item' + (isActive ? ' active' : '');
+      var expired = isPastSession(c);
+      item.className = 'chat-conversation-item' + (isActive ? ' active' : '') + (expired ? ' expired-session' : '');
       item.dataset.convId = c.id;
 
       var timeStr = '';
@@ -1640,10 +1814,12 @@
         }
       }
 
+      var sessionLabel = expired ? '<span class="conv-session-badge">past session</span>' : '';
+
       item.innerHTML =
         '<button class="conv-delete" title="Delete conversation" data-conv-id="' + c.id + '">×</button>' +
         '<span class="conv-title">' + esc(c.title) + '</span>' +
-        '<span class="conv-meta">' + timeStr + ' · ' + msgCount + ' msgs</span>';
+        '<span class="conv-meta">' + timeStr + ' · ' + msgCount + ' msgs' + sessionLabel + '</span>';
 
       item.addEventListener('click', function (e) {
         if (e.target.classList.contains('conv-delete')) return;
@@ -1844,18 +2020,40 @@
   function init() {
     loadConversations();
 
+    // Ensure a valid session exists (1-hour expiry)
+    var session = ensureSession();
+
+    // If active conversation is from an expired session, start fresh
+    var activeConv = getActiveConversation();
+    if (activeConv && isPastSession(activeConv)) {
+      // Keep the old conversation in the list but don't auto-activate it
+      // — user can still click to revisit past chats
+      activeId = null;
+    }
+
     if (activeId && getActiveConversation()) {
       renderMessages();
     } else if (conversations.length > 0) {
-      activeId = conversations[0].id;
-      saveConversations();
-      renderMessages();
+      // Pick the most recent conversation that's still within the session
+      var recent = null;
+      for (var i = 0; i < conversations.length; i++) {
+        if (!isPastSession(conversations[i])) {
+          recent = conversations[i]; break;
+        }
+      }
+      if (recent) {
+        activeId = recent.id;
+        saveConversations();
+        renderMessages();
+      } else {
+        createConversation();
+      }
     } else {
       createConversation();
     }
 
     renderSidebar();
-    messagesEl.scrollTop = messagesEl.scrollHeight;
+    if (messagesEl) messagesEl.scrollTop = messagesEl.scrollHeight;
 
     // Fetch project context for awareness
     fetchProjectContext();

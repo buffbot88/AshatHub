@@ -394,7 +394,11 @@
   function showOutput(msg, isErr) {
     outText.textContent = msg;
     outText.className = 'text-xs font-mono bg-ink-deep rounded-lg p-4 border overflow-x-auto max-h-64 overflow-y-auto whitespace-pre-wrap';
-    outText.classList.add(isErr ? 'border-err/30 text-err' : 'border-ink-line text-chalk');
+    if (isErr) {
+      outText.classList.add('border-err/30', 'text-err');
+    } else {
+      outText.classList.add('border-ink-line', 'text-chalk');
+    }
     outCont.classList.remove('hidden');
   }
 

@@ -123,4 +123,9 @@
 
 <?php if ($mode === 'spec-chat'): ?>
   <script src="<?= e(asset('/js/studio/chat.js')) ?>" defer></script>
+  <!-- Expose account URL for backend-configuration links in error messages -->
+  <script>
+    window.ASHAT = window.ASHAT || {};
+    window.ASHAT.accountUrl = '<?= e(asset('/account/')) ?>';
+  </script>
 <?php endif; ?>

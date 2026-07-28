@@ -25,11 +25,12 @@
 
 declare(strict_types=1);
 
-// ─── Bootstrap ────────────────────────────────────────────────────
-define('ASHAT_ROOT', dirname(__DIR__));
-define('ASHAT_PUBLIC', ASHAT_ROOT . '/public');
-
-require ASHAT_ROOT . '/config/bootstrap.php';
+// ─── Lightweight bootstrap (no session, no DB, no ConfigBag) ─────
+// The full bootstrap at config/bootstrap.php starts a session, loads
+// database config, instantiates ConfigBag, and registers a themed
+// error handler — none of which the webhook needs.  This lightweight
+// version is ~25% the size and skips all of that overhead.
+require __DIR__ . '/../config/webhook-bootstrap.php';
 
 // ─── Only accept POST ─────────────────────────────────────────────
 if (($_SERVER['REQUEST_METHOD'] ?? 'GET') !== 'POST') {

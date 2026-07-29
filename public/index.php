@@ -118,28 +118,23 @@ if ($__uriPath !== '/' && str_contains($__uriPath, '..')) {
     return;
 }
 
-// ── Trailing-slash normalization ──────────────────────────────────
-// Apache returns 403 for directory-like paths when Options -Indexes
-// is set and no DirectoryIndex file exists. This hits URLs like
-// /chat/ or /docs/ that look like directories to Apache but are
-// valid routes in our app. Redirect /foo/ → /foo so the request
-// goes through the normal routing pipeline instead of triggering
-// ErrorDocument 403 with a bogus status code.
-//
-// The Router already normalizes trailing slashes internally
-// (trim($uri, '/')), but by that point http_response_code(403) has
-// already been set by the ErrorDocument handler in root index.php,
-// which confuses the browser. A proper redirect (301) prevents this.
-if ($__uriPath !== '/' && str_ends_with($__uriPath, '/')) {
-    $__qs = !empty($_SERVER['QUERY_STRING']) ? '?' . $_SERVER['QUERY_STRING'] : '';
-    header('Location: ' . rtrim($__uriPath, '/') . $__qs, true, 301);
-    exit;
-}
-
 if ($__uriPath !== '/' && (new \Core\StaticFileServer(__DIR__))->serve($__uriPath)) {
     return;
 }
 unset($__uriPath);
+
+// ── Status code reset ─────────────────────────────────────────────
+// On flat-deployment (ByetHost), the root index.php sets
+// http_response_code() from REDIRECT_STATUS for ALL ErrorDocument-
+// routed requests. This includes directory-like URLs (/chat/, /docs/)
+// that Apache blocked with Options -Indexes → 403, but which ARE
+// valid routes in our app. The Router normalizes trailing slashes
+// internally, but the stale status code (403) would persist and make
+// the browser reject the response — even though the page renders fine.
+//
+// Reset to 200 here; controllers and the ErrorController will set the
+// correct final status when they render.
+http_response_code(200);
 
 // Bootstrap (loads .env, config, autoload, session, DB)
 require __DIR__ . '/../config/bootstrap.php';

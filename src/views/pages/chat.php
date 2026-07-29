@@ -2,7 +2,7 @@
   *
   * Standalone Chat page — adapted from the old IDE Spec Chat.
   * Uses the main site layout (header.php + footer.php) via View::render().
-  * Same DOM structure and element IDs so chat.js works without changes.
+  * Same DOM structure and element IDs so assistant.js works without changes.
   */ ?>
 
 <section class="container mx-auto px-6 py-6" style="min-height: calc(100vh - 12rem);">
@@ -18,7 +18,7 @@
         <button id="btn-new-chat" class="btn-gold" style="font-size: 10px; padding: 5px 10px; letter-spacing: 0.5px;">+ New</button>
       </div>
       <div id="conversation-list" class="chat-sidebar-list">
-        <!-- Populated by chat.js -->
+        <!-- Populated by assistant.js -->
         <div style="color: var(--gold-dim); font-size: 11px; text-align: center; padding: 24px 0;">Loading...</div>
       </div>
     </div>
@@ -186,11 +186,11 @@
   </div>
 </section>
 
-<!-- Sequential script loading: app.js defines ashatFetch → agent.js defines getByoConfig → chat.js depends on both.
+<!-- Sequential script loading: app.js defines ashatFetch → agent.js defines getByoConfig → assistant.js depends on both.
      Regular (non-deferred) scripts execute in order, guaranteeing dependencies are ready. -->
 <script src="<?= e(asset('/js/app.js')) ?>"></script>
 <script src="<?= e(asset('/js/agent.js')) ?>"></script>
-<script src="<?= e(asset('/js/studio/chat.js')) ?>"></script>
+<script src="<?= e(asset('/js/assistant.js')) ?>"></script>
 <script>
   window.ASHAT = window.ASHAT || {};
   window.ASHAT.accountUrl = '<?= e(asset('/account/')) ?>';

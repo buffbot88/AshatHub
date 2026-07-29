@@ -9,7 +9,7 @@
   <div class="grid" style="grid-template-columns: 220px 1fr 280px; gap: 0; height: calc(100vh - 12rem); border-radius: var(--gold-radius-xl); overflow: hidden; border: 1px solid var(--gold-line);">
 
     <!-- ── Left: Conversation sidebar ──────────────────────────────── -->
-    <div class="chat-sidebar">
+    <div class="chat-sidebar" style="min-height: 0;">
       <div class="chat-sidebar-header flex items-center justify-between">
         <div>
           <div style="font-family: var(--font-heading); font-weight: 600; font-size: 12px; color: var(--gold);">Chats</div>
@@ -24,7 +24,7 @@
     </div>
 
     <!-- ── Center: Chat messages + input ────────────────────────────── -->
-    <div class="flex flex-col" style="border-right: 1px solid var(--gold-line); background: rgba(10, 10, 10, 0.2);">
+    <div class="flex flex-col" style="border-right: 1px solid var(--gold-line); background: rgba(10, 10, 10, 0.2); min-height: 0;">
       <!-- Header -->
       <div class="px-6 py-4 flex items-center justify-between" style="border-bottom: 1px solid var(--gold-line);">
         <div id="chat-header-info">
@@ -38,7 +38,7 @@
       </div>
 
       <!-- Messages area -->
-      <div id="chat-messages" class="flex-1 overflow-y-auto p-6 space-y-4">
+      <div id="chat-messages" class="flex-1 overflow-y-auto p-6 space-y-4" style="min-height: 0;">
         <!-- Empty state shown by JS when no conversation is active -->
         <div id="chat-empty-state" class="chat-empty-state">
           <div class="empty-icon">💬</div>

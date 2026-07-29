@@ -54,12 +54,14 @@ final class ChatController
 
         $raw = @file_get_contents($req['endpoint'], false, $streamCtx);
         if ($raw === false) {
-            $ctx->jsonResponse(['error' => 'backend_unreachable', 'message' => 'Could not reach the AI backend.'], 502);
+            $ctx->jsonResponse(['error' => 'backend_unreachable', 'message' => 'Could not reach the AI backend. Check the BrainStem URL in Account settings.'], 502);
         }
 
         $result = json_decode($raw, true);
         if (!is_array($result)) {
-            $ctx->jsonResponse(['error' => 'backend_invalid_response'], 502);
+            $snippet = mb_substr(trim((string) $raw), 0, 300);
+            $snippet = preg_replace('/[\x00-\x1F\x7F]/', '�', $snippet);
+            $ctx->jsonResponse(['error' => 'backend_invalid_response', 'message' => 'AI backend returned non-JSON. Response starts with: ' . $snippet], 502);
         }
 
         if (isset($result['ok']) && !$result['ok']) {
@@ -125,7 +127,10 @@ final class ChatController
 
             $result = json_decode($raw, true);
             if (!is_array($result)) {
-                SseStreamer::send('error', ['message' => 'AI backend returned an invalid response.']);
+                // Include a snippet of the raw response so the user can diagnose
+                $snippet = mb_substr(trim((string) $raw), 0, 300);
+                $snippet = preg_replace('/[\x00-\x1F\x7F]/', '�', $snippet);
+                SseStreamer::send('error', ['message' => 'AI backend returned an invalid response (not JSON). Response starts with: ' . $snippet]);
                 return;
             }
 

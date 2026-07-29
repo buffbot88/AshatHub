@@ -30,17 +30,21 @@ final class ChatBackend
     private array  $headers;
     private string $defaultModel;
     private bool   $available;
+    /** Whether the upstream backend supports SSE streaming. */
+    private bool   $streaming;
 
     private function __construct(
         string $endpoint,
         array  $headers,
         string $defaultModel,
-        bool   $available
+        bool   $available,
+        bool   $streaming = true
     ) {
         $this->endpoint     = $endpoint;
         $this->headers      = $headers;
         $this->defaultModel = $defaultModel;
         $this->available    = $available;
+        $this->streaming    = $streaming;
     }
 
     /**
@@ -50,6 +54,7 @@ final class ChatBackend
     public static function select(?array $brainstemActive, ?array $byoConfig): self
     {
         // Backend 1: BrainStem Neural Host (DB config > .env)
+        // The Neural Host uses X-Ashat-Key auth and does NOT support streaming.
         if ($brainstemActive && ($brainstemActive['api_key'] ?? '') !== '') {
             return new self(
                 $brainstemActive['url'] . '/v1/chat/completions',
@@ -58,7 +63,8 @@ final class ChatBackend
                     'X-Ashat-Key: ' . $brainstemActive['api_key'],
                 ],
                 'brainstem',
-                true
+                true,
+                false  // BrainStem Neural Host does not support streaming
             );
         }
 
@@ -71,18 +77,25 @@ final class ChatBackend
                     'Authorization: Bearer ' . $byoConfig['api_key'],
                 ],
                 $byoConfig['model'] ?? 'gpt-4o-mini',
-                true
+                true,
+                true  // BYO endpoints typically support streaming
             );
         }
 
         // No backend available
-        return new self('', [], '', false);
+        return new self('', [], '', false, false);
     }
 
     /** Whether a backend was resolved. */
     public function isAvailable(): bool
     {
         return $this->available;
+    }
+
+    /** Whether the upstream backend supports SSE streaming. */
+    public function supportsStreaming(): bool
+    {
+        return $this->streaming;
     }
 
     /**
@@ -104,7 +117,8 @@ final class ChatBackend
             'top_p'       => (float) ($opts['top_p'] ?? 0.9),
         ];
 
-        if ($stream) {
+        // Only set stream flag if the backend actually supports it
+        if ($stream && $this->streaming) {
             $payload['stream'] = true;
         }
 

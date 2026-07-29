@@ -103,6 +103,46 @@ final class ChatController
             return;
         }
 
+        // If the backend doesn't support SSE streaming (e.g. BrainStem Neural Host),
+        // do a non-streaming request and send the result as a single 'done' event.
+        if (!$backend->supportsStreaming()) {
+            $req = $backend->buildRequest($messages, $body, false);
+            $streamCtx = stream_context_create([
+                'http' => [
+                    'method'        => 'POST',
+                    'header'        => $req['headers'],
+                    'content'       => json_encode($req['payload']),
+                    'timeout'       => 120,
+                    'ignore_errors' => true,
+                ],
+            ]);
+
+            $raw = @file_get_contents($req['endpoint'], false, $streamCtx);
+            if ($raw === false) {
+                SseStreamer::send('error', ['message' => 'Could not reach the AI backend.']);
+                return;
+            }
+
+            $result = json_decode($raw, true);
+            if (!is_array($result)) {
+                SseStreamer::send('error', ['message' => 'AI backend returned an invalid response.']);
+                return;
+            }
+
+            // Check for upstream error responses (OpenAI-compatible error + ashat ok flag)
+            if ((isset($result['ok']) && !$result['ok']) || !empty($result['error'])) {
+                $msg = $result['error']['message'] ?? $result['message'] ?? 'AI backend returned an error.';
+                SseStreamer::send('error', ['message' => $msg]);
+                return;
+            }
+
+            $content = $result['choices'][0]['message']['content'] ?? '';
+            if ($content !== '') {
+                SseStreamer::send('done', ['full_content' => $content]);
+            }
+            return;
+        }
+
         $req = $backend->buildRequest($messages, $body, true);
         $fullContent = SseStreamer::proxy($req['endpoint'], $req['headers'], $req['payload']);
         if ($fullContent !== null) {

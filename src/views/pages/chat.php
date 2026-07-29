@@ -5,9 +5,6 @@
   * Same DOM structure and element IDs so chat.js works without changes.
   */ ?>
 
-<!-- Load agent.js (for getByoConfig) before the chat panel scripts -->
-<script src="<?= e(asset('/js/agent.js')) ?>" defer></script>
-
 <section class="container mx-auto px-6 py-6" style="min-height: calc(100vh - 12rem);">
   <div class="grid" style="grid-template-columns: 220px 1fr 280px; gap: 0; height: calc(100vh - 12rem); border-radius: var(--gold-radius-xl); overflow: hidden; border: 1px solid var(--gold-line);">
 
@@ -65,7 +62,7 @@
           </button>
         </form>
         <div class="flex items-center justify-between mt-2">
-          <span class="text-[10px] font-mono" style="color: var(--gold-dim);">AI Chat · Neural Host</span>
+          <span class="text-[10px] font-mono" style="color: var(--gold-dim);">AI Chat · OpenAI compatible</span>
           <span id="chat-token-count" class="text-[10px] font-mono" style="color: var(--gold-dim);"></span>
         </div>
       </div>
@@ -132,8 +129,8 @@
             <span>📋</span> Generated Spec
           </div>
           <div class="flex gap-1">
-            <button id="btn-copy-spec" class="btn-outline" style="font-size: 10px; padding: 3px 8px;" disabled>Copy</button>
-            <button id="btn-send-planner" class="btn-gold" style="font-size: 10px; padding: 3px 8px; letter-spacing: 0.5px;" disabled>→ Planner</button>
+            <button id="btn-copy-spec" class="btn-outline" style="font-size: 13px; padding: 2px 6px; line-height: 1;" disabled title="Copy spec">📄</button>
+            <button id="btn-send-planner" class="btn-gold" style="font-size: 13px; padding: 2px 6px; line-height: 1; letter-spacing: 0.5px;" disabled title="Send spec to Planner">➡️</button>
           </div>
         </div>
         <div id="spec-preview" class="flex-1 rounded-lg p-3 text-xs font-mono overflow-auto whitespace-pre-wrap"
@@ -189,8 +186,11 @@
   </div>
 </section>
 
-<!-- Load chat.js + expose account URL for backend-configuration links -->
-<script src="<?= e(asset('/js/studio/chat.js')) ?>" defer></script>
+<!-- Sequential script loading: app.js defines ashatFetch → agent.js defines getByoConfig → chat.js depends on both.
+     Regular (non-deferred) scripts execute in order, guaranteeing dependencies are ready. -->
+<script src="<?= e(asset('/js/app.js')) ?>"></script>
+<script src="<?= e(asset('/js/agent.js')) ?>"></script>
+<script src="<?= e(asset('/js/studio/chat.js')) ?>"></script>
 <script>
   window.ASHAT = window.ASHAT || {};
   window.ASHAT.accountUrl = '<?= e(asset('/account/')) ?>';

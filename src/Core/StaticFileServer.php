@@ -105,6 +105,14 @@ final class StaticFileServer
         }
 
         // ── Send response ─────────────────────────────────────────
+        // Explicit 200 — critical when this server is called from an
+        // ErrorDocument 404 handler (e.g., ByetHost flat-deployment).
+        // The root index.php sets http_response_code(404) for all
+        // ErrorDocument-routed requests. Without overriding it here,
+        // every CSS/JS/image request would respond with 404, causing
+        // browsers to refuse the content — even though the file was
+        // found and served correctly.
+        http_response_code(200);
         header('Content-Type: ' . $mime);
         header('X-Content-Type-Options: nosniff');
         header('Cache-Control: public, max-age=3600');

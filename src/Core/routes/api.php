@@ -16,14 +16,12 @@ $router->group('/api', function () use ($router) {
     $router->get('/me',           [\Controllers\ApiController::class,       'me']);
 
     // ─── Protected routes (authenticated users) ──────────────
-    // Chat endpoints are open to all authenticated roles (Member, Pro, Admin)
-    $router->group('/chat', ['middleware' => ['auth']], function () use ($router) {
-        $router->post('',         [\Controllers\ChatController::class,   'chat']);
-        $router->post('/stream',  [\Controllers\ChatController::class,   'chatStream']);
+    // Chat and context endpoints are open to all authenticated roles (Member, Pro, Admin)
+    $router->group('', ['middleware' => ['auth']], function () use ($router) {
+        $router->post('/chat',        [\Controllers\ChatController::class,   'chat']);
+        $router->post('/chat/stream', [\Controllers\ChatController::class,   'chatStream']);
+        $router->get('/context',      [\Controllers\ApiController::class,    'context']);
     });
-
-    // ─── Project context (for Chat awareness) ──────────────────
-    $router->get('/context',      [\Controllers\ApiController::class,    'context']);
 
     // ─── Protected routes (pro or admin required) ──────────────
     $router->group('', ['middleware' => ['pro-or-admin']], function () use ($router) {

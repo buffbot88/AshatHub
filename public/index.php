@@ -117,6 +117,25 @@ if ($__uriPath !== '/' && str_contains($__uriPath, '..')) {
     echo 'Forbidden';
     return;
 }
+
+// ── Trailing-slash normalization ──────────────────────────────────
+// Apache returns 403 for directory-like paths when Options -Indexes
+// is set and no DirectoryIndex file exists. This hits URLs like
+// /chat/ or /docs/ that look like directories to Apache but are
+// valid routes in our app. Redirect /foo/ → /foo so the request
+// goes through the normal routing pipeline instead of triggering
+// ErrorDocument 403 with a bogus status code.
+//
+// The Router already normalizes trailing slashes internally
+// (trim($uri, '/')), but by that point http_response_code(403) has
+// already been set by the ErrorDocument handler in root index.php,
+// which confuses the browser. A proper redirect (301) prevents this.
+if ($__uriPath !== '/' && str_ends_with($__uriPath, '/')) {
+    $__qs = !empty($_SERVER['QUERY_STRING']) ? '?' . $_SERVER['QUERY_STRING'] : '';
+    header('Location: ' . rtrim($__uriPath, '/') . $__qs, true, 301);
+    exit;
+}
+
 if ($__uriPath !== '/' && (new \Core\StaticFileServer(__DIR__))->serve($__uriPath)) {
     return;
 }

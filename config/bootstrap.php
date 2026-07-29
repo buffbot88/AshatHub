@@ -16,10 +16,29 @@
  * Debugging: append `?debug=1&t=TOKEN` to any URL (where TOKEN matches
  * `DEBUG_TOKEN` in config), or download `storage/logs/error.log` via FTP,
  * to see the actual cause of a 500.
+ *
+ * ═══════════════════════════════════════════════════════════════════════
+ * CONFIG SOURCE PRIORITY
+ *
+ * Every constant is resolved as:
+ *   1. $_ENV[$key]   — set by server_config.json loader (always works)
+ *   2. getenv($key)  — from putenv() (may fail if putenv is disabled)
+ *   3. ?: default    — hardcoded fallback (non-sensitive only)
+ *
+ * This three-tier fallback ensures DB credentials always come from
+ * server_config.json, even on shared hosts where putenv() is disabled.
  * ═══════════════════════════════════════════════════════════════════════
  */
 
 declare(strict_types=1);
+
+// ─── Helper: resolve a config value from all sources ──────────────
+// Always prefers $_ENV (set directly by the JSON/.env loaders),
+// then getenv() (from putenv or OS env), then a hardcoded default.
+// This makes the bootstrap resilient to disabled putenv() on shared hosts.
+$__env = static function (string $key, mixed $default = null): mixed {
+    return $_ENV[$key] ?? getenv($key) ?: $default;
+};
 
 // ─── Lite-mode flag (must be set by the requiring file before require) ─
 if (!defined('ASHAT_LITE_BOOT')) {
@@ -42,9 +61,11 @@ function ashat_load_json_config(string $path): bool {
             is_bool($v) => $v ? 'true' : 'false',
             default     => (string) $v,
         };
+        // Always set $_ENV (this is the canonical source).
+        // putenv() is best-effort — some shared hosts disable it.
         if (!array_key_exists($k, $_ENV)) $_ENV[$k] = $strVal;
         if (!array_key_exists($k, $_SERVER)) $_SERVER[$k] = $strVal;
-        putenv("$k=$strVal");
+        @putenv("$k=$strVal");
     }
     return true;
 }
@@ -60,7 +81,7 @@ function ashat_load_env(string $path): void {
         $v = trim($v, " \t\"'");
         if (!array_key_exists($k, $_ENV)) $_ENV[$k] = $v;
         if (!array_key_exists($k, $_SERVER)) $_SERVER[$k] = $v;
-        putenv("$k=$v");
+        @putenv("$k=$v");
     }
 }
 if (!$__jsonConfigLoaded) {
@@ -68,49 +89,42 @@ if (!$__jsonConfigLoaded) {
 }
 unset($__jsonConfigLoaded);
 
-// Defaults
+// Defaults — set $_ENV (not just putenv) so the define() calls below
+// always find the value even if putenv() is disabled.
 $defaults = [
     'APP_NAME' => 'ASHAT Hub',
     'APP_ENV' => 'development',
     'APP_DEBUG' => 'true',
     'APP_URL' => 'http://localhost:8000',
-    'DB_HOST' => '127.0.0.1',
-    'DB_PORT' => '3306',
-    'DB_NAME' => 'ashat_hub',
-    'DB_USER' => 'root',
-    'DB_PASS' => '',
     'SESSION_LIFETIME' => '7200',
     'SESSION_COOKIE_NAME' => 'ashat_sid',
     'SESSION_SECURE_COOKIE' => 'false',
-    'LOG_ERRORS' => 'true',
 ];
 foreach ($defaults as $k => $v) {
-    if (getenv($k) === false) putenv("$k=$v");
+    if (!isset($_ENV[$k]) && getenv($k) === false) {
+        $_ENV[$k] = $v;
+        @putenv("$k=$v");
+    }
 }
 
-// ─── 1c. config/conn.php backward-compat override ─────────────────────
-if (is_file(ASHAT_ROOT . '/config/conn.php')) {
-    require ASHAT_ROOT . '/config/conn.php';
-}
-
-// ─── 1d. Maintenance mode override (JSON flag from admin panel) ───────
+// ─── 1c. Maintenance mode override (JSON flag from admin panel) ───────
 $__maintFile = ASHAT_ROOT . '/storage/maintenance.json';
 if (is_file($__maintFile)) {
     $__maintData = json_decode(file_get_contents($__maintFile), true);
     if (is_array($__maintData) && !empty($__maintData['enabled'])) {
-        putenv('MAINTENANCE_MODE=true');
         $_ENV['MAINTENANCE_MODE'] = 'true';
+        @putenv('MAINTENANCE_MODE=true');
         if (!empty($__maintData['message'])) {
-            putenv('MAINTENANCE_MESSAGE=' . $__maintData['message']);
             $_ENV['MAINTENANCE_MESSAGE'] = $__maintData['message'];
+            @putenv('MAINTENANCE_MESSAGE=' . $__maintData['message']);
         }
     } else {
-        putenv('MAINTENANCE_MODE=false');
+        $_ENV['MAINTENANCE_MODE'] = 'false';
     }
 }
 unset($__maintFile, $__maintData);
 
-// ─── 1e. Debug override (?debug=1&t=TOKEN) ────────────────────────────
+// ─── 1d. Debug override (?debug=1&t=TOKEN) ────────────────────────────
 $__debugToken = (string) ($_ENV['DEBUG_TOKEN'] ?? getenv('DEBUG_TOKEN') ?: '');
 $__debugEnabled =
     isset($_GET['debug']) && $_GET['debug'] === '1'
@@ -118,14 +132,41 @@ $__debugEnabled =
     && hash_equals($__debugToken, (string) ($_GET['t'] ?? ''));
 
 if ($__debugEnabled) {
-    putenv('APP_DEBUG=true');
     $_ENV['APP_DEBUG'] = 'true';
-    putenv('APP_ENV=development');
+    @putenv('APP_DEBUG=true');
     $_ENV['APP_ENV'] = 'development';
+    @putenv('APP_ENV=development');
 }
 
 // ─── 2. Constants (APP_*, DB_*, SESSION_*, etc.) ─────────────────────
-require ASHAT_ROOT . '/config/constants.php';
+// Every define reads from $_ENV first (always populated by the loaders
+// above), then getenv(), then a non-sensitive hardcoded fallback.
+define('APP_NAME', $__env('APP_NAME', 'ASHAT Hub'));
+define('APP_ENV', $__env('APP_ENV', 'development'));
+define('APP_DEBUG', filter_var($__env('APP_DEBUG', 'true'), FILTER_VALIDATE_BOOLEAN));
+define('APP_URL', rtrim((string) $__env('APP_URL', 'http://localhost:8000'), '/'));
+define('APP_TIMEZONE', $__env('APP_TIMEZONE', 'UTC'));
+date_default_timezone_set(APP_TIMEZONE);
+
+define('DB_HOST', (string) $__env('DB_HOST'));
+define('DB_PORT', (int) ($__env('DB_PORT') ?: 0));
+define('DB_NAME', (string) $__env('DB_NAME'));
+define('DB_USER', (string) $__env('DB_USER'));
+define('DB_PASS', (string) $__env('DB_PASS'));
+
+define('SESSION_LIFETIME', (int) ($__env('SESSION_LIFETIME', 7200)));
+define('SESSION_COOKIE_NAME', $__env('SESSION_COOKIE_NAME', 'ashat_sid'));
+define('SESSION_SECURE_COOKIE', filter_var($__env('SESSION_SECURE_COOKIE', 'false'), FILTER_VALIDATE_BOOLEAN));
+
+define('APP_KEY', (string) $__env('APP_KEY', ''));
+// APP_KEY is reserved for future encryption/signing — not currently read.
+
+define('MAINTENANCE_MODE', filter_var($__env('MAINTENANCE_MODE', 'false'), FILTER_VALIDATE_BOOLEAN));
+define('MAINTENANCE_MESSAGE', (string) $__env('MAINTENANCE_MESSAGE', 'Our little AI is busy upgrading the hub with brand-new magic!'));
+
+define('APP_VERSION', '5');
+define('APP_VERSION_DISPLAY', 'v' . APP_VERSION);
+unset($__env);
 
 // ─── 3. Autoloader (PSR-4 style for our namespace map) ──────────────
 spl_autoload_register(function (string $class): void {
@@ -161,7 +202,7 @@ if (!function_exists('ashat_log_exception')) {
                 }
             }
             $line = sprintf(
-                "[%s] %s: %s\n  at %s:%d\n%s\n\n",
+                "[%s] %s: %s\n  at %s:%d\n%s\n",
                 date('c'),
                 get_class($e),
                 $e->getMessage(),
@@ -169,6 +210,21 @@ if (!function_exists('ashat_log_exception')) {
                 $e->getLine(),
                 $e->getTraceAsString()
             );
+            $prev = $e->getPrevious();
+            $depth = 0;
+            while ($prev !== null && $depth < 10) {
+                $line .= sprintf(
+                    "  Caused by: %s: %s\n  at %s:%d\n%s\n",
+                    get_class($prev),
+                    $prev->getMessage(),
+                    $prev->getFile(),
+                    $prev->getLine(),
+                    $prev->getTraceAsString()
+                );
+                $prev = $prev->getPrevious();
+                $depth++;
+            }
+            $line .= "\n";
             return @file_put_contents($dir . '/error.log', $line, FILE_APPEND | LOCK_EX) !== false;
         } catch (\Throwable $ignored) {
             return false;
@@ -183,8 +239,8 @@ if (!ASHAT_LITE_BOOT) {
 
     // ─── ConfigBag (BrainStem URL/key) ────────────────────────────
     \Core\ConfigBag::setInstance(new \Core\ConfigBag(
-        rtrim((string) getenv('BRAINSTEM_URL') ?: 'http://localhost:7860', '/'),
-        (string) getenv('BRAINSTEM_KEY') ?: ''
+        rtrim((string) ($_ENV['BRAINSTEM_URL'] ?? getenv('BRAINSTEM_URL') ?: 'http://localhost:7860'), '/'),
+        (string) ($_ENV['BRAINSTEM_KEY'] ?? getenv('BRAINSTEM_KEY') ?: '')
     ));
 
     // ─── Error handling (themed HTML page) ────────────────────────

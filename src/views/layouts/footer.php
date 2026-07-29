@@ -18,6 +18,7 @@
         <ul style="color: var(--gold-muted); line-height: 2.2;">
           <li><a href="/" class="hover:text-accent">Home</a></li>
           <li><a href="/ide/" class="hover:text-accent">IDE</a></li>
+          <li><a href="/chat/" class="hover:text-accent">Chat</a></li>
           <li><a href="/docs/" class="hover:text-accent">Docs</a></li>
           <li><a href="/community/" class="hover:text-accent">Community</a></li>
         </ul>

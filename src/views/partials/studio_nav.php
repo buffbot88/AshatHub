@@ -25,7 +25,6 @@ $user = $view->__user ?? [];
         'dashboard'    => ['◉','Dashboard'],
         'planner'      => ['⧉','Planner'],
         'files'        => ['🗂','Files'],
-        'spec-chat'    => ['💬','Spec Chat'],
         'autonomy'     => ['🤖','Mission Control'],
       ] as $id => $info): ?>
         <a href="/ide/<?= $id === 'dashboard' ? '' : e($id) . '/' ?>"

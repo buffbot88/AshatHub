@@ -7,11 +7,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@500;700;900&family=Quicksand:wght@400;500;600;700&display=swap" rel="stylesheet">
-  <?php if (defined('APP_ENV') && APP_ENV === 'production'): ?>
-    <link rel="stylesheet" href="<?= e(asset('/css/tailwind-prod.css')) ?>">
-  <?php else: ?>
-    <script src="https://cdn.tailwindcss.com?plugins=typography"></script>
-  <?php endif; ?>
+  <script src="https://cdn.tailwindcss.com?plugins=typography"></script>
   <link rel="stylesheet" href="<?= e(asset('/css/app.css')) ?>">
   <script>
     tailwind.config = {

@@ -9,6 +9,9 @@ $router->get('/community',       [\Controllers\CommunityController::class, 'inde
 $router->post('/community/submit',[\Controllers\CommunityController::class, 'submit']);
 $router->get('/community/project/{slug}', [\Controllers\CommunityController::class, 'show']);
 
+// ─── Chat (standalone, open to all authenticated users) ───────────
+$router->get('/chat',            [\Controllers\ChatPageController::class,  'index']);
+
 // ─── Docs ──────────────────────────────────────────────────────────
 $router->get('/docs',            [\Controllers\DocsController::class,     'index']);
 $router->get('/docs/{slug}',     [\Controllers\DocsController::class,     'show']);

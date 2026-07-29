@@ -218,7 +218,7 @@ $recentBuilds = array_slice($builds, 0, 5);
       <div class="autonomy-drilldown" style="display: none; margin-top: 12px; padding-top: 12px; border-top: 1px solid var(--gold-line);">
         <div class="text-xs space-y-2" style="color: var(--gold-muted);">
           <div class="flex justify-between"><span>IDE</span><span class="text-gold">✓ loaded</span></div>
-          <div class="flex justify-between"><span>Spec Chat</span><span class="text-gold">✓ loaded</span></div>
+          <div class="flex justify-between"><span>Chat</span><span class="text-gold">✓ loaded</span></div>
           <div class="flex justify-between"><span>Planner</span><span class="text-gold">✓ loaded</span></div>
           <div class="flex justify-between"><span>File Manager</span><span class="text-gold">✓ loaded</span></div>
           <div class="flex justify-between"><span>Account</span><span class="text-gold">✓ loaded</span></div>
@@ -264,7 +264,7 @@ $recentBuilds = array_slice($builds, 0, 5);
       <div class="text-center py-12" style="color: var(--gold-dim);">
         <div class="text-3xl mb-3">🔨</div>
         <p class="text-sm">No builds yet. Create a spec and run your first build!</p>
-        <a href="/ide/spec-chat/" class="btn-gold inline-block mt-4 text-xs">Start Building</a>
+        <a href="/chat/" class="btn-gold inline-block mt-4 text-xs">Start Building</a>
       </div>
     <?php else: ?>
       <div style="overflow-x: auto;">

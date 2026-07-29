@@ -10,8 +10,7 @@
    *   studio/planner.php    — spec list + editor + build runner
    *   studio/files.php      — file tree + Monaco editor shell
    *   studio/autonomy.php   — Mission Control pipeline overview
-   *   studio/spec_chat.php  — BrainStem brainstorming chat (UI only;
-   *                            JS lives in public/js/studio/chat.js)
+   * Chat is now a standalone page at /chat/ (see pages/chat.php)
    *
    * JS modules are loaded by mode in the scripts section below so
    * each page only loads what it needs.
@@ -29,7 +28,6 @@
     case 'planner':   require __DIR__ . '/studio/planner.php';   break;
     case 'files':     require __DIR__ . '/studio/files.php';     break;
     case 'autonomy':  require __DIR__ . '/studio/autonomy.php';  break;
-    case 'spec-chat': require __DIR__ . '/studio/spec_chat.php'; break;
     default:          require __DIR__ . '/studio/dashboard.php'; break;
   }
 ?>
@@ -81,13 +79,7 @@
         <div class="shortcut-row"><kbd>Esc</kbd> <span>Close overlays / blur inputs</span></div>
       </div>
       <div class="shortcuts-group">
-        <div class="shortcuts-group-title">Spec Chat</div>
-        <div class="shortcut-row"><kbd>Enter</kbd> <span>Send message</span></div>
-        <div class="shortcut-row"><kbd>Shift+Enter</kbd> <span>New line</span></div>
-        <div class="shortcut-row"><kbd>Ctrl+N</kbd> <span>New conversation</span></div>
-        <div class="shortcut-row"><kbd>Ctrl+Shift+E</kbd> <span>Export conversation</span></div>
-      </div>
-      <div class="shortcuts-group">
+        <div class="shortcuts-group">
         <div class="shortcuts-group-title">Planner</div>
         <div class="shortcut-row"><kbd>Ctrl+S</kbd> <span>Save spec</span></div>
         <div class="shortcut-row"><kbd>Ctrl+B</kbd> <span>Run build</span></div>
@@ -121,11 +113,4 @@
 <script src="<?= e(asset('/js/agent.js')) ?>" defer></script>
 <script src="<?= e(asset('/js/studio.js')) ?>" defer></script>
 
-<?php if ($mode === 'spec-chat'): ?>
-  <script src="<?= e(asset('/js/studio/chat.js')) ?>" defer></script>
-  <!-- Expose account URL for backend-configuration links in error messages -->
-  <script>
-    window.ASHAT = window.ASHAT || {};
-    window.ASHAT.accountUrl = '<?= e(asset('/account/')) ?>';
-  </script>
-<?php endif; ?>
+

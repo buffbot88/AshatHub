@@ -11,7 +11,7 @@ Key code locations:
 - **`src/views/`** — `layouts/` (header, footer) and `pages/` (one per route)
 - **`public/js/`** — Vanilla JS (app.js, studio.js, agent.js, studio/chat.js)
 - **`public/css/app.css`** — Custom dark-gold theme (Orbitron + Quicksand)
-- **`config/`** — `bootstrap.php` (boot sequence), `constants.php` (all `APP_*`/`DB_*`/`SESSION_*` constants), `server_config.json` (your live config — gitignored)
+- **`config/`** — `bootstrap.php` (boot sequence + all `APP_*`/`DB_*`/`SESSION_*` constants), `server_config.json` (your live config — gitignored)
 - **`.htaccess`** — Root Apache rules for flat/shared-hosting deploy (uses ErrorDocument, no mod_rewrite required)
 - **`index.php`** — Root entry point for shared hosting (restores `REDIRECT_URL` → `REQUEST_URI`)
 
@@ -81,8 +81,7 @@ No package.json or composer.json — **zero dependencies**.
 
 - **PHP 8.1+ required** — uses `never` return type, `str_starts_with()`, `match`, named args
 - **Config options for shared hosts** (when `.env` is blocked):
-  1. `config/server_config.json` — primary config file (not a dotfile). Covers ALL settings. Loaded before `.env`, skips `.env` if present.
-  2. `config/conn.php` — legacy DB-only override via `putenv()`. Still supported but superseded by `server_config.json`.
+  - `config/server_config.json` — primary config file (not a dotfile). Covers ALL settings. Loaded before `.env`, skips `.env` if present.
 - **No mod_rewrite needed** — `.htaccess` uses `ErrorDocument 404/403 /index.php` for shared hosts; `RedirectMatch 403` from mod_alias blocks private dirs
 - **`?__diag=1`** endpoint runs before bootstrap — use it to check PHP version and file existence on a fresh deploy
 - **`never` return type** on `RequestContext::redirect()` and `jsonResponse()` — method always exits/throws

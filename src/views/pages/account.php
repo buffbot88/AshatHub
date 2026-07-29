@@ -212,7 +212,7 @@
         <h2 style="font-family: var(--font-heading); font-weight: 600; font-size: 18px; color: var(--gold);" class="mb-1">BrainStem Host</h2>
         <p class="text-sm mb-4" style="color: var(--gold-muted);">
           Configure the Neural Host endpoint for the
-          <span style="color: var(--gold); font-weight: 500;">Spec Chat</span> feature.
+          <span style="color: var(--gold); font-weight: 500;">Chat</span> feature.
           Stored encrypted in the database. Falls back to
           <code style="color: var(--gold-bright); font-size: 12px;">BRAINSTEM_URL</code> and
           <code style="color: var(--gold-bright); font-size: 12px;">BRAINSTEM_KEY</code>

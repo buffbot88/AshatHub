@@ -115,11 +115,23 @@ final class View
 
     /**
      * Resolve the authenticated user from $_SESSION.
+     *
+     * Returns null if the database is unreachable rather than throwing,
+     * so error pages can still render even when the DB is down (the page
+     * will simply show no user context). This also prevents the error
+     * handler from entering an infinite loop: when the DB fails during
+     * resolveUser(), the error handler calls ErrorController which calls
+     * View::render() again — without this guard, that second call would
+     * throw again, crashing the error page itself.
      */
     private static function resolveUser(): ?array
     {
         $userId = $_SESSION['user_id'] ?? null;
         if (!$userId) return null;
-        return RepositoryRegistry::user()->find((string) $userId);
+        try {
+            return RepositoryRegistry::user()->find((string) $userId);
+        } catch (\Throwable $e) {
+            return null;
+        }
     }
 }

@@ -207,7 +207,7 @@
 <section class="border-t border-ink-line bg-gradient-to-b from-ink-soft to-transparent">
   <div class="container mx-auto px-6 py-20 text-center max-w-2xl">
     <h2 class="text-3xl md:text-4xl font-display font-semibold mb-3">Ready to build with <span class="text-accent">ASHAT</span>?</h2>
-    <p class="text-base text-chalk-muted max-w-md mx-auto mb-8 leading-relaxed">Open the IDE, write a spec, and let ASHAT build it for you. Join our Discord for help, support, and community discussions.</p>
+    <p class="text-base text-chalk-mute max-w-md mx-auto mb-8 leading-relaxed">Open the IDE, write a spec, and let ASHAT build it for you. Join our Discord for help, support, and community discussions.</p>
     <div class="flex justify-center gap-3 flex-wrap">
       <a href="/ide/" class="inline-flex items-center gap-2 px-5 py-3 bg-accent text-ink-deep rounded-lg font-medium hover:bg-accent-soft transition"><span aria-hidden>🚀</span> Launch ASHAT IDE</a>
       <a href="https://discord.gg/gJ8mreeAT4" target="_blank" rel="noopener" class="inline-flex items-center gap-2 px-5 py-3 border border-ink-line rounded-lg text-chalk hover:border-accent transition"><span aria-hidden>💬</span> Join our Community</a>

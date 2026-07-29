@@ -517,16 +517,9 @@ Quick build from the Studio dashboard.
     var key = e.key;
 
     // ? — Toggle shortcuts help (from any Studio page)
-    // Note: on the Spec Chat page, chat.js handles this key to avoid
-    // a double-toggle conflict (studio.js fires first, chat.js fires
-    // second and would immediately close the modal).
     if (key === '?' && !ctrl && !e.shiftKey && !e.altKey) {
-      // Skip if chat.js is loaded — it has its own handler with
-      // proper input-focus awareness
-      if (!document.getElementById('chat-messages')) {
-        e.preventDefault();
-        toggleShortcutsHelp();
-      }
+      e.preventDefault();
+      toggleShortcutsHelp();
       return;
     }
 
@@ -623,7 +616,6 @@ Quick build from the Studio dashboard.
   }
 
   function getTourMode() {
-    if (document.getElementById('chat-messages')) return 'spec-chat';
     if (document.getElementById('studio-dashboard')) return 'dashboard';
     if (document.getElementById('planner-active')) return 'planner';
     if (document.getElementById('file-list')) return 'files';
@@ -657,43 +649,6 @@ Quick build from the Studio dashboard.
         desc: 'See your most recent builds here. Each build generates files from your spec that you can view and edit in the Planner or File Manager.',
         position: 'bottom',
       },
-      {
-        target: 'nav a[href*="/ide/spec-chat"]',
-        title: '🚀 Next: Spec Chat',
-        desc: 'Ready to dive deeper? Click <strong>Spec Chat</strong> in the nav to brainstorm ideas with our AI architect. Or press <kbd>→</kbd> to start there now!',
-        position: 'bottom',
-      },
-    ],
-    'spec-chat': [
-      {
-        target: '.chat-sidebar',
-        title: '💬 Conversation History',
-        desc: 'All your brainstorming sessions are saved here. Click any conversation to pick up where you left off, or press <kbd>Ctrl+N</kbd> to start a new one.',
-        position: 'right',
-      },
-      {
-        target: '#chat-messages',
-        title: '🧠 BrainStem Chat',
-        desc: 'This is where you talk to BrainStem, your AI software architect. Describe your project idea and it will help you design a complete specification through guided conversation.',
-        position: 'top',
-      },
-      {
-        target: '#chat-input',
-        title: '✏️ Your Ideas',
-        desc: 'Type your project idea here. BrainStem will ask clarifying questions to refine your concept. Press <kbd>Enter</kbd> to send, <kbd>Shift+Enter</kbd> for a new line.',
-        position: 'top',
-      },
-      {
-        target: '#template-grid',
-        title: '📐 Quick Templates',
-        desc: 'Not sure where to start? Choose a template like <strong>CRUD App</strong> or <strong>REST API</strong> and BrainStem will guide you through building that specific type of project.',
-        position: 'left',
-      },
-      {
-        target: '#spec-preview',
-        title: '📋 Generated Spec',
-        desc: 'Once BrainStem gathers enough details, it outputs a complete Markdown spec here. You can <strong>Copy</strong> it or click <strong>→ Planner</strong> to build it!',
-        position: 'left',
       },
     ],
     'planner': [
@@ -982,7 +937,6 @@ Quick build from the Studio dashboard.
     if (!overlay || !input || !results) return;
 
     // Build action list based on current page
-    var onChat = !!document.getElementById('chat-messages');
     var onPlanner = !!document.getElementById('planner-active');
     var onFiles = !!document.getElementById('file-list');
     var onDashboard = !!document.getElementById('btn-build');
@@ -992,22 +946,12 @@ Quick build from the Studio dashboard.
     // Navigation
     actions.push({ group: 'Navigation', id: 'nav-dash',   icon: '🏠', label: 'Go to Dashboard',       shortcut: '',     action: function () { closeCommandPalette(); window.location.href = '/ide/'; } });
     actions.push({ group: 'Navigation', id: 'nav-plan',   icon: '📋', label: 'Go to Planner',         shortcut: '',     action: function () { closeCommandPalette(); window.location.href = '/ide/planner/'; } });
-    actions.push({ group: 'Navigation', id: 'nav-chat',   icon: '💬', label: 'Go to Spec Chat',       shortcut: '',     action: function () { closeCommandPalette(); window.location.href = '/ide/spec-chat/'; } });
     actions.push({ group: 'Navigation', id: 'nav-files',  icon: '📁', label: 'Go to File Manager',    shortcut: '',     action: function () { closeCommandPalette(); window.location.href = '/ide/files/'; } });
     actions.push({ group: 'Navigation', id: 'nav-auto',   icon: '🎛️', label: 'Go to Mission Control', shortcut: '',    action: function () { closeCommandPalette(); window.location.href = '/ide/autonomy/'; } });
     actions.push({ group: 'Navigation', id: 'help-shortcuts', icon: '⌨️', label: 'Toggle Keyboard Shortcuts', shortcut: '', action: function () {
       closeCommandPalette();
       toggleShortcutsHelp();
     } });
-
-    // Spec Chat
-    if (onChat) {
-      actions.push({ group: 'Spec Chat', id: 'chat-new',    icon: '➕',   label: 'New Conversation',       shortcut: 'Ctrl+N',      action: function () { closeCommandPalette(); var b = document.getElementById('btn-new-chat'); if (b) b.click(); } });
-      actions.push({ group: 'Spec Chat', id: 'chat-export', icon: '📥',   label: 'Export Conversation',    shortcut: 'Ctrl+Shift+E', action: function () { closeCommandPalette(); var b = document.getElementById('btn-export-chat'); if (b) b.click(); } });
-      actions.push({ group: 'Spec Chat', id: 'chat-planner',icon: '➡️',   label: 'Send Spec to Planner',  shortcut: '',             action: function () { closeCommandPalette(); var b = document.getElementById('btn-send-planner'); if (b && !b.disabled) b.click(); } });
-      actions.push({ group: 'Spec Chat', id: 'chat-copy',  icon: '📄',    label: 'Copy Generated Spec',    shortcut: '',             action: function () { closeCommandPalette(); var b = document.getElementById('btn-copy-spec'); if (b && !b.disabled) b.click(); } });
-      actions.push({ group: 'Spec Chat', id: 'chat-clear', icon: '🗑️',   label: 'Clear Chat',            shortcut: '',             action: function () { closeCommandPalette(); var b = document.getElementById('btn-clear-chat'); if (b) b.click(); } });
-    }
 
     // Planner
     if (onPlanner) {

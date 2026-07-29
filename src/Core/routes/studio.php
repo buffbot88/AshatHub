@@ -6,4 +6,4 @@ $router->get('/ide',             [\Controllers\StudioController::class,   'dashb
 $router->get('/ide/planner',     [\Controllers\StudioController::class,   'planner']);
 $router->get('/ide/autonomy',    [\Controllers\StudioController::class,   'autonomy']);
 $router->get('/ide/files',        [\Controllers\StudioController::class,   'files']);
-$router->get('/ide/spec-chat',   [\Controllers\StudioController::class,   'specChat']);
+

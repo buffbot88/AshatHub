@@ -85,14 +85,6 @@ final class StudioController
         ]);
     }
 
-    public function specChat(RequestContext $ctx): void
-    {
-        $ctx->requireRole('Pro', 'Admin');
-
-        $ctx->view('pages/studio', [
-            'title'          => 'Spec Chat · ' . APP_NAME,
-            'mode'           => 'spec-chat',
-            '__hide_navbar'  => true,
-        ]);
-    }
+    // specChat() was removed — Chat is now a standalone page at /chat/
+    // see Controllers\ChatPageController and src/views/pages/chat.php
 }

@@ -7,9 +7,7 @@
 .env.local
 .env.*.local
 
-# Free-host config files — ship as .example only (in older versions),
-# the real files carry live credentials and must NEVER be committed.
-config/conn.php
+# Production config — carries live credentials, must NEVER be committed.
 config/server_config.json
 
 # Logs

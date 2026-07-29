@@ -12,6 +12,7 @@
     </a>
 
     <nav class="hidden md:flex items-center gap-5 text-sm text-chalk-soft">
+      <a href="/chat/" class="hover:text-accent transition">Chat</a>
       <a href="/ide/" class="hover:text-accent transition">IDE</a>
       <a href="/community/" class="hover:text-accent transition">Community</a>
       <a href="/docs/" class="hover:text-accent transition">Docs</a>

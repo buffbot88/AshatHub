@@ -17,12 +17,8 @@
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@500;700;900&family=Quicksand:wght@400;500;600;700&display=swap" rel="stylesheet">
 
-  <!-- Tailwind CSS: CDN play build in dev, local compiled file in prod -->
-  <?php if (defined('APP_ENV') && APP_ENV === 'production'): ?>
-    <link rel="stylesheet" href="<?= e(asset('/css/tailwind-prod.css')) ?>">
-  <?php else: ?>
-    <script src="https://cdn.tailwindcss.com?plugins=typography"></script>
-  <?php endif; ?>
+  <!-- Tailwind CSS: CDN play build (always loaded — compile locally for production) -->
+  <script src="https://cdn.tailwindcss.com?plugins=typography"></script>
 
   <!-- Project styles (✦ Ashat Gold Pulse ✦) -->
   <link rel="stylesheet" href="<?= e(asset('/css/app.css')) ?>">

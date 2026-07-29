@@ -48,6 +48,13 @@ final class Database
                     PDO::MYSQL_ATTR_INIT_COMMAND => "SET NAMES utf8mb4 COLLATE utf8mb4_unicode_ci",
                 ]);
             } catch (\PDOException $e) {
+                // Always log the real PDO error to storage/logs/error.log so
+                // the admin can diagnose DB issues regardless of APP_DEBUG.
+                // The previous exception ($e) is included so the log shows
+                // the actual MySQL error message, not just "Database unavailable."
+                if (function_exists('ashat_log_exception')) {
+                    ashat_log_exception($e);
+                }
                 if (APP_DEBUG) {
                     throw new \RuntimeException('DB connection failed: ' . $e->getMessage(), 500, $e);
                 }

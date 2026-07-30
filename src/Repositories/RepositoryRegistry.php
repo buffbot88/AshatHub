@@ -86,6 +86,12 @@ final class RepositoryRegistry
         return self::resolve('docs_article');
     }
 
+    public static function ticket(): TicketRepository
+    {
+        /** @var TicketRepository */
+        return self::resolve('ticket');
+    }
+
     // ── Test seam ──────────────────────────────────────────────────
 
     /**
@@ -163,6 +169,7 @@ final class RepositoryRegistry
             'session'           => new PdoSessionRepository($pdoDb),
             'community_project'  => new PdoCommunityProjectRepository($pdoDb),
             'docs_article'       => new PdoDocsArticleRepository($pdoDb),
+            'ticket'             => new PdoTicketRepository($pdoDb),
             default => throw new \InvalidArgumentException("Unknown repository: $key"),
         };
     }

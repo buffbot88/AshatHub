@@ -154,6 +154,37 @@ CREATE TABLE IF NOT EXISTS `docs_articles` (
   KEY `idx_sort` (`sort_order`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
+-- ─── Support Tickets ──────────────────────────────────────────────
+CREATE TABLE IF NOT EXISTS `support_tickets` (
+  `id`         CHAR(36)     NOT NULL,
+  `user_id`    CHAR(36)     NOT NULL,
+  `subject`    VARCHAR(200) NOT NULL,
+  `status`     ENUM('open','in_progress','resolved','closed') NOT NULL DEFAULT 'open',
+  `priority`   ENUM('low','normal','high','urgent') NOT NULL DEFAULT 'normal',
+  `category`   VARCHAR(50)  NOT NULL DEFAULT 'other',
+  `message`    TEXT         NOT NULL,
+  `created_at` DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  `updated_at` DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  PRIMARY KEY (`id`),
+  KEY `idx_user` (`user_id`),
+  KEY `idx_status` (`status`),
+  CONSTRAINT `fk_tickets_user` FOREIGN KEY (`user_id`) REFERENCES `users`(`id`) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+-- ─── Support Ticket Replies ────────────────────────────────────────
+CREATE TABLE IF NOT EXISTS `support_ticket_replies` (
+  `id`         CHAR(36)    NOT NULL,
+  `ticket_id`  CHAR(36)    NOT NULL,
+  `user_id`    CHAR(36)    NOT NULL,
+  `message`    TEXT        NOT NULL,
+  `is_staff`   TINYINT(1)  NOT NULL DEFAULT 0,
+  `created_at` DATETIME    NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  PRIMARY KEY (`id`),
+  KEY `idx_ticket` (`ticket_id`),
+  CONSTRAINT `fk_replies_ticket` FOREIGN KEY (`ticket_id`) REFERENCES `support_tickets`(`id`) ON DELETE CASCADE,
+  CONSTRAINT `fk_replies_user` FOREIGN KEY (`user_id`) REFERENCES `users`(`id`) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
 -- ─── BrainStem Config (singleton row, id=1) ──────────────────────────
 CREATE TABLE IF NOT EXISTS `brainstem_config` (
   `id`             INT          NOT NULL DEFAULT 1,

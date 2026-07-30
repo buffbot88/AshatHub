@@ -16,6 +16,7 @@
       <a href="/ide/" class="hover:text-accent transition">IDE</a>
       <a href="/community/" class="hover:text-accent transition">Community</a>
       <a href="/docs/" class="hover:text-accent transition">Docs</a>
+      <a href="/support/" class="hover:text-accent transition">Support</a>
     </nav>
 
     <div class="flex-1"></div>

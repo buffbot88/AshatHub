@@ -12,6 +12,15 @@ $router->get('/community/project/{slug}', [\Controllers\CommunityController::cla
 // ─── Chat (standalone, open to all authenticated users) ───────────
 $router->get('/chat',            [\Controllers\ChatPageController::class,  'index']);
 
+// ─── Support Tickets (authenticated users) ──────────────────────────
+$router->group('/support', ['middleware' => ['auth']], function () use ($router) {
+    $router->get('',              [\Controllers\SupportController::class, 'index']);
+    $router->get('/create',       [\Controllers\SupportController::class, 'createForm']);
+    $router->post('',             [\Controllers\SupportController::class, 'store']);
+    $router->get('/{id}',         [\Controllers\SupportController::class, 'show']);
+    $router->post('/{id}/reply',  [\Controllers\SupportController::class, 'reply']);
+});
+
 // ─── Docs ──────────────────────────────────────────────────────────
 $router->get('/docs',            [\Controllers\DocsController::class,     'index']);
 $router->get('/docs/{slug}',     [\Controllers\DocsController::class,     'show']);

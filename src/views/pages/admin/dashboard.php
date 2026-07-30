@@ -12,6 +12,7 @@
       </div>
       <nav class="flex items-center gap-3 text-sm">
         <a href="/admin/users/" class="btn-outline">Users</a>
+        <a href="/admin/support/" class="btn-outline">Support</a>
         <a href="/admin/settings/" class="btn-outline">Settings</a>
       </nav>
     </div>

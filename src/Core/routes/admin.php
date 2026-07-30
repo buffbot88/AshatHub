@@ -27,4 +27,8 @@ $router->group('/admin', ['middleware' => ['admin-gate']], function () use ($rou
     // Webhook secret management
     $router->get('/settings/webhook-secret',  [\Controllers\AdminController::class, 'webhookSecret']);
     $router->post('/settings/webhook-secret', [\Controllers\AdminController::class, 'saveWebhookSecret']);
+
+    // Support ticket management
+    $router->get('/support',                  [\Controllers\SupportController::class, 'adminIndex']);
+    $router->post('/support/status',          [\Controllers\SupportController::class, 'adminUpdateStatus']);
 });

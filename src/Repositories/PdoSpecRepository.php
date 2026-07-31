@@ -22,7 +22,7 @@ final class PdoSpecRepository implements SpecRepository
     public function allForUser(string $userId): array
     {
         return $this->db->fetchAll(
-            "SELECT id, title, status, created_at, updated_at,
+            "SELECT id, title, language, status, created_at, updated_at,
                     SUBSTRING(content, 1, 120) AS preview
              FROM specs WHERE user_id = ? ORDER BY updated_at DESC",
             [$userId]
@@ -42,28 +42,28 @@ final class PdoSpecRepository implements SpecRepository
         );
     }
 
-    public function create(string $userId, string $title, string $content): string
+    public function create(string $userId, string $title, string $content, string $language = ''): string
     {
         $id = Uuid::v4();
         $this->db->execute(
-            "INSERT INTO specs (id, user_id, title, status, content)
-             VALUES (?, ?, ?, 'draft', ?)",
-            [$id, $userId, $title, $content]
+            "INSERT INTO specs (id, user_id, title, status, content, language)
+             VALUES (?, ?, ?, 'draft', ?, ?)",
+            [$id, $userId, $title, $content, $language]
         );
         return $id;
     }
 
-    public function update(string $id, string $title, string $content, ?string $status): void
+    public function update(string $id, string $title, string $content, ?string $status, string $language = ''): void
     {
         if ($status !== null) {
             $this->db->execute(
-                "UPDATE specs SET title = ?, content = ?, status = ?, updated_at = NOW() WHERE id = ?",
-                [$title, $content, $status, $id]
+                "UPDATE specs SET title = ?, content = ?, language = ?, status = ?, updated_at = NOW() WHERE id = ?",
+                [$title, $content, $language, $status, $id]
             );
         } else {
             $this->db->execute(
-                "UPDATE specs SET title = ?, content = ?, updated_at = NOW() WHERE id = ?",
-                [$title, $content, $id]
+                "UPDATE specs SET title = ?, content = ?, language = ?, updated_at = NOW() WHERE id = ?",
+                [$title, $content, $language, $id]
             );
         }
     }

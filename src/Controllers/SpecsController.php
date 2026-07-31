@@ -26,9 +26,11 @@ final class SpecsController
 
     public function create(RequestContext $ctx): void
     {
-        $body    = $ctx->jsonBody();
-        $title   = trim((string) ($body['title'] ?? $ctx->str('title', 'Untitled Spec')));
-        $content = (string) ($body['content'] ?? $ctx->str('content'));
+        $body     = $ctx->jsonBody();
+        $title    = trim((string) ($body['title'] ?? $ctx->str('title', 'Untitled Spec')));
+        $content  = (string) ($body['content'] ?? $ctx->str('content'));
+        // VARCHAR(50) column + MySQL strict mode: clamp before insert.
+        $language = mb_substr(trim((string) ($body['language'] ?? $ctx->str('language', ''))), 0, 50);
         $default = <<<MD
 # Project: $title
 
@@ -40,7 +42,7 @@ What does this project do?
 - [ ] Requirement 2
 
 ## Technical Stack
-- Language:
+- Language: $language
 - Framework:
 
 ## File Structure
@@ -51,18 +53,20 @@ What does this project do?
 MD;
         if ($content === '') $content = $default;
 
-        $id = RepositoryRegistry::spec()->create((string) $ctx->user()['id'], $title, $content);
+        $id = RepositoryRegistry::spec()->create((string) $ctx->user()['id'], $title, $content, $language);
         $ctx->jsonResponse(['spec' => RepositoryRegistry::spec()->find($id)], 201);
     }
 
     public function update(RequestContext $ctx, string $id): void
     {
-        $body    = $ctx->jsonBody();
-        $title   = (string) ($body['title'] ?? $ctx->str('title'));
-        $content = (string) ($body['content'] ?? $ctx->str('content'));
-        $status  = $body['status'] ?? $ctx->input('status') ?? null;
+        $body     = $ctx->jsonBody();
+        $title    = (string) ($body['title'] ?? $ctx->str('title'));
+        $content  = (string) ($body['content'] ?? $ctx->str('content'));
+        $status   = $body['status'] ?? $ctx->input('status') ?? null;
+        // VARCHAR(50) column + MySQL strict mode: clamp before insert.
+        $language = mb_substr(trim((string) ($body['language'] ?? $ctx->str('language', ''))), 0, 50);
 
-        RepositoryRegistry::spec()->update($id, $title, $content, $status);
+        RepositoryRegistry::spec()->update($id, $title, $content, $status, $language);
         $ctx->jsonResponse(['spec' => RepositoryRegistry::spec()->find($id)]);
     }
 

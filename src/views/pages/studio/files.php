@@ -5,7 +5,7 @@
     <ul id="file-list" class="space-y-0.5 text-sm">
       <?php foreach (($files ?? []) as $f): ?>
         <li>
-          <button data-file-id="<?= e($f['id']) ?>" data-path="<?= e($f['path']) ?>"
+          <button data-file-id="<?= e($f['id']) ?>" data-generated="<?= (int) ($f['generated'] ?? 0) ?>" data-path="<?= e($f['path']) ?>"
                   class="file-pick block w-full text-left px-2 py-1.5 rounded-md" style="color: var(--gold-text);">
             <span style="color: var(--gold-muted);"><?= e(basename($f['path'])) ?></span>
             <div class="text-[10px] font-mono truncate" style="color: var(--gold-muted);"><?= e(dirname($f['path'])) ?: '/' ?></div>
@@ -36,13 +36,26 @@
 <script>
 (function () {
   'use strict';
-  // Monaco initialization — runs after the CDN loads
+  // Monaco initialization — runs after the CDN loader is available.
+  // We gate ONLY on `require`: the `monaco` namespace is populated by
+  // vs/editor/editor.main, which is exactly what the require() call
+  // loads — gating on `monaco` too would deadlock the boot. If the CDN
+  // never arrives, __monacoReady=false lets studio.js fall back to a
+  // plain textarea editor so files stay editable.
+  var attempts = 0;
   var initTimer = setInterval(function () {
-    if (typeof require === 'undefined' || typeof monaco === 'undefined') return;
+    if (typeof require === 'undefined') {
+      if (++attempts > 50) { clearInterval(initTimer); window.__monacoReady = false; }
+      return;
+    }
     clearInterval(initTimer);
 
     require.config({ paths: { vs: 'https://cdn.jsdelivr.net/npm/monaco-editor@0.45.0/min/vs' } });
     require(['vs/editor/editor.main'], function () {
+      if (typeof monaco === 'undefined' || typeof monaco.editor === 'undefined') {
+        window.__monacoReady = false;
+        return;
+      }
       // Define a custom dark-gold theme matching the hub
       monaco.editor.defineTheme('ashat-gold', {
         base: 'vs-dark',
@@ -93,6 +106,9 @@
         lineNumbersMinChars: 3,
         padding: { top: 12 },
       });
+    }, function () {
+      // editor.main failed to load (CDN issue) — use textarea fallback
+      window.__monacoReady = false;
     });
   }, 200);
 })();

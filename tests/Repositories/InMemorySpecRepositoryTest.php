@@ -195,6 +195,37 @@ final class InMemorySpecRepositoryTest extends TestCase
         $this->assertNotEmpty($spec['updated_at']);
     }
 
+    public function test_create_stores_language(): void
+    {
+        $id = $this->repo->create('u1', 'Lang Spec', 'Content', 'Python');
+        $spec = $this->repo->find($id);
+        $this->assertSame('Python', $spec['language']);
+    }
+
+    public function test_create_language_defaults_to_empty(): void
+    {
+        $id = $this->repo->create('u1', 'Auto Spec', 'Content');
+        $spec = $this->repo->find($id);
+        $this->assertSame('', $spec['language']);
+    }
+
+    public function test_allForUser_includes_language(): void
+    {
+        $id = $this->repo->create('u1', 'Lang Spec', 'Content', 'TypeScript');
+        $specs = $this->repo->allForUser('u1');
+        $this->assertCount(1, $specs);
+        $this->assertSame('TypeScript', $specs[0]['language']);
+        $this->assertSame($id, $specs[0]['id']);
+    }
+
+    public function test_update_changes_language(): void
+    {
+        $id = $this->repo->create('u1', 'Lang Spec', 'Content', 'Python');
+        $this->repo->update($id, 'Lang Spec', 'Content', null, 'Go');
+        $spec = $this->repo->find($id);
+        $this->assertSame('Go', $spec['language']);
+    }
+
     // ── update() ───────────────────────────────────────────────────
 
     public function test_update_changes_title_and_content(): void

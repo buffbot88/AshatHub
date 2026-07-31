@@ -128,6 +128,22 @@ final class InMemoryFileRepository implements FileRepository
         }
     }
 
+    public function deleteByPrefix(string $userId, string $pathPrefix): int
+    {
+        $prefix = trim($pathPrefix, '/');
+        if ($prefix === '') return 0;
+        $count = 0;
+        foreach ($this->rows as $id => $r) {
+            if (($r['user_id'] ?? '') !== $userId) continue;
+            $path = (string) ($r['path'] ?? '');
+            if ($path === $prefix || str_starts_with($path, $prefix . '/')) {
+                unset($this->rows[$id]);
+                $count++;
+            }
+        }
+        return $count;
+    }
+
     public function countAll(): array
     {
         return ['c' => count($this->rows)];

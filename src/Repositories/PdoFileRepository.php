@@ -77,6 +77,19 @@ final class PdoFileRepository implements FileRepository
         $this->db->execute("DELETE FROM files WHERE id = ? AND user_id = ?", [$id, $userId]);
     }
 
+    public function deleteByPrefix(string $userId, string $pathPrefix): int
+    {
+        $prefix = trim($pathPrefix, '/');
+        if ($prefix === '') return 0;
+        // Escape LIKE wildcards so a literal '%' or '_' in the prefix
+        // can't expand into a broader match than intended.
+        $escaped = str_replace(['%', '_'], ['\\%', '\\_'], $prefix);
+        return $this->db->execute(
+            "DELETE FROM files WHERE user_id = ? AND (path = ? OR path LIKE ?)",
+            [$userId, $prefix, $escaped . '/%']
+        );
+    }
+
     public function countAll(): array
     {
         $row = $this->db->fetchOne("SELECT COUNT(*) AS c FROM files");

@@ -36,8 +36,15 @@
       <p class="text-sm mb-4" style="color: var(--gold-muted);">Describe your idea in one sentence. We'll scaffold the spec for you.</p>
       <form id="quick-spec" class="flex gap-2">
         <input name="idea" class="field flex-1" placeholder="A multiplayer tic-tac-toe with WebSocket…" required>
+        <select name="language" id="quick-spec-language" class="field" title="Project language"
+                style="font-size: 12px; padding: 8px 10px; width: auto;">
+          <?php foreach (\Data\LanguageOptions::all() as $langValue => $langLabel): ?>
+            <option value="<?= e($langValue) ?>"><?= e($langLabel) ?></option>
+          <?php endforeach; ?>
+        </select>
         <button class="btn-gold">Create</button>
       </form>
+      <p class="text-xs mt-2" style="color: var(--gold-muted);">Choose the language for your project — the coding agent will build in it.</p>
     </div>
 
     <div class="glass-card-solid p-6">

@@ -50,6 +50,7 @@ final class InMemorySpecRepository implements SpecRepository
             $results[] = [
                 'id'         => $r['id'],
                 'title'      => $r['title'] ?? '',
+                'language'   => $r['language'] ?? '',
                 'status'     => $r['status'] ?? 'draft',
                 'created_at' => $r['created_at'] ?? '',
                 'updated_at' => $r['updated_at'] ?? '',
@@ -78,7 +79,7 @@ final class InMemorySpecRepository implements SpecRepository
         return null;
     }
 
-    public function create(string $userId, string $title, string $content): string
+    public function create(string $userId, string $title, string $content, string $language = ''): string
     {
         $id = Uuid::v4();
         $now = date('Y-m-d H:i:s');
@@ -87,6 +88,7 @@ final class InMemorySpecRepository implements SpecRepository
             'user_id'    => $userId,
             'title'      => $title,
             'content'    => $content,
+            'language'   => $language,
             'status'     => 'draft',
             'created_at' => $now,
             'updated_at' => $now,
@@ -94,11 +96,12 @@ final class InMemorySpecRepository implements SpecRepository
         return $id;
     }
 
-    public function update(string $id, string $title, string $content, ?string $status): void
+    public function update(string $id, string $title, string $content, ?string $status, string $language = ''): void
     {
         if (!isset($this->rows[$id])) return;
         $this->rows[$id]['title'] = $title;
         $this->rows[$id]['content'] = $content;
+        $this->rows[$id]['language'] = $language;
         $this->rows[$id]['updated_at'] = date('Y-m-d H:i:s');
         if ($status !== null) {
             $this->rows[$id]['status'] = $status;

@@ -34,8 +34,17 @@
       </div>
       <div class="grid md:grid-cols-2 gap-4">
         <div>
-          <div class="label-gold mb-2">Spec (Markdown)</div>
+          <div class="flex items-center justify-between mb-2">
+            <div class="label-gold">Spec (Markdown)</div>
+            <select id="planner-language" class="field" title="Project language — the coding agent builds in this language"
+                    style="font-size: 12px; padding: 4px 8px; width: auto; max-width: 170px;">
+              <?php foreach (\Data\LanguageOptions::all() as $langValue => $langLabel): ?>
+                <option value="<?= e($langValue) ?>"><?= e($langLabel) ?></option>
+              <?php endforeach; ?>
+            </select>
+          </div>
           <textarea id="planner-content" class="field" style="height: 288px; font-family: var(--font-mono); font-size: 14px;"></textarea>
+          <p class="text-xs mt-2" style="color: var(--gold-muted);">Pick the language the coding agent should build in. “Auto” lets the agent choose.</p>
         </div>
         <div>
           <div class="label-gold mb-2">Generated Plan</div>

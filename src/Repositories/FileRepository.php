@@ -48,6 +48,14 @@ interface FileRepository
     /** Delete a file by id (auth-scoped to user). */
     public function delete(string $id, string $userId): void;
 
+    /**
+     * Delete every file under a path prefix (a "folder" — e.g. 'src'
+     * removes 'src/main.ts' and 'src/lib/util.ts'). Auth-scoped to user.
+     * Returns the number of rows deleted. An empty/root prefix deletes
+     * nothing.
+     */
+    public function deleteByPrefix(string $userId, string $pathPrefix): int;
+
     /** Count all files across all users. Returns ['c' => int]. */
     public function countAll(): array;
 }

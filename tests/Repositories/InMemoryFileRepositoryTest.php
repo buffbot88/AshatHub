@@ -270,6 +270,68 @@ final class InMemoryFileRepositoryTest extends TestCase
         $this->assertCount(1, $this->repo->inspect());
     }
 
+    // ── deleteByPrefix() — folder delete ──────────────────────────
+
+    public function test_deleteByPrefix_removes_files_under_folder(): void
+    {
+        $this->repo->seed([$this->fileA, $this->fileB]); // both under src/
+        $count = $this->repo->deleteByPrefix('u1', 'src');
+        $this->assertSame(2, $count);
+        $this->assertCount(0, $this->repo->inspect());
+    }
+
+    public function test_deleteByPrefix_exact_path_match(): void
+    {
+        $fileC = array_merge($this->fileB, ['id' => 'f3', 'path' => 'src.ts']);
+        $this->repo->seed([$this->fileA, $fileC]);
+        // 'src.ts' is a file, not a folder — exact path match
+        $count = $this->repo->deleteByPrefix('u1', 'src.ts');
+        $this->assertSame(1, $count);
+        $this->assertCount(1, $this->repo->inspect());
+    }
+
+    public function test_deleteByPrefix_does_not_touch_sibling_prefixes(): void
+    {
+        $fileC = array_merge($this->fileB, ['id' => 'f3', 'path' => 'src-other/file.ts']);
+        $this->repo->seed([$this->fileA, $fileC]);
+        $count = $this->repo->deleteByPrefix('u1', 'src');
+        $this->assertSame(1, $count); // only src/main.ts
+        $files = $this->repo->allForUser('u1');
+        $this->assertCount(1, $files);
+        $this->assertSame('src-other/file.ts', $files[0]['path']);
+    }
+
+    public function test_deleteByPrefix_scoped_to_user(): void
+    {
+        $fileOther = array_merge($this->fileA, ['id' => 'f4', 'user_id' => 'u2']);
+        $this->repo->seed([$this->fileA, $fileOther]);
+        $count = $this->repo->deleteByPrefix('u1', 'src');
+        $this->assertSame(1, $count);
+        $this->assertCount(1, $this->repo->inspect());
+    }
+
+    public function test_deleteByPrefix_empty_prefix_deletes_nothing(): void
+    {
+        $this->repo->seed([$this->fileA]);
+        $this->assertSame(0, $this->repo->deleteByPrefix('u1', ''));
+        $this->assertSame(0, $this->repo->deleteByPrefix('u1', '/'));
+        $this->assertSame(0, $this->repo->deleteByPrefix('u1', '///'));
+        $this->assertCount(1, $this->repo->inspect());
+    }
+
+    public function test_deleteByPrefix_no_match_returns_zero(): void
+    {
+        $this->repo->seed([$this->fileA]);
+        $this->assertSame(0, $this->repo->deleteByPrefix('u1', 'nonexistent'));
+    }
+
+    public function test_deleteByPrefix_trailing_slash(): void
+    {
+        $this->repo->seed([$this->fileA, $this->fileB]);
+        $count = $this->repo->deleteByPrefix('u1', 'src/');
+        $this->assertSame(2, $count);
+    }
+
     // ── countAll() ─────────────────────────────────────────────────
 
     public function test_countAll_returns_total(): void

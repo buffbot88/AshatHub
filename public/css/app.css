@@ -250,6 +250,97 @@ button.file-pick.active {
   border-color: var(--gold-line);
 }
 
+/* ── File Manager: folder tree + delete buttons ──────────────────── */
+.file-folder { margin-bottom: 2px; }
+
+.file-folder-toggle {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  width: 100%;
+  text-align: left;
+  padding: 6px 8px;
+  border-radius: 6px;
+  background: transparent;
+  border: 1px solid transparent;
+  color: var(--gold-muted);
+  font-size: 12px;
+  cursor: pointer;
+  font-family: var(--font-mono);
+  transition: color .12s ease, background .12s ease, border-color .12s ease;
+}
+.file-folder-toggle:hover {
+  color: var(--gold-text);
+  background: rgba(255, 215, 0, 0.05);
+  border-color: var(--gold-line);
+}
+.file-folder-toggle .folder-caret {
+  color: var(--gold-dim);
+  font-size: 10px;
+  transition: transform .15s ease;
+}
+.file-folder-toggle.collapsed .folder-caret {
+  transform: rotate(-90deg);
+}
+.file-folder-toggle .folder-name {
+  font-weight: 600;
+}
+
+.file-folder-children {
+  margin-left: 12px;
+  padding-left: 8px;
+  border-left: 1px solid var(--gold-line);
+}
+.file-folder-children.collapsed {
+  display: none;
+}
+
+/* Each file row: clickable picker + hover-revealed delete button */
+.file-row {
+  display: flex;
+  align-items: center;
+  border-radius: 6px;
+}
+.file-row .file-pick {
+  flex: 1;
+  min-width: 0;
+}
+.file-del {
+  background: none;
+  border: none;
+  cursor: pointer;
+  padding: 4px 8px;
+  font-size: 13px;
+  line-height: 1;
+  opacity: 0;
+  flex-shrink: 0;
+  color: var(--gold-err);
+  transition: opacity .12s ease, transform .12s ease;
+}
+.file-row:hover .file-del,
+.file-folder:hover > .file-del {
+  opacity: .5;
+}
+.file-del:hover {
+  opacity: 1 !important;
+  transform: scale(1.1);
+}
+.file-del:focus-visible {
+  opacity: 1;
+  outline: 1px solid var(--gold);
+  outline-offset: 1px;
+}
+
+/* Touch devices have no hover — keep delete buttons visible */
+@media (hover: none) {
+  .file-del {
+    opacity: .55;
+  }
+  .file-del:hover {
+    opacity: 1;
+  }
+}
+
 /* ── Animations ───────────────────────────────────────────────────── */
 
 @keyframes gold-pulse-dot {

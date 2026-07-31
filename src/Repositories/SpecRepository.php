@@ -26,10 +26,10 @@ interface SpecRepository
     public function findForUser(string $id, string $userId): ?array;
 
     /** Create a new spec with 'draft' status. Returns the new id. */
-    public function create(string $userId, string $title, string $content): string;
+    public function create(string $userId, string $title, string $content, string $language = ''): string;
 
-    /** Update title, content, and optionally status. */
-    public function update(string $id, string $title, string $content, ?string $status): void;
+    /** Update title, content, and optionally status. Language is always written. */
+    public function update(string $id, string $title, string $content, ?string $status, string $language = ''): void;
 
     /** Delete a spec by id. */
     public function delete(string $id): void;

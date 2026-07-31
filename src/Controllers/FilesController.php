@@ -41,4 +41,17 @@ final class FilesController
         RepositoryRegistry::file()->delete($id, (string) $ctx->user()['id']);
         $ctx->jsonResponse(['deleted' => $id]);
     }
+
+    /**
+     * Delete every file under a folder path (path prefix), e.g.
+     * DELETE /api/files/tree?path=src removes src/ and all descendants.
+     */
+    public function deleteTree(RequestContext $ctx): void
+    {
+        $path = trim((string) ($ctx->json('path') ?? $ctx->query('path') ?? ''));
+        if ($path === '') $ctx->jsonResponse(['error' => 'path_required'], 400);
+
+        $count = RepositoryRegistry::file()->deleteByPrefix((string) $ctx->user()['id'], $path);
+        $ctx->jsonResponse(['deleted' => $count, 'path' => trim($path, '/')]);
+    }
 }

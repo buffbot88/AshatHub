@@ -26,7 +26,8 @@
   const LOCALSTORAGE_BUDGET  = 4  * 1024 * 1024;  // stay under 5MB hard cap
   const KEEP_BUILD_COUNT     = 1;                 // prune: latest only
   const REQUEST_TIMEOUT      = 120_000;           // 120 s for slow models
-  const DEFAULT_MAX_TOKENS   = 8192;               // room for plan + files JSON
+  const DEFAULT_MAX_TOKENS   = 8192;               // safe default (plan/chat)
+  const BUILD_MAX_TOKENS     = 16384;              // multi-file builds need more room
 
   // ── localStorage keys (single source of truth) ──────────────────
   const KEY_API       = 'ashat.api';
@@ -274,6 +275,48 @@
     }
   }
 
+  // Remove every generated file matching a path or folder prefix across
+  // ALL saved builds in localStorage. Used by the File Manager delete
+  // buttons: an AI-generated file's content lives in the browser, so
+  // deleting the server metadata row alone would leave a ghost entry.
+  // Returns the number of files removed.
+  function removeFilesByPrefix(prefix) {
+    prefix = String(prefix || '').trim();
+    if (!prefix) return 0;
+    // Normalize: no leading slash (mirrors sanitizePath), trailing
+    // slash optional — 'src' and 'src/' both mean the src/ folder.
+    prefix = prefix.replace(/^\/+/, '').replace(/\/+$/, '');
+    if (!prefix) return 0;
+    let removed = 0;
+    for (const entry of listGenerated()) {
+      const files = entry.files || [];
+      const keep = files.filter((f) => {
+        const p = (f && f.path) || '';
+        const hit = p === prefix || p.startsWith(prefix + '/');
+        if (hit) removed++;
+        return !hit;
+      });
+      if (keep.length === files.length) continue;
+      entry.files = keep;
+      entry.file_meta = (entry.file_meta || []).filter((m) => {
+        const p = (m && m.path) || '';
+        return !(p === prefix || p.startsWith(prefix + '/'));
+      });
+      // listGenerated() injects local_key into the parsed object — strip
+      // it before re-serializing so it never pollutes stored JSON.
+      const key = entry.local_key;
+      delete entry.local_key;
+      try {
+        if (keep.length === 0) {
+          localStorage.removeItem(key);
+        } else {
+          localStorage.setItem(key, JSON.stringify(entry));
+        }
+      } catch (_) { /* storage full/unavailable — best effort */ }
+    }
+    return removed;
+  }
+
   // Update one file's content within a saved build — used when the user
   // edits an AI-generated file in Monaco and hits "Save".
   function updateFile(buildId, path, newContent) {
@@ -300,32 +343,48 @@
     return true;
   }
 
-  // ── JSON extraction (handles ```json fences + prose) ────────────
-  // Robust against models that wrap JSON in fences, split it across
-  // multiple fences, or add prose around it. Prefers the fence that
-  // actually carries the full {plan, files} payload.
-  function extractJson(text) {
-    text = (text || '').trim();
-    try { return JSON.parse(text); } catch (_) { /* fall through */ }      // Try EVERY code fence, not just the first. Models often emit
-      // separate plan + files blocks; pick the one with a "files" array.
-      const fences = text.match(/```(?:json)?\s*([\s\S]*?)```/g) || [];
-      if (fences.length) {
-        let best = null;
-        for (const fence of fences) {
-          const inner = fence.replace(/^```(?:json)?\s*/i, '').replace(/```$/, '');
-          try {
-            const parsed = JSON.parse(inner);
-            if (parsed && Array.isArray(parsed.files)) return parsed;  // full payload wins
-            if (!best) best = parsed;
-          } catch (_) { /* try next fence */ }
-        }
-        if (best) return best;
+  // ── JSON string cleaner ─────────────────────────────────────────
+  // LLMs frequently emit literal newlines/tabs inside JSON string
+  // values (especially file contents), which strict JSON.parse()
+  // rejects. Walk the text string-aware and escape them so the
+  // payload can be recovered.
+  function cleanJsonStrings(text) {
+    let out = '';
+    let inStr = false;
+    let esc = false;
+    for (const ch of text) {
+      if (esc) { out += ch; esc = false; continue; }
+      if (inStr) {
+        if (ch === '\\') { out += ch; esc = true; continue; }
+        if (ch === '"') { inStr = false; out += ch; continue; }
+        if (ch === '\n') { out += '\\n'; continue; }
+        if (ch === '\r') { out += '\\r'; continue; }
+        if (ch === '\t') { out += '\\t'; continue; }
+        out += ch;
+        continue;
       }
+      if (ch === '"') inStr = true;
+      out += ch;
+    }
+    return out;
+  }
 
-    // Last resort: scan for a balanced {…} object anywhere in the text.
-    const start = text.indexOf('{');
-    if (start === -1) throw new Error('No JSON object found in AI response.');
-    let depth = 0, inStr = false, esc = false;
+  // Try a raw parse, then a cleaned parse (escaped in-string newlines).
+  function tryParseLenient(s) {
+    try { return JSON.parse(s); } catch (_) { /* raw failed */ }
+    try { return JSON.parse(cleanJsonStrings(s)); } catch (_) { /* cleaned failed */ }
+    return null;
+  }
+
+  // Scan for a balanced JSON value starting at `start`. String-aware,
+  // tracks BOTH {} and [] so nested arrays never confuse the scan.
+  // Returns { balanced: true, end } on success, or the unterminated
+  // state { balanced: false, stack, inStr } when the response was cut
+  // off (max_tokens) — which we can then repair.
+  function scanBalancedJson(text, start) {
+    let inStr = false;
+    let esc = false;
+    const stack = [];
     for (let i = start; i < text.length; i++) {
       const ch = text[i];
       if (esc) { esc = false; continue; }
@@ -335,13 +394,202 @@
         continue;
       }
       if (ch === '"') inStr = true;
-      else if (ch === '{') depth++;
-      else if (ch === '}') { depth--; if (depth === 0) {
-        try { return JSON.parse(text.slice(start, i + 1)); }
-        catch (e) { throw new Error('Balanced JSON found but parse failed: ' + e.message); }
-      } }
+      else if (ch === '{' || ch === '[') {
+        stack.push(ch);
+      } else if (ch === '}' || ch === ']') {
+        const top = stack[stack.length - 1];
+        const expects = ch === '}' ? '{' : '[';
+        if (top === expects) {
+          stack.pop();
+          if (stack.length === 0) return { balanced: true, end: i + 1 };
+        }
+      }
     }
-    throw new Error('Could not locate a balanced JSON object in AI response.');
+    return { balanced: false, stack: stack, inStr: inStr };
+  }
+
+  // Language label → project "language" value (mirrors detectLanguage).
+  // Accepts BOTH short fence labels (ts, py, sh) and full language names
+  // (typescript, python, shell) because models use either in fences.
+  function fenceLangToLanguage(lang) {
+    const m = {
+      js: 'javascript', javascript: 'javascript', jsx: 'javascript',
+      ts: 'typescript', typescript: 'typescript', tsx: 'typescript',
+      py: 'python', python: 'python',
+      rs: 'rust', rust: 'rust',
+      go: 'go', golang: 'go',
+      java: 'java',
+      rb: 'ruby', ruby: 'ruby',
+      php: 'php',
+      cs: 'csharp', csharp: 'csharp',
+      swift: 'swift',
+      html: 'html', htm: 'html',
+      css: 'css', scss: 'scss',
+      json: 'json',
+      yml: 'yaml', yaml: 'yaml',
+      md: 'markdown', markdown: 'markdown',
+      sql: 'sql',
+      sh: 'shell', shell: 'shell', bash: 'bash', zsh: 'shell',
+      toml: 'toml', xml: 'xml',
+      c: 'c', cpp: 'cpp', h: 'c', hpp: 'cpp',
+      txt: 'plaintext', text: 'plaintext',
+    };
+    return m[(lang || '').toLowerCase()] || 'plaintext';
+  }
+
+  // Language label → file extension for generated fallback paths.
+  function fenceExtFor(lang) {
+    const m = {
+      js: '.js', javascript: '.js', jsx: '.js',
+      ts: '.ts', typescript: '.ts', tsx: '.ts',
+      py: '.py', python: '.py',
+      rs: '.rs', rust: '.rs',
+      go: '.go', golang: '.go',
+      java: '.java',
+      rb: '.rb', ruby: '.rb',
+      php: '.php',
+      cs: '.cs', csharp: '.cs',
+      swift: '.swift',
+      html: '.html', htm: '.html',
+      css: '.css', scss: '.scss',
+      json: '.json',
+      yml: '.yml', yaml: '.yaml',
+      md: '.md', markdown: '.md',
+      sql: '.sql',
+      sh: '.sh', shell: '.sh', bash: '.sh', zsh: '.sh',
+      toml: '.toml', xml: '.xml',
+      c: '.c', cpp: '.cpp', h: '.h', hpp: '.hpp',
+    };
+    return m[(lang || '').toLowerCase()] || '.txt';
+  }
+
+  // Recover a file path from a code-fence info line (e.g. "tsx src/App.tsx")
+  // or a leading comment marker in the content (e.g. "// src/App.tsx",
+  // "# src/main.py", "<!-- src/index.html -->").
+  function extractFencePath(info, content) {
+    const tokens = (info || '').trim().split(/\s+/).filter(Boolean);
+    for (const t of tokens.slice(1)) { // first token is the language
+      if (/[\w.\-\/\\]+\.\w+/.test(t) && /[\/\\]/.test(t)) {
+        const p = sanitizePath(t);
+        if (p) return p;
+      }
+    }
+    const marker = content.match(/^(?:\/\/|#|--|;|\/\*|<!--)\s*(?:File:\s*)?([\w.\-\/\\]+\.\w+)\s*(?:\*\/|-->)?\s*$/m);
+    if (marker) {
+      const p = sanitizePath(marker[1]);
+      if (p) return p;
+    }
+    const fileLine = content.match(/^(?:#|--|;)?\s*[Ff]ile:\s*([\w.\-\/\\]+\.\w+)\s*$/m);
+    if (fileLine) {
+      const p = sanitizePath(fileLine[1]);
+      if (p) return p;
+    }
+    return '';
+  }
+
+  // ── JSON extraction (handles fences + prose + truncation) ────────
+  // Robust against models that wrap JSON in fences (any language label,
+  // not just ```json), split it across multiple fences, add prose, emit
+  // raw newlines inside strings, or get cut off by a token cap. Prefers
+  // the payload that actually carries the full {plan, files} shape.
+  function extractJson(text) {
+    text = (text || '').trim();
+    if (!text) throw new Error('AI response is empty.');
+
+    // 1. Direct parse (model obeyed the contract).
+    const direct = tryParseLenient(text);
+    if (direct && typeof direct === 'object') return direct;
+
+    // 2. Code fences — try EVERY fence, any language label. Prefer a
+    //    fence that parses as JSON and carries a "files" array.
+    const fenceRe = /```([a-zA-Z0-9_.\-+#/ ]*)[ \t]*\r?\n([\s\S]*?)(?:```|$)/g;
+    let m;
+    let fenceJson = null;
+    const fileFences = [];
+    while ((m = fenceRe.exec(text)) !== null) {
+      const info  = m[1] || '';
+      const inner = m[2] || '';
+      if (!inner.trim()) continue;
+      const parsed = tryParseLenient(inner);
+      if (parsed && typeof parsed === 'object') {
+        if (Array.isArray(parsed.files)) return parsed; // full payload wins
+        // A JSON-object fence is only a "plan-only" fence when it has
+        // a plan string; otherwise it's a JSON config FILE (package.json,
+        // tsconfig.json...) that must survive into the file list.
+        if (typeof parsed.plan === 'string' && parsed.plan.trim()) {
+          if (!fenceJson) fenceJson = parsed;
+        } else {
+          fileFences.push({ info: info, inner: inner });
+        }
+      } else {
+        // Not JSON — a per-file code block. Kept separate so a
+        // plan-only ```json fence can't shadow real file fences below.
+        fileFences.push({ info: info, inner: inner });
+      }
+    }
+
+    // 3. Per-file code fences — models that ignore the JSON contract
+    //    and dump one ```lang block per file. Reconstruct {plan, files[]}.
+    //    Runs BEFORE returning a plan-only fenceJson: a common pattern is
+    //    a ```json {"plan":...} fence followed by per-file ```lang blocks
+    //    — dropping those files would silently break the build.
+    if (fileFences.length) {
+      const files = [];
+      for (const f of fileFences) {
+        const content = f.inner.replace(/^\s*\r?\n/, '').replace(/\s+$/, '');
+        if (!content) continue;
+        // Normalize to the FIRST token of the fence info line — models
+        // write just "python", "tsx src/App.tsx", or "python src/lib/util.py".
+        const langInfo = f.info.trim().toLowerCase().replace(/^\./, '').split(/\s+/)[0] || '';
+        let path = extractFencePath(f.info, content);
+        if (!path) path = 'generated/file-' + (files.length + 1) + fenceExtFor(langInfo);
+        files.push({
+          path:     path,
+          content:  content,
+          language: fenceLangToLanguage(langInfo),
+        });
+      }
+      if (files.length) {
+        // Borrow the plan text from a plan-only fence if one exists.
+        const plan = (fenceJson && typeof fenceJson.plan === 'string' && fenceJson.plan.trim())
+          ? fenceJson.plan.trim()
+          : 'Build generated ' + files.length + ' file' + (files.length > 1 ? 's' : '') + ' from your spec.';
+        return { plan: plan, files: files };
+      }
+    }
+    if (fenceJson) return fenceJson;
+
+    // 4. A balanced JSON value buried anywhere in the text.
+    const start = text.indexOf('{');
+    if (start === -1) throw new Error('No JSON object found in AI response.');
+    const scan = scanBalancedJson(text, start);
+    if (scan.balanced) {
+      const parsed = tryParseLenient(text.slice(start, scan.end));
+      if (parsed) return parsed;
+      throw new Error('Balanced JSON found but parse failed.');
+    }
+
+    // 5. Truncation recovery — the response was cut off mid-value
+    //    (usually a max_tokens cap). Close the open string + brackets
+    //    and try; if that fails, walk back over closing brackets to
+    //    find the longest parseable prefix (bounded attempts).
+    let candidate = text.slice(start);
+    if (scan.inStr) candidate += '"';
+    candidate += scan.stack.slice().reverse().map((c) => (c === '{' ? '}' : ']')).join('');
+    let repaired = tryParseLenient(candidate);
+    if (repaired) return repaired;
+    let attempts = 0;
+    for (let i = candidate.length - 1; i > start && attempts < 80; i--) {
+      const ch = candidate[i];
+      if (ch !== '}' && ch !== ']') continue;
+      attempts++;
+      repaired = tryParseLenient(candidate.slice(0, i + 1));
+      if (repaired) return repaired;
+    }
+    throw new Error(
+      'Could not parse the AI build response as JSON. It may have been cut off ' +
+      '(try a smaller spec, or a larger/more capable model).'
+    );
   }
 
   // ── Content extraction: normalize ANY provider's chat response to a
@@ -447,6 +695,11 @@
           throw new Error('AI provider rejected the API key. Re-save it in /account/.');
         if (r.status === 503 || /loading model/i.test(errBody))
           throw new Error('The AI model is still loading. Give it a moment and try again.');
+        // Token-cap fallback: some providers reject a max_tokens above
+        // their ceiling with a 400/413. Retry once at the safe default.
+        if ((r.status === 400 || r.status === 413) && (opts.max_tokens || 0) > DEFAULT_MAX_TOKENS && !opts._tokenRetried) {
+          return chat(messages, Object.assign({}, opts, { max_tokens: DEFAULT_MAX_TOKENS, _tokenRetried: true }));
+        }
         throw new Error('AI provider error ' + r.status + ': ' + errBody);
       }
       const data = await r.json();
@@ -454,6 +707,30 @@
     } finally {
       if (timer) clearTimeout(timer);
     }
+  }
+
+  // ── Shared user-message builder ────────────────────────────────
+  // Builds the user prompt for plan (Phase 1) and build (Phase 2)
+  // modes. opts.language ('', 'Python', 'TypeScript', …) pins the
+  // project language so the model doesn't free-pick the stack.
+  function buildUserMsg(spec, mode, approvedPlan, language) {
+    const specText = (spec && (spec.content || spec.title)) ||
+      '(no specification provided)';
+    const lang = (language || '').trim();
+    const langNote = lang
+      ? '\n\nIMPORTANT: Build this project in ' + lang + '. ' +
+        'All source files, configuration, and README instructions must target ' + lang + '.'
+      : '';
+    if (mode === 'plan') {
+      return 'Create a build plan for the following specification:\n\n' + specText + langNote;
+    }
+    const approved = (approvedPlan || '').trim();
+    return approved
+      ? 'Build the following specification:\n\n' + specText +
+        '\n\nThe user approved this build plan — follow it exactly:\n' + approved +
+        '\n\nGenerate all necessary files with complete, working code.' + langNote
+      : 'Build the following specification:\n\n' + specText +
+        '\n\nGenerate all necessary files with complete, working code.' + langNote;
   }
 
   // ── Driver: spec → LLM → validated {plan, files[]} ──────────────
@@ -464,23 +741,15 @@
   async function runBuild(spec, opts) {
     opts = opts || {};
     const cfg = getLocalConfig();
-    const specText = (spec && (spec.content || spec.title)) ||
-      '(no specification provided)';
     const mode = opts.mode === 'plan' ? 'plan' : 'build';
-    const approvedPlan = (opts.plan || '').trim();
-    const userMsg = mode === 'plan'
-      ? 'Create a build plan for the following specification:\n\n' + specText
-      : approvedPlan
-        ? 'Build the following specification:\n\n' + specText +
-          '\n\nThe user approved this build plan — follow it exactly:\n' + approvedPlan +
-          '\n\nGenerate all necessary files with complete, working code.'
-        : 'Build the following specification:\n\n' + specText +
-          '\n\nGenerate all necessary files with complete, working code.';
+    const userMsg = buildUserMsg(spec, mode, opts.plan, opts.language);
     const messages = [
       { role: 'system', content: buildSystemPrompt(cfg && cfg.provider, mode) },
       { role: 'user',   content: userMsg },
     ];
-    const raw = await chat(messages, opts);
+    const callOpts = Object.assign({}, opts);
+    if (mode === 'build' && !callOpts.max_tokens) callOpts.max_tokens = BUILD_MAX_TOKENS;
+    const raw = await chat(messages, callOpts);
     const parsed = extractJson(raw);
     if (mode === 'plan') {
       const plan = (parsed && typeof parsed.plan === 'string') ? parsed.plan.trim() : '';
@@ -582,6 +851,12 @@
           throw new Error('AI provider rejected the API key. Re-save it in /account/.');
         if (r.status === 503 || /loading model/i.test(errBody))
           throw new Error('The AI model is still loading. Give it a moment and try again.');
+        // Token-cap fallback: some providers reject a max_tokens above
+        // their ceiling with a 400/413. Retry once at the safe default.
+        if ((r.status === 400 || r.status === 413) && (opts.max_tokens || 0) > DEFAULT_MAX_TOKENS && !opts._tokenRetried) {
+          if (opts.onProgress) opts.onProgress('Token cap hit — retrying with a smaller limit…');
+          return chatStream(messages, Object.assign({}, opts, { max_tokens: DEFAULT_MAX_TOKENS, _tokenRetried: true }));
+        }
         throw new Error('AI provider error ' + r.status + ': ' + errBody);
       }
 
@@ -615,7 +890,14 @@
           if (data === '[DONE]') continue;
           try {
             const parsed = JSON.parse(data);
-            const content = parsed.choices?.[0]?.delta?.content || '';
+            const choice = parsed.choices?.[0];
+            // delta.content is the normal streaming path; message.content
+            // covers endpoints that ignore "stream":true and emit the
+            // whole reply as one SSE event. Only fall back to message
+            // while nothing has streamed yet, so an endpoint sending
+            // BOTH can't double-count the full reply.
+            const content = (choice && choice.delta && choice.delta.content) ||
+                            (!fullText && choice && choice.message && choice.message.content) || '';
             if (content) {
               fullText += content;
               if (opts.onToken) opts.onToken(content);
@@ -659,23 +941,15 @@
   async function runBuildStream(spec, opts) {
     opts = opts || {};
     const cfg = getLocalConfig();
-    const specText = (spec && (spec.content || spec.title)) ||
-      '(no specification provided)';
     const mode = opts.mode === 'plan' ? 'plan' : 'build';
-    const approvedPlan = (opts.plan || '').trim();
-    const userMsg = mode === 'plan'
-      ? 'Create a build plan for the following specification:\n\n' + specText
-      : approvedPlan
-        ? 'Build the following specification:\n\n' + specText +
-          '\n\nThe user approved this build plan — follow it exactly:\n' + approvedPlan +
-          '\n\nGenerate all necessary files with complete, working code.'
-        : 'Build the following specification:\n\n' + specText +
-          '\n\nGenerate all necessary files with complete, working code.';
+    const userMsg = buildUserMsg(spec, mode, opts.plan, opts.language);
     const messages = [
       { role: 'system', content: buildSystemPrompt(cfg && cfg.provider, mode) },
       { role: 'user',   content: userMsg },
     ];
-    const fullText = await chatStream(messages, opts);
+    const callOpts = Object.assign({}, opts);
+    if (mode === 'build' && !callOpts.max_tokens) callOpts.max_tokens = BUILD_MAX_TOKENS;
+    const fullText = await chatStream(messages, callOpts);
     const parsed = extractJson(fullText);
     if (mode === 'plan') {
       const plan = (parsed && typeof parsed.plan === 'string') ? parsed.plan.trim() : '';
@@ -692,6 +966,7 @@
     getByoConfig,
     // Generated-code store
     saveGenerated, loadGenerated, listGenerated, pruneGenerated, updateFile,
+    removeFilesByPrefix,
     uuid,
     escapeHtml,
     // LLM driver

@@ -40,6 +40,9 @@ $router->group('/api', function () use ($router) {
             $router->get('',          [\Controllers\FilesController::class,  'list']);
             $router->get('/{id}',     [\Controllers\FilesController::class,  'show']);
             $router->post('',         [\Controllers\FilesController::class,  'save']);
+            // Folder delete — MUST be declared before /{id} so 'tree'
+            // isn't captured as an id.
+            $router->delete('/tree',  [\Controllers\FilesController::class,  'deleteTree']);
             $router->delete('/{id}',  [\Controllers\FilesController::class,  'delete']);
         });
 

@@ -16,6 +16,15 @@
     if (m) {
       monacoEd = m;
       clearInterval(monacoDetect);
+      // If the user typed into the fallback textarea before Monaco
+      // booted, carry that content over instead of the stale snapshot,
+      // then remove the textarea (Monaco now owns the shell).
+      var shellEl = document.getElementById('monaco-shell');
+      var ta = shellEl ? shellEl.querySelector('textarea.fallback-editor') : null;
+      if (ta) {
+        if (ta.value && ta.value !== monacoPendingContent) monacoPendingContent = ta.value;
+        if (ta.parentNode) ta.parentNode.removeChild(ta);
+      }
       // Replay any content that was set before Monaco was ready
       if (monacoPendingContent !== null) {
         monacoEd.setValue(monacoPendingContent);
@@ -52,8 +61,15 @@ Quick build from the Studio dashboard.
       e.preventDefault();
       const fd = new FormData(quick);
       const title = (fd.get('idea') || '').trim() || 'Untitled Project';
+      const lang = (fd.get('language') || '').trim();
+      // Inject the chosen language into the quick-spec template so the
+      // coding agent sees it in the spec body too. Always normalize the
+      // line — with "Auto" (lang === '') the body must NOT still claim
+      // TypeScript, which would contradict the Auto choice.
+      let content = QUICK_SPEC;
+      content = content.replace('- Language: TypeScript', '- Language: ' + (lang || 'Auto'));
       try {
-        await ashatFetch('/api/specs/', { method: 'POST', body: { title } });
+        await ashatFetch('/api/specs/', { method: 'POST', body: { title, content, language: lang } });
         ashatToast('Spec created — opening planner…', 'ok');
         setTimeout(() => (window.location.href = '/ide/planner/'), 350);
       } catch (err) {
@@ -67,9 +83,14 @@ Quick build from the Studio dashboard.
   if (btnBuild) {
     btnBuild.addEventListener('click', async () => {
       try {
+        // Honor the language dropdown on this same page (falls back to
+        // Auto when unset) — and keep the spec body in sync: it must not
+        // claim a language when none was chosen.
+        const lang = currentLanguage();
+        const content = QUICK_SPEC.replace('- Language: TypeScript', '- Language: ' + (lang || 'Auto'));
         const resp = await ashatFetch('/api/specs/', {
           method: 'POST',
-          body: { title: 'Ad-hoc Build', content: QUICK_SPEC },
+          body: { title: 'Ad-hoc Build', content, language: lang },
         });
         window.location.href = '/ide/planner/?spec=' + encodeURIComponent(resp.spec.id);
       } catch (e) { ashatToast('Build kickoff failed.', 'err'); }
@@ -81,6 +102,7 @@ Quick build from the Studio dashboard.
   const empty       = document.getElementById('planner-empty');
   const active      = document.getElementById('planner-active');
   const titleInput  = document.getElementById('planner-title');
+  const langSelect  = document.getElementById('planner-language');
   const contentTA   = document.getElementById('planner-content');
   const planEl      = document.getElementById('planner-plan');
   const btnNew      = document.getElementById('btn-new-spec');
@@ -90,6 +112,15 @@ Quick build from the Studio dashboard.
 
   let currentSpec = null;
   let approvedPlan = '';   // plan from Phase 1, passed to the coding agent in Phase 2
+
+  // Current project language ('' = Auto). Falls back to the spec's
+  // stored language, or the quick-spec select if on the dashboard.
+  function currentLanguage() {
+    if (langSelect && langSelect.value) return langSelect.value;
+    const qs = document.getElementById('quick-spec-language');
+    if (qs && qs.value) return qs.value;
+    return '';
+  }
 
   async function pickSpec(id) {
     // Reset approval state so a plan for one spec can never be approved
@@ -114,6 +145,7 @@ Quick build from the Studio dashboard.
       currentSpec = spec;
       titleInput.value = spec.title || '';
       contentTA.value  = spec.content || '';
+      if (langSelect) langSelect.value = spec.language || '';
       planEl.textContent = spec.status === 'complete'
         ? 'Saved. Click "Build" to regenerate from your spec.'
         : 'Saved. Click "Build" to generate a plan.';
@@ -132,7 +164,7 @@ Quick build from the Studio dashboard.
   if (btnNew) {
     btnNew.addEventListener('click', async () => {
       try {
-        const resp = await ashatFetch('/api/specs/', { method: 'POST', body: { title: 'Untitled Spec ' + Date.now() } });
+        const resp = await ashatFetch('/api/specs/', { method: 'POST', body: { title: 'Untitled Spec ' + Date.now(), language: currentLanguage() } });
         if (resp && resp.spec) {
           window.location.href = '/ide/planner/?spec=' + encodeURIComponent(resp.spec.id);
         } else {
@@ -151,7 +183,7 @@ Quick build from the Studio dashboard.
       if (!currentSpec) return ashatToast('Pick a spec first.', 'warn');
       await ashatFetch('/api/specs/' + encodeURIComponent(currentSpec.id), {
         method: 'PUT',
-        body: { title: titleInput.value, content: contentTA.value },
+        body: { title: titleInput.value, content: contentTA.value, language: currentLanguage() },
       });
       ashatToast('Spec saved.', 'ok');
     });
@@ -174,7 +206,7 @@ Quick build from the Studio dashboard.
       try {
         await ashatFetch('/api/specs/' + encodeURIComponent(currentSpec.id), {
           method: 'PUT',
-          body: { title: titleInput.value, content: contentTA.value },
+          body: { title: titleInput.value, content: contentTA.value, language: currentLanguage() },
         });
       } catch (e) { /* ignore — server may already be up to date */ }
 
@@ -212,9 +244,11 @@ Quick build from the Studio dashboard.
               id: currentSpec.id,
               title: titleInput.value,
               content: contentTA.value,
+              language: currentLanguage(),
             },
             {
               mode: 'plan',
+              language: currentLanguage(),
               onToken: function (token) {
                 fullResponse += token;
                 planContainer.textContent = fullResponse;
@@ -233,8 +267,9 @@ Quick build from the Studio dashboard.
               id: currentSpec.id,
               title: titleInput.value,
               content: contentTA.value,
+              language: currentLanguage(),
             },
-            { mode: 'plan' }
+            { mode: 'plan', language: currentLanguage() }
           );
         } else {
           throw new Error('Coding Agent (agent.js) did not load.');
@@ -297,9 +332,11 @@ Quick build from the Studio dashboard.
               id: currentSpec.id,
               title: titleInput.value,
               content: contentTA.value,
+              language: currentLanguage(),
             },
             {
               plan: approvedPlan,   // the coding agent follows the approved plan
+              language: currentLanguage(),
               onToken: function (token) {
                 fullResponse += token;
                 planContainer.textContent = fullResponse.length > 4000
@@ -319,8 +356,9 @@ Quick build from the Studio dashboard.
               id: currentSpec.id,
               title: titleInput.value,
               content: contentTA.value,
+              language: currentLanguage(),
             },
-            { plan: approvedPlan }   // the coding agent follows the approved plan
+            { plan: approvedPlan, language: currentLanguage() }   // the coding agent follows the approved plan
           );
         }
 
@@ -377,7 +415,10 @@ Quick build from the Studio dashboard.
     return i === -1 ? '/' : p.slice(0, i);
   }
 
-  // ── Render the sidebar from the merged file list ────────────────
+  // ── Render the sidebar as a folder tree from the merged list ────
+  // Root-level files appear first; every directory becomes a
+  // collapsible folder row with a delete button, and each file row has
+  // its own delete button (both handle server rows + localStorage).
   function renderFileList(files) {
     if (!fileList) return;
     fileList.innerHTML = '';
@@ -389,8 +430,30 @@ Quick build from the Studio dashboard.
       fileList.appendChild(li);
       return;
     }
+
+    // Group by directory ('/' = root level).
+    const folders = {};
+    const roots = [];
     files.forEach(function (f) {
+      const dir = pathDir(f.path);
+      if (dir === '/' || dir === '') { roots.push(f); }
+      else { (folders[dir] = folders[dir] || []).push(f); }
+    });
+
+    function makeDeleteBtn(kind, value, label) {
+      const del = document.createElement('button');
+      del.type = 'button';
+      del.className = 'file-del';
+      del.dataset[kind] = value;
+      del.title = label;
+      del.textContent = '🗑';
+      del.setAttribute('aria-label', label);
+      return del;
+    }
+
+    function makeFileRow(f) {
       const li = document.createElement('li');
+      li.className = 'file-row';
       const btn = document.createElement('button');
       btn.dataset.path = f.path;
       btn.className = 'file-pick block w-full text-left px-2 py-1.5 rounded-md';
@@ -405,8 +468,108 @@ Quick build from the Studio dashboard.
       btn.appendChild(name);
       btn.appendChild(dir);
       li.appendChild(btn);
+      li.appendChild(makeDeleteBtn('deleteFile', f.path, 'Delete ' + f.path));
+      return li;
+    }
+
+    // Root-level files first (sorted).
+    roots.sort(function (a, b) { return a.path.localeCompare(b.path); });
+    roots.forEach(function (f) { fileList.appendChild(makeFileRow(f)); });
+
+    // One collapsible folder row per directory, then its files.
+    Object.keys(folders).sort().forEach(function (dir) {
+      const li = document.createElement('li');
+      li.className = 'file-folder';
+
+      const toggle = document.createElement('button');
+      toggle.type = 'button';
+      toggle.className = 'file-folder-toggle';
+      const caret = document.createElement('span');
+      caret.className = 'folder-caret';
+      caret.textContent = '▸';
+      const name = document.createElement('span');
+      name.className = 'folder-name';
+      name.textContent = '📁 ' + dir;
+      toggle.appendChild(caret);
+      toggle.appendChild(name);
+      toggle.title = dir + '/ — click to collapse/expand';
+      li.appendChild(toggle);
+      li.appendChild(makeDeleteBtn('deleteFolder', dir, 'Delete folder ' + dir + '/'));
+
+      const ul = document.createElement('ul');
+      ul.className = 'file-folder-children';
+      folders[dir].sort(function (a, b) { return a.path.localeCompare(b.path); });
+      folders[dir].forEach(function (f) { ul.appendChild(makeFileRow(f)); });
+      li.appendChild(ul);
       fileList.appendChild(li);
     });
+  }
+
+  // ── Delete helpers (server row + localStorage generated content) ─
+  // Agent-generated file content lives in localStorage, so deleting the
+  // server metadata row alone would leave a ghost entry — always clean
+  // the local store too, then re-hydrate the merged list.
+  async function deleteFile(path) {
+    const file = fmFiles.find((f) => f.path === path);
+    if (!file) return ashatToast('File not found.', 'warn');
+    const generated = Number(file.generated) === 1 || !!file.local_only;
+    const msg = 'Delete ' + path + '?\n' +
+      (generated
+        ? 'This file was generated by the coding agent and will be removed from this browser.'
+        : 'This will permanently remove the file from your project.');
+    if (!window.confirm(msg)) return;
+
+    try {
+      // Server row FIRST (generated rows hold metadata only) — if the
+      // server call fails, abort before touching localStorage content.
+      if (file.id) {
+        await ashatFetch('/api/files/' + encodeURIComponent(file.id), { method: 'DELETE' });
+      }
+      let localRemoved = 0;
+      if (window.ASHAT && window.ASHAT.agent && typeof window.ASHAT.agent.removeFilesByPrefix === 'function') {
+        localRemoved = window.ASHAT.agent.removeFilesByPrefix(path);
+      }
+      if (activeFile && activeFile.path === path) {
+        activeFile = null;
+        editorTitle.textContent = 'pick a file →';
+        monacoSetContent('');
+      }
+      ashatToast('Deleted ' + path + (localRemoved ? ' (local copy removed)' : ''), 'ok');
+      await reloadFileList();
+    } catch (e) {
+      ashatToast('Could not delete ' + path + ': ' + ((e && e.message) || 'unknown'), 'err');
+    }
+  }
+
+  async function deleteFolder(dir) {
+    const members = fmFiles.filter((f) => f.path === dir || f.path.startsWith(dir + '/'));
+    if (members.length === 0) return ashatToast('Folder is empty.', 'warn');
+    if (!window.confirm('Delete folder ' + dir + '/ and its ' + members.length + ' file' + (members.length === 1 ? '' : 's') + '?')) return;
+
+    try {
+      // Server folder delete FIRST — if it fails, abort before touching
+      // localStorage so generated content isn't wiped for nothing.
+      await ashatFetch('/api/files/tree?path=' + encodeURIComponent(dir), { method: 'DELETE' });
+      let localRemoved = 0;
+      if (window.ASHAT && window.ASHAT.agent && typeof window.ASHAT.agent.removeFilesByPrefix === 'function') {
+        localRemoved = window.ASHAT.agent.removeFilesByPrefix(dir);
+      }
+      if (activeFile && (activeFile.path === dir || activeFile.path.startsWith(dir + '/'))) {
+        activeFile = null;
+        editorTitle.textContent = 'pick a file →';
+        monacoSetContent('');
+      }
+      ashatToast('Deleted folder ' + dir + '/' + (localRemoved ? ' (' + localRemoved + ' local)' : ''), 'ok');
+      await reloadFileList();
+    } catch (e) {
+      ashatToast('Could not delete folder: ' + ((e && e.message) || 'unknown'), 'err');
+    }
+  }
+
+  // Invalidate the cached hydration promise and re-fetch both sources.
+  async function reloadFileList() {
+    fmLoadPromise = null;
+    await loadFileList();
   }
 
   // ── Hydrate the file list from BOTH the server and localStorage ──
@@ -415,57 +578,65 @@ Quick build from the Studio dashboard.
   // shows an empty screen just because one source is missing (e.g. a
   // fresh deploy where the files table is empty, or a build whose
   // metadata POST failed).
-  async function loadFileList() {
-    if (!fileList) return;
+  //
+  // Re-entry guard: the click handler may need to await hydration, but
+  // only one fetch should ever run (page-load and click can race).
+  let fmLoadPromise = null;
+  function loadFileList() {
+    if (fmLoadPromise) return fmLoadPromise;
+    fmLoadPromise = (async function () {
+      if (!fileList) return;
 
-    // 1. Server rows (metadata). Failure is non-fatal — localStorage
-    //    generated files can still populate the list.
-    let serverFiles = [];
-    try {
-      const r = await ashatFetch('/api/files/');
-      serverFiles = (r && r.files) ? r.files : [];
-    } catch (e) {
-      ashatToast('Could not load files from the server.', 'warn');
-    }
+      // 1. Server rows (metadata). Failure is non-fatal — localStorage
+      //    generated files can still populate the list.
+      let serverFiles = [];
+      try {
+        const r = await ashatFetch('/api/files/');
+        serverFiles = (r && r.files) ? r.files : [];
+      } catch (e) {
+        ashatToast('Could not load files from the server.', 'warn');
+      }
 
-    // 2. LocalStorage-generated files (agent output).
-    const localFiles = [];
-    try {
-      if (window.ASHAT && window.ASHAT.agent && typeof window.ASHAT.agent.listGenerated === 'function') {
-        const entries = window.ASHAT.agent.listGenerated();
-        for (const entry of entries) {
-          for (const f of (entry.files || [])) {
-            if (!f || !f.path) continue;
-            localFiles.push({
-              id: '',                        // no server row for local-only files
-              path: f.path,
-              language: f.language || '',
-              saved: 1,
-              generated: 1,
-              build_id: entry.build_id || '',
-              build_phase: 'agent',
-              local_only: true,
-            });
+      // 2. LocalStorage-generated files (agent output).
+      const localFiles = [];
+      try {
+        if (window.ASHAT && window.ASHAT.agent && typeof window.ASHAT.agent.listGenerated === 'function') {
+          const entries = window.ASHAT.agent.listGenerated();
+          for (const entry of entries) {
+            for (const f of (entry.files || [])) {
+              if (!f || !f.path) continue;
+              localFiles.push({
+                id: '',                        // no server row for local-only files
+                path: f.path,
+                language: f.language || '',
+                saved: 1,
+                generated: 1,
+                build_id: entry.build_id || '',
+                build_phase: 'agent',
+                local_only: true,
+              });
+            }
           }
         }
-      }
-    } catch (_) { /* localStorage unavailable — ignore */ }
+      } catch (_) { /* localStorage unavailable — ignore */ }
 
-    // 3. Merge by path (server row wins; local entries fill the gaps).
-    const byPath = {};
-    serverFiles.forEach(function (f) { if (f && f.path) byPath[f.path] = f; });
-    localFiles.forEach(function (f) {
-      if (byPath[f.path]) {
-        // Server row exists — mark it generated so the click handler
-        // sources content from localStorage.
-        if (Number(byPath[f.path].generated) !== 1) byPath[f.path].generated = 1;
-        return;
-      }
-      byPath[f.path] = f;
-    });
+      // 3. Merge by path (server row wins; local entries fill the gaps).
+      const byPath = {};
+      serverFiles.forEach(function (f) { if (f && f.path) byPath[f.path] = f; });
+      localFiles.forEach(function (f) {
+        if (byPath[f.path]) {
+          // Server row exists — mark it generated so the click handler
+          // sources content from localStorage.
+          if (Number(byPath[f.path].generated) !== 1) byPath[f.path].generated = 1;
+          return;
+        }
+        byPath[f.path] = f;
+      });
 
-    fmFiles = Object.keys(byPath).sort().map(function (k) { return byPath[k]; });
-    renderFileList(fmFiles);
+      fmFiles = Object.keys(byPath).sort().map(function (k) { return byPath[k]; });
+      renderFileList(fmFiles);
+    })();
+    return fmLoadPromise;
   }
 
   // Hydrate on page load
@@ -508,8 +679,27 @@ Quick build from the Studio dashboard.
   }
 
   // ── Monaco-aware file content helpers ────────────────────────────
+  // If Monaco never boots (CDN blocked), the editor shell degrades to
+  // a plain <textarea> so files are ALWAYS editable — the old fallback
+  // (`editor.textContent = val`) rendered a read-only div, which is
+  // exactly the "can create but can't edit" symptom.
+  function ensureFallbackEditor() {
+    if (!editor) return null;
+    if (monacoEd && monacoEd.getValue) return null; // Monaco took over
+    var ta = editor.querySelector('textarea.fallback-editor');
+    if (!ta) {
+      editor.textContent = '';
+      ta = document.createElement('textarea');
+      ta.className = 'fallback-editor';
+      ta.style.cssText = 'width:100%;height:100%;min-height:400px;resize:vertical;box-sizing:border-box;background:rgba(15,15,23,0.5);color:#d4c590;border:none;outline:none;padding:12px;font-family:var(--font-mono);font-size:13px;line-height:1.6;';
+      editor.appendChild(ta);
+    }
+    return ta;
+  }
   function monacoGetContent() {
-    return (monacoEd && monacoEd.getValue) ? monacoEd.getValue() : editor.textContent;
+    if (monacoEd && monacoEd.getValue) return monacoEd.getValue();
+    var ta = ensureFallbackEditor();
+    return ta ? ta.value : (editor ? editor.textContent : '');
   }
   function monacoSetContent(val) {
     val = val || '';
@@ -517,7 +707,8 @@ Quick build from the Studio dashboard.
     if (monacoEd && monacoEd.setValue) {
       monacoEd.setValue(val);
     } else {
-      editor.textContent = val;
+      var ta = ensureFallbackEditor();
+      if (ta) ta.value = val;
     }
   }
   function monacoDetectLanguage(path) {
@@ -540,6 +731,25 @@ Quick build from the Studio dashboard.
 
   if (fileList) {
     fileList.addEventListener('click', async (e) => {
+      // Folder collapse/expand toggle
+      const folderToggle = e.target.closest('button.file-folder-toggle');
+      if (folderToggle) {
+        const li = folderToggle.closest('li.file-folder');
+        const children = li ? li.querySelector('.file-folder-children') : null;
+        if (children) {
+          const collapsed = children.classList.toggle('collapsed');
+          folderToggle.classList.toggle('collapsed', collapsed);
+        }
+        return;
+      }
+
+      // Delete buttons (stopPropagation so the file-open row click below
+      // never fires for the same event)
+      const delFile = e.target.closest('[data-delete-file]');
+      if (delFile) { e.stopPropagation(); return deleteFile(delFile.dataset.deleteFile); }
+      const delFolder = e.target.closest('[data-delete-folder]');
+      if (delFolder) { e.stopPropagation(); return deleteFolder(delFolder.dataset.deleteFolder); }
+
       const btn = e.target.closest('button.file-pick');
       if (!btn) return;
       const path = btn.dataset.path;
@@ -548,7 +758,10 @@ Quick build from the Studio dashboard.
       );
 
       // Read from the merged list — the server fetch alone would miss
-      // local-only generated files.
+      // local-only generated files. The server-rendered sidebar is
+      // clickable before hydration resolves, so await the load when
+      // the merged list isn't populated yet.
+      if (fmFiles.length === 0) await loadFileList();
       const file = fmFiles.find((f) => f.path === path);
       if (!file) return ashatToast('File not found.', 'warn');
       activeFile = file;

@@ -31,6 +31,9 @@ interface TicketRepository
     /** Update ticket status. */
     public function updateStatus(string $id, string $status): void;
 
+    /** Permanently delete a ticket and its replies (FK cascade). */
+    public function delete(string $id): void;
+
     /** All replies for a ticket, ordered by created_at ASC. */
     public function repliesForTicket(string $ticketId): array;
 

@@ -26,7 +26,7 @@
   const LOCALSTORAGE_BUDGET  = 4  * 1024 * 1024;  // stay under 5MB hard cap
   const KEEP_BUILD_COUNT     = 1;                 // prune: latest only
   const REQUEST_TIMEOUT      = 120_000;           // 120 s for slow models
-  const DEFAULT_MAX_TOKENS   = 4096;
+  const DEFAULT_MAX_TOKENS   = 8192;               // room for plan + files JSON
 
   // ── localStorage keys (single source of truth) ──────────────────
   const KEY_API       = 'ashat.api';
@@ -59,14 +59,35 @@
     '- Do NOT include private keys, real credentials, or secrets.',
   ].join('\n');
 
+  // Plan-only prompt — used in Phase 1 of the Planner. The model returns
+  // just {"plan": "..."} so the user can approve BEFORE any code is
+  // generated. File generation only happens in Phase 2 (runBuild).
+  const PLAN_SYSTEM_PROMPT = [
+    'You are ASHAT, an AI software architect. Given a user spec, produce a concise build plan.',
+    'Return a single JSON object with EXACTLY this shape:',
+    '',
+    '{',
+    '  "plan": "A 2-6 sentence step-by-step build plan: what you will build, which files you will create, and in what order."',
+    '}',
+    '',
+    'Rules:',
+    '- Plan ONLY — do NOT generate file contents yet. The user must approve the plan first.',
+    '- List the key files/architecture you intend to create.',
+    '- No markdown, no code fences, no prose before or after the JSON.',
+  ].join('\n');
+
   // HF Llama/Mistral tend to wrap JSON in ```fences```; be extra-explicit
   // so we can reliably parse the result.
-  function buildSystemPrompt(provider) {
+  function buildSystemPrompt(provider, mode) {
     const p = (provider || '').toLowerCase();
+    const jsonNote = '\n\nIMPORTANT: Your entire response must be a single JSON object. ' +
+      'No markdown code fences, no prose before or after. The first character of your ' +
+      'response must be "{" and the last must be "}".';
+    if (mode === 'plan') {
+      return PLAN_SYSTEM_PROMPT + ((p.includes('huggingface') || p.includes('hf ')) ? jsonNote : '');
+    }
     if (p.includes('huggingface') || p.includes('hf ')) {
-      return BASE_SYSTEM_PROMPT + '\n\nIMPORTANT: Your entire response must be a single JSON object. ' +
-        'No markdown code fences, no prose before or after. The first character of your ' +
-        'response must be "{" and the last must be "}".';
+      return BASE_SYSTEM_PROMPT + jsonNote;
     }
     return BASE_SYSTEM_PROMPT;
   }
@@ -280,11 +301,28 @@
   }
 
   // ── JSON extraction (handles ```json fences + prose) ────────────
+  // Robust against models that wrap JSON in fences, split it across
+  // multiple fences, or add prose around it. Prefers the fence that
+  // actually carries the full {plan, files} payload.
   function extractJson(text) {
     text = (text || '').trim();
-    try { return JSON.parse(text); } catch (_) { /* fall through */ }
-    const fence = text.match(/```(?:json)?\s*([\s\S]*?)```/);
-    if (fence) { try { return JSON.parse(fence[1]); } catch (_) { /* fall through */ } }
+    try { return JSON.parse(text); } catch (_) { /* fall through */ }      // Try EVERY code fence, not just the first. Models often emit
+      // separate plan + files blocks; pick the one with a "files" array.
+      const fences = text.match(/```(?:json)?\s*([\s\S]*?)```/g) || [];
+      if (fences.length) {
+        let best = null;
+        for (const fence of fences) {
+          const inner = fence.replace(/^```(?:json)?\s*/i, '').replace(/```$/, '');
+          try {
+            const parsed = JSON.parse(inner);
+            if (parsed && Array.isArray(parsed.files)) return parsed;  // full payload wins
+            if (!best) best = parsed;
+          } catch (_) { /* try next fence */ }
+        }
+        if (best) return best;
+      }
+
+    // Last resort: scan for a balanced {…} object anywhere in the text.
     const start = text.indexOf('{');
     if (start === -1) throw new Error('No JSON object found in AI response.');
     let depth = 0, inStr = false, esc = false;
@@ -304,6 +342,36 @@
       } }
     }
     throw new Error('Could not locate a balanced JSON object in AI response.');
+  }
+
+  // ── Content extraction: normalize ANY provider's chat response to a
+  // plain string, so BYO keys work across OpenAI, Anthropic, and Gemini
+  // compatible endpoints — not just OpenAI's choices[0].message.content.
+  function extractContent(data) {
+    if (!data || typeof data !== 'object') return '';
+    // OpenAI-compatible
+    if (typeof data.content === 'string' && data.content) return data.content;
+    if (Array.isArray(data.choices)) {
+      const c = data.choices[0];
+      const msg = c && c.message;
+      if (msg && typeof msg.content === 'string') return msg.content;
+    }
+    // Anthropic: {content: [{type: 'text', text: '…'}]}
+    if (Array.isArray(data.content)) {
+      const text = data.content
+        .map((b) => (b && typeof b.text === 'string' ? b.text : ''))
+        .join('');
+      if (text) return text;
+    }
+    // Gemini: {candidates: [{content: {parts: [{text}]}}]}
+    if (Array.isArray(data.candidates)) {
+      const parts = data.candidates[0] && data.candidates[0].content && data.candidates[0].content.parts;
+      if (Array.isArray(parts)) {
+        const text = parts.map((p) => (p && typeof p.text === 'string' ? p.text : '')).join('');
+        if (text) return text;
+      }
+    }
+    return '';
   }
 
   // ── Retry helper: transient upstream failures (429 / 5xx) ────────
@@ -382,24 +450,43 @@
         throw new Error('AI provider error ' + r.status + ': ' + errBody);
       }
       const data = await r.json();
-      return data.choices?.[0]?.message?.content || data.content || '';
+      return extractContent(data);
     } finally {
       if (timer) clearTimeout(timer);
     }
   }
 
   // ── Driver: spec → LLM → validated {plan, files[]} ──────────────
+  // opts.mode === 'plan' returns {plan} only (Phase 1, pre-approval).
+  // Default mode returns the full validated {plan, files[]} payload.
+  // opts.plan (approved plan text) is injected into the build prompt so
+  // the coding agent follows the plan the user actually approved.
   async function runBuild(spec, opts) {
+    opts = opts || {};
     const cfg = getLocalConfig();
     const specText = (spec && (spec.content || spec.title)) ||
       '(no specification provided)';
+    const mode = opts.mode === 'plan' ? 'plan' : 'build';
+    const approvedPlan = (opts.plan || '').trim();
+    const userMsg = mode === 'plan'
+      ? 'Create a build plan for the following specification:\n\n' + specText
+      : approvedPlan
+        ? 'Build the following specification:\n\n' + specText +
+          '\n\nThe user approved this build plan — follow it exactly:\n' + approvedPlan +
+          '\n\nGenerate all necessary files with complete, working code.'
+        : 'Build the following specification:\n\n' + specText +
+          '\n\nGenerate all necessary files with complete, working code.';
     const messages = [
-      { role: 'system', content: buildSystemPrompt(cfg && cfg.provider) },
-      { role: 'user',   content: 'Build the following specification:\n\n' + specText +
-        '\n\nGenerate all necessary files with complete, working code.' },
+      { role: 'system', content: buildSystemPrompt(cfg && cfg.provider, mode) },
+      { role: 'user',   content: userMsg },
     ];
     const raw = await chat(messages, opts);
     const parsed = extractJson(raw);
+    if (mode === 'plan') {
+      const plan = (parsed && typeof parsed.plan === 'string') ? parsed.plan.trim() : '';
+      if (!plan) throw new Error('AI returned no plan text. Try a different model or provider.');
+      return { plan: plan };
+    }
     return runSafetyGates(parsed);
   }
 
@@ -504,6 +591,7 @@
       const decoder = new TextDecoder();
       let fullText = '';
       let buffer = '';
+      let rawBody = '';
 
       if (opts.onProgress) opts.onProgress('Generating…');
 
@@ -511,7 +599,12 @@
         const { done, value } = await reader.read();
         if (done) break;
 
-        buffer += decoder.decode(value, { stream: true });
+        // Decode ONCE per chunk — TextDecoder is stateful (stream mode
+        // buffers partial multibyte sequences), so decoding the same
+        // bytes twice would corrupt the rawBody fallback below.
+        const chunk = decoder.decode(value, { stream: true });
+        rawBody += chunk;
+        buffer += chunk;
         const lines = buffer.split('\n');
         buffer = lines.pop() || ''; // keep incomplete line in buffer
 
@@ -540,6 +633,18 @@
       }
 
       if (opts.onProgress) opts.onProgress('Parsing response…');
+
+      // Non-SSE fallback: some OpenAI-compatible endpoints ignore the
+      // "stream": true flag and return a single JSON body instead of
+      // SSE lines. The SSE loop above would have skipped it entirely,
+      // leaving fullText empty — so recover it from the raw body.
+      if (!fullText && rawBody.trim()) {
+        try {
+          const single = JSON.parse(rawBody.trim());
+          fullText = extractContent(single);
+        } catch (_) { /* raw body is not JSON — leave fullText empty */ }
+      }
+
       return fullText;
     } finally {
       if (timer) clearTimeout(timer);
@@ -547,18 +652,36 @@
   }
 
   // ── Streaming build: spec → LLM (streaming) → validated result ──
+  // opts.mode === 'plan' returns {plan} only (Phase 1, pre-approval).
+  // Default mode returns the full validated {plan, files[]} payload.
+  // opts.plan (approved plan text) is injected into the build prompt so
+  // the coding agent follows the plan the user actually approved.
   async function runBuildStream(spec, opts) {
     opts = opts || {};
     const cfg = getLocalConfig();
     const specText = (spec && (spec.content || spec.title)) ||
       '(no specification provided)';
+    const mode = opts.mode === 'plan' ? 'plan' : 'build';
+    const approvedPlan = (opts.plan || '').trim();
+    const userMsg = mode === 'plan'
+      ? 'Create a build plan for the following specification:\n\n' + specText
+      : approvedPlan
+        ? 'Build the following specification:\n\n' + specText +
+          '\n\nThe user approved this build plan — follow it exactly:\n' + approvedPlan +
+          '\n\nGenerate all necessary files with complete, working code.'
+        : 'Build the following specification:\n\n' + specText +
+          '\n\nGenerate all necessary files with complete, working code.';
     const messages = [
-      { role: 'system', content: buildSystemPrompt(cfg && cfg.provider) },
-      { role: 'user',   content: 'Build the following specification:\n\n' + specText +
-        '\n\nGenerate all necessary files with complete, working code.' },
+      { role: 'system', content: buildSystemPrompt(cfg && cfg.provider, mode) },
+      { role: 'user',   content: userMsg },
     ];
     const fullText = await chatStream(messages, opts);
     const parsed = extractJson(fullText);
+    if (mode === 'plan') {
+      const plan = (parsed && typeof parsed.plan === 'string') ? parsed.plan.trim() : '';
+      if (!plan) throw new Error('AI returned no plan text. Try a different model or provider.');
+      return { plan: plan };
+    }
     return runSafetyGates(parsed);
   }
 

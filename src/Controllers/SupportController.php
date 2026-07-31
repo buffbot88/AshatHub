@@ -167,4 +167,21 @@ final class SupportController
         $ctx->flash('success', 'Ticket status updated to ' . $status . '.');
         $ctx->redirect('/support/' . rawurlencode($ticketId));
     }
+
+    // ── Admin: delete a ticket ─────────────────────────────────────
+
+    public function adminDelete(RequestContext $ctx, string $id): void
+    {
+        // Route lives under the admin-gate middleware, so this is admin-only.
+        // Verify the ticket exists so deleted/invalid ids 404 cleanly.
+        if (!RepositoryRegistry::ticket()->find($id)) {
+            http_response_code(404);
+            $ctx->view('pages/404', ['uri' => '/admin/support/' . $id . '/delete']);
+            return;
+        }
+
+        RepositoryRegistry::ticket()->delete($id);
+        $ctx->flash('success', 'Ticket deleted.');
+        $ctx->redirect('/admin/support');
+    }
 }

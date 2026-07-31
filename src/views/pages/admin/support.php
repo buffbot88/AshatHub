@@ -83,7 +83,17 @@
                   <?= e(date('M j', strtotime($t['created_at'] ?? ''))) ?>
                 </td>
                 <td class="py-3 px-3">
-                  <a href="/support/<?= e($t['id']) ?>" class="btn-outline text-xs" style="padding: 4px 10px;">View</a>
+                  <div class="flex items-center gap-2">
+                    <a href="/support/<?= e($t['id']) ?>" class="btn-outline text-xs" style="padding: 4px 10px;">View</a>
+                    <form method="post" action="/admin/support/<?= e($t['id']) ?>/delete">
+                      <?= csrf_field() ?>
+                      <button type="submit" class="btn-outline text-xs"
+                              style="padding: 4px 10px; border-color: rgba(248,113,113,0.5); color: #f87171;"
+                              onclick="return confirm('Delete this ticket and all its replies? This cannot be undone.');">
+                        Delete
+                      </button>
+                    </form>
+                  </div>
                 </td>
               </tr>
             <?php endforeach; ?>

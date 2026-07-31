@@ -39,7 +39,11 @@ final class CommunityController
 
     public function submit(RequestContext $ctx): void
     {
-        $ctx->requireRole('guest', 'pro', 'admin');
+        // Any logged-in user (Member, Pro, or Admin) may submit a project.
+        // Passing no roles only enforces authentication — the old lowercase
+        // 'guest'/'pro'/'admin' list never matched the uppercase role ENUM
+        // (Member/Pro/Admin) and 403'd every submission, admins included.
+        $ctx->requireRole();
 
         $title       = trim((string) ($ctx->str('title')));
         $description = trim((string) ($ctx->str('description')));

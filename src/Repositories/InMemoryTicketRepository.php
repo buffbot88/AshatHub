@@ -133,6 +133,12 @@ final class InMemoryTicketRepository implements TicketRepository
         $this->tickets[$id]['updated_at'] = date('Y-m-d H:i:s');
     }
 
+    public function delete(string $id): void
+    {
+        unset($this->tickets[$id]);
+        unset($this->replies[$id]);
+    }
+
     public function repliesForTicket(string $ticketId): array
     {
         return $this->replies[$ticketId] ?? [];

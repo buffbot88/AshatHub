@@ -121,13 +121,13 @@
   <h2 class="text-3xl md:text-4xl font-display font-semibold text-center mb-3">
     Technical <span class="text-accent">deep dive</span>
   </h2>
-  <p class="text-center text-chalk-mute max-w-2xl mx-auto mb-12">ASHAT Hub runs on a Neural Host architecture with the S.U.E. tool chain, BrainStem for unified inference, and custom API support for deep reasoning.</p>
+  <p class="text-center text-chalk-mute max-w-2xl mx-auto mb-12">ASHAT Hub runs on a Neural Host architecture with the S.V.E. tool chain, BrainStem for unified inference, and custom API support for deep reasoning.</p>
   <div class="grid md:grid-cols-4 gap-4">
     <?php foreach ([
       ['🌐','Neural Host — BrainStem','Always-on inference for intent classification, spec analysis, routing, chat, and code generation.'],
       ['🔑','Custom API — MainBrain','Planning, code generation, and deep reasoning. Requires Pro with custom API key.'],
       ['🔨','SpecBuild Engine','Spec → Plan → Approve → Run → Validate → Repair → Report pipeline.'],
-      ['🛠️','S.U.E. — Self-Update Engine','Integrated toolchain for debugging, validation, and repair.'],
+      ['🛠️','S.V.E. — System Validation Engine','Integrated toolchain for validation, debugging, and repair.'],
       ['🤖','Coding Agent','Autonomous build agent that plans, generates, validates, and repairs code.'],
       ['🖥️','ASHAT IDE','Browser-based workspace — Monaco editor, file tree, spec browser, build viewer.'],
       ['📦','Module Manager','Auto-discovery, lifecycle hooks, and health checks for plug-and-play modules.'],

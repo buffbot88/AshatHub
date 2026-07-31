@@ -61,9 +61,12 @@ function ashat_load_json_config(string $path): bool {
             is_bool($v) => $v ? 'true' : 'false',
             default     => (string) $v,
         };
-        // Always set $_ENV (this is the canonical source).
-        // putenv() is best-effort — some shared hosts disable it.
-        if (!array_key_exists($k, $_ENV)) $_ENV[$k] = $strVal;
+        // server_config.json is the AUTHORITATIVE config source on this
+        // host — its values must win over any stale values already
+        // present in the process environment (e.g. an old APP_URL left
+        // over from a previous host/deploy). Setting $_ENV
+        // unconditionally guarantees the JSON definition always applies.
+        $_ENV[$k] = $strVal;
         if (!array_key_exists($k, $_SERVER)) $_SERVER[$k] = $strVal;
         @putenv("$k=$strVal");
     }

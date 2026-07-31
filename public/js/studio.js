@@ -86,10 +86,19 @@ Quick build from the Studio dashboard.
   const btnNew      = document.getElementById('btn-new-spec');
   const btnSave     = document.getElementById('btn-save-spec');
   const btnRun      = document.getElementById('btn-run-build');
+  const btnApprove  = document.getElementById('btn-approve-plan');
 
   let currentSpec = null;
+  let approvedPlan = '';   // plan from Phase 1, passed to the coding agent in Phase 2
 
   async function pickSpec(id) {
+    // Reset approval state so a plan for one spec can never be approved
+    // against another spec (or against no spec at all).
+    approvedPlan = '';
+    if (btnApprove) { btnApprove.classList.add('hidden'); btnApprove.disabled = false; }
+    var hint = document.getElementById('plan-hint');
+    if (hint) hint.style.display = '';
+
     if (!id) {
       empty.classList.remove('hidden');
       active.classList.add('hidden');
@@ -148,9 +157,18 @@ Quick build from the Studio dashboard.
     });
   }
 
+  // ── Two-phase build: PLAN first (for review), then APPROVE to build ──
+  // Phase 1 (Build btn): the model returns ONLY a plan — nothing is
+  // generated or saved yet. Phase 2 (Approve btn): the coding agent
+  // generates all files and the build is persisted.
   if (btnRun) {
     btnRun.addEventListener('click', async () => {
       if (!currentSpec) return ashatToast('Pick a spec first.', 'warn');
+      if (btnRun.disabled) return;
+
+      // Pin the spec this build is running against — if the user switches
+      // specs mid-generation, the stale plan must never surface.
+      var buildSpecId = currentSpec.id;
 
       // 1. Save the spec first (don't lose user edits)
       try {
@@ -161,8 +179,9 @@ Quick build from the Studio dashboard.
       } catch (e) { /* ignore — server may already be up to date */ }
 
       btnRun.disabled = true;
+      if (btnApprove) { btnApprove.classList.add('hidden'); btnApprove.disabled = false; }
 
-      // Streaming plan container
+      // Plan display container
       var planContainer = document.createElement('pre');
       planContainer.style.cssText = 'margin:0;font-family:var(--font-mono);font-size:12px;color:var(--gold-muted);white-space:pre-wrap;word-break:break-word;line-height:1.5;max-height:400px;overflow-y:auto;';
       planEl.textContent = '';
@@ -171,45 +190,31 @@ Quick build from the Studio dashboard.
       // Progress badge
       var progressBadge = document.createElement('div');
       progressBadge.style.cssText = 'display:flex;align-items:center;gap:6px;margin-bottom:8px;font-size:11px;color:var(--gold);font-family:var(--font-mono);';
-      progressBadge.innerHTML = '<span class="pulse-dot" style="width:6px;height:6px;border-radius:50%;background:var(--gold);display:inline-block;"></span> Generating build…';
+      progressBadge.innerHTML = '<span class="pulse-dot" style="width:6px;height:6px;border-radius:50%;background:var(--gold);display:inline-block;"></span> Generating plan…';
       planEl.insertBefore(progressBadge, planContainer);
 
+      // PHASE 1 — generate the plan ONLY; nothing is built or saved yet
       try {
-        if (!window.ASHAT || !window.ASHAT.agent || typeof window.ASHAT.agent.runBuildStream !== 'function') {
-          // Fallback to non-streaming
-          if (!window.ASHAT || !window.ASHAT.agent || typeof window.ASHAT.agent.runBuild !== 'function') {
-            throw new Error('Coding Agent (agent.js) did not load.');
-          }
-          const cfg = window.ASHAT.agent.getLocalConfig();
-          if (!cfg || !cfg.api_key) {
-            throw new Error('No API key configured — open /account/ and click "Save to browser" first.');
-          }
-          planContainer.textContent = '⏳ Generating plan… (this may take up to 120s)';
-          const result = await window.ASHAT.agent.runBuild({
-            id: currentSpec.id,
-            title: titleInput.value,
-            content: contentTA.value,
-          });
-          var saveResp = await window.ASHAT.agent.saveBuild(currentSpec, result);
-          progressBadge.innerHTML = '✅ Build complete';
-          planContainer.textContent = (saveResp && saveResp.entry && saveResp.entry.plan) || 'Build complete.';
-          ashatToast('Build complete.', 'ok');
-          setTimeout(function () { window.location.href = '/ide/file-manager/'; }, 600);
-        } else {
-          // Streaming build
-          const cfg = window.ASHAT.agent.getLocalConfig();
-          if (!cfg || !cfg.api_key) {
-            throw new Error('No API key configured — open /account/ and click "Save to browser" first.');
-          }
+        if (!window.ASHAT || !window.ASHAT.agent) {
+          throw new Error('Coding Agent (agent.js) did not load.');
+        }
+        const cfg = window.ASHAT.agent.getLocalConfig();
+        if (!cfg || !cfg.api_key) {
+          throw new Error('No API key configured — open /account/ and click "Save to browser" first.');
+        }
 
+        var planResult;
+        if (typeof window.ASHAT.agent.runBuildStream === 'function') {
+          // Streaming plan (token-by-token)
           var fullResponse = '';
-          var result = await window.ASHAT.agent.runBuildStream(
+          planResult = await window.ASHAT.agent.runBuildStream(
             {
               id: currentSpec.id,
               title: titleInput.value,
               content: contentTA.value,
             },
             {
+              mode: 'plan',
               onToken: function (token) {
                 fullResponse += token;
                 planContainer.textContent = fullResponse;
@@ -220,18 +225,117 @@ Quick build from the Studio dashboard.
               },
             }
           );
-
-          var saveResp = await window.ASHAT.agent.saveBuild(currentSpec, result);
-          progressBadge.innerHTML = '✅ Build complete';
-          planContainer.textContent = (saveResp && saveResp.entry && saveResp.entry.plan) || 'Build complete.';
-          ashatToast('Build complete.', 'ok');
-          setTimeout(function () { window.location.href = '/ide/file-manager/'; }, 600);
+        } else if (typeof window.ASHAT.agent.runBuild === 'function') {
+          // Non-streaming fallback
+          planContainer.textContent = '⏳ Generating plan… (this may take up to 120s)';
+          planResult = await window.ASHAT.agent.runBuild(
+            {
+              id: currentSpec.id,
+              title: titleInput.value,
+              content: contentTA.value,
+            },
+            { mode: 'plan' }
+          );
+        } else {
+          throw new Error('Coding Agent (agent.js) did not load.');
         }
+
+        // Guard against the in-flight race: if the user switched specs
+        // while the plan was generating, discard the stale result.
+        if (currentSpec && currentSpec.id !== buildSpecId) {
+          throw new Error('Spec switched during plan generation — run Build again for this spec.');
+        }
+
+        // Show the clean plan and surface the approval button
+        approvedPlan = (planResult && planResult.plan) || '';
+        planContainer.textContent = approvedPlan || '(no plan text returned)';
+        progressBadge.innerHTML = '📋 Plan ready — review below, then click “Approve & Generate Files”.';
+        var hint = document.getElementById('plan-hint');
+        if (hint) hint.style.display = 'none';
+        if (btnApprove) btnApprove.classList.remove('hidden');
+        ashatToast('Plan generated. Approve it to generate the files.', 'ok');
+      } catch (e) {
+        progressBadge.innerHTML = '❌ Plan generation failed';
+        planContainer.textContent = 'Error: ' + ((e && e.message) || 'unknown');
+        ashatToast('Plan generation failed: ' + ((e && e.message) || 'unknown'), 'err');
+      } finally {
+        btnRun.disabled = false;
+      }
+    });
+  }
+
+  // PHASE 2 — the user approved the plan: run the coding agent, persist build
+  if (btnApprove) {
+    btnApprove.addEventListener('click', async () => {
+      if (!currentSpec || btnApprove.disabled) return;
+      btnApprove.disabled = true;
+      btnRun.disabled = true;
+
+      // Reuse the existing plan container + progress badge
+      var planContainer = planEl.querySelector('pre');
+      if (!planContainer) {
+        planContainer = document.createElement('pre');
+        planEl.appendChild(planContainer);
+      }
+      var progressBadge = planEl.querySelector('div');
+      if (!progressBadge) {
+        progressBadge = document.createElement('div');
+        planEl.insertBefore(progressBadge, planContainer);
+      }
+      progressBadge.innerHTML = '<span class="pulse-dot" style="width:6px;height:6px;border-radius:50%;background:var(--gold);display:inline-block;"></span> Coding agent is generating files…';
+
+      try {
+        if (!window.ASHAT || !window.ASHAT.agent) {
+          throw new Error('Coding Agent (agent.js) did not load.');
+        }
+
+        var result;
+        if (typeof window.ASHAT.agent.runBuildStream === 'function') {
+          var fullResponse = '';
+          result = await window.ASHAT.agent.runBuildStream(
+            {
+              id: currentSpec.id,
+              title: titleInput.value,
+              content: contentTA.value,
+            },
+            {
+              plan: approvedPlan,   // the coding agent follows the approved plan
+              onToken: function (token) {
+                fullResponse += token;
+                planContainer.textContent = fullResponse.length > 4000
+                  ? fullResponse.slice(0, 4000) + '\n…'
+                  : fullResponse;
+                planContainer.scrollTop = planContainer.scrollHeight;
+              },
+              onProgress: function (msg) {
+                progressBadge.innerHTML = '<span class="pulse-dot" style="width:6px;height:6px;border-radius:50%;background:var(--gold);display:inline-block;"></span> ' + msg;
+              },
+            }
+          );
+        } else {
+          planContainer.textContent = '⏳ Generating files… (this may take up to 120s)';
+          result = await window.ASHAT.agent.runBuild(
+            {
+              id: currentSpec.id,
+              title: titleInput.value,
+              content: contentTA.value,
+            },
+            { plan: approvedPlan }   // the coding agent follows the approved plan
+          );
+        }
+
+        var saveResp = await window.ASHAT.agent.saveBuild(currentSpec, result);
+        progressBadge.innerHTML = '✅ Build complete';
+        planContainer.textContent = (saveResp && saveResp.entry && saveResp.entry.plan) || 'Build complete.';
+        ashatToast('Build complete.', 'ok');
+        if (btnApprove) btnApprove.classList.add('hidden');
+        setTimeout(function () { window.location.href = '/ide/file-manager/'; }, 600);
       } catch (e) {
         progressBadge.innerHTML = '❌ Build failed';
         planContainer.textContent = 'Error: ' + ((e && e.message) || 'unknown');
-        ashatToast('Build failed.', 'err');
+        ashatToast('Build failed: ' + ((e && e.message) || 'unknown'), 'err');
       } finally {
+        btnApprove.disabled = false;
         btnRun.disabled = false;
       }
     });
@@ -245,6 +349,11 @@ Quick build from the Studio dashboard.
   const btnNewFile  = document.getElementById('btn-new-file');
   let activeFile = null;
 
+  // In-memory merged list (server rows + localStorage-generated files),
+  // populated by loadFileList() on page load. The click handler reads
+  // from here instead of refetching, so local-only files work too.
+  let fmFiles = [];
+
   // ── Find generated file content in localStorage (agent output) ─
   function findLocalContent(path) {
     if (!window.ASHAT || !window.ASHAT.agent) return null;
@@ -254,6 +363,148 @@ Quick build from the Studio dashboard.
       if (f) return f.content;
     }
     return null;
+  }
+
+  // ── Path helpers (mirror PHP basename()/dirname() for the sidebar) ─
+  function pathBase(p) {
+    p = String(p || '');
+    const i = p.lastIndexOf('/');
+    return i === -1 ? p : p.slice(i + 1);
+  }
+  function pathDir(p) {
+    p = String(p || '');
+    const i = p.lastIndexOf('/');
+    return i === -1 ? '/' : p.slice(0, i);
+  }
+
+  // ── Render the sidebar from the merged file list ────────────────
+  function renderFileList(files) {
+    if (!fileList) return;
+    fileList.innerHTML = '';
+    if (!files || files.length === 0) {
+      const li = document.createElement('li');
+      li.className = 'text-xs px-2 py-1.5';
+      li.style.color = 'var(--gold-muted)';
+      li.textContent = 'No files yet — run a Build in the Planner, or click “+ New”.';
+      fileList.appendChild(li);
+      return;
+    }
+    files.forEach(function (f) {
+      const li = document.createElement('li');
+      const btn = document.createElement('button');
+      btn.dataset.path = f.path;
+      btn.className = 'file-pick block w-full text-left px-2 py-1.5 rounded-md';
+      btn.style.color = 'var(--gold-text)';
+      const name = document.createElement('span');
+      name.style.color = 'var(--gold-muted)';
+      name.textContent = pathBase(f.path);
+      const dir = document.createElement('div');
+      dir.className = 'text-[10px] font-mono truncate';
+      dir.style.color = 'var(--gold-muted)';
+      dir.textContent = pathDir(f.path);
+      btn.appendChild(name);
+      btn.appendChild(dir);
+      li.appendChild(btn);
+      fileList.appendChild(li);
+    });
+  }
+
+  // ── Hydrate the file list from BOTH the server and localStorage ──
+  // Local-first: generated file CONTENT lives in the browser, while the
+  // server holds metadata rows. Merge both so the File Manager never
+  // shows an empty screen just because one source is missing (e.g. a
+  // fresh deploy where the files table is empty, or a build whose
+  // metadata POST failed).
+  async function loadFileList() {
+    if (!fileList) return;
+
+    // 1. Server rows (metadata). Failure is non-fatal — localStorage
+    //    generated files can still populate the list.
+    let serverFiles = [];
+    try {
+      const r = await ashatFetch('/api/files/');
+      serverFiles = (r && r.files) ? r.files : [];
+    } catch (e) {
+      ashatToast('Could not load files from the server.', 'warn');
+    }
+
+    // 2. LocalStorage-generated files (agent output).
+    const localFiles = [];
+    try {
+      if (window.ASHAT && window.ASHAT.agent && typeof window.ASHAT.agent.listGenerated === 'function') {
+        const entries = window.ASHAT.agent.listGenerated();
+        for (const entry of entries) {
+          for (const f of (entry.files || [])) {
+            if (!f || !f.path) continue;
+            localFiles.push({
+              id: '',                        // no server row for local-only files
+              path: f.path,
+              language: f.language || '',
+              saved: 1,
+              generated: 1,
+              build_id: entry.build_id || '',
+              build_phase: 'agent',
+              local_only: true,
+            });
+          }
+        }
+      }
+    } catch (_) { /* localStorage unavailable — ignore */ }
+
+    // 3. Merge by path (server row wins; local entries fill the gaps).
+    const byPath = {};
+    serverFiles.forEach(function (f) { if (f && f.path) byPath[f.path] = f; });
+    localFiles.forEach(function (f) {
+      if (byPath[f.path]) {
+        // Server row exists — mark it generated so the click handler
+        // sources content from localStorage.
+        if (Number(byPath[f.path].generated) !== 1) byPath[f.path].generated = 1;
+        return;
+      }
+      byPath[f.path] = f;
+    });
+
+    fmFiles = Object.keys(byPath).sort().map(function (k) { return byPath[k]; });
+    renderFileList(fmFiles);
+  }
+
+  // Hydrate on page load
+  if (fileList) loadFileList();
+
+  // ── Resolve a file's body for the editor ────────────────────────
+  // The list payload never includes content (server selects metadata
+  // only), so:
+  //   • generated files → localStorage (agent output)
+  //   • user-authored server files → GET /api/files/{id} (SELECT *)
+  //   • local-only entries → localStorage or a friendly notice
+  async function loadFileContent(file) {
+    if (file.content && String(file.content).length > 0) return file.content;
+    if (Number(file.generated) === 1) {
+      const local = findLocalContent(file.path);
+      if (local !== null) return local;
+      // LocalStorage copy was pruned/never existed — fall back to the
+      // server row (it may hold the DB copy of the content).
+      if (file.id) {
+        try {
+          const r = await ashatFetch('/api/files/' + encodeURIComponent(file.id));
+          if (r && r.file && r.file.content) return r.file.content;
+        } catch (_) { /* fall through to the notice below */ }
+      }
+      return '(file content not available in this browser)';
+    }
+    if (file.id) {
+      try {
+        const r = await ashatFetch('/api/files/' + encodeURIComponent(file.id));
+        // 'content' can legitimately be '' (a saved-but-empty file); only
+        // null means the row really has no body.
+        if (r && r.file && r.file.content !== null && r.file.content !== undefined) {
+          return r.file.content;
+        }
+      } catch (_) { /* fall through to the warning */ }
+      ashatToast('Could not load file content from the server.', 'warn');
+      return '';
+    }
+    return file.content || '';
   }
 
   // ── Monaco-aware file content helpers ────────────────────────────
@@ -295,26 +546,17 @@ Quick build from the Studio dashboard.
       document.querySelectorAll('button.file-pick').forEach((b) =>
         b.classList.toggle('active', b === btn)
       );
-      try {
-        const r = await ashatFetch('/api/files/');
-        const file = (r.files || []).find((f) => f.path === path);
-        if (!file) return ashatToast('File not found.', 'warn');
-        activeFile = file;
-        editorTitle.textContent = path;
 
-        var content;
-        // For agent-generated files the server has no content
-        // (files.content is NULL). Source the body from localStorage.
-        if (Number(file.generated) === 1 && (!file.content || file.content.length === 0)) {
-          const local = findLocalContent(path);
-          content = (local !== null) ? local : '(file content not available in this browser)';
-        } else {
-          content = file.content || '';
-        }
+      // Read from the merged list — the server fetch alone would miss
+      // local-only generated files.
+      const file = fmFiles.find((f) => f.path === path);
+      if (!file) return ashatToast('File not found.', 'warn');
+      activeFile = file;
+      editorTitle.textContent = path;
 
-        monacoSetContent(content);
-        monacoDetectLanguage(path);
-      } catch (e) { ashatToast('Could not load file.', 'err'); }
+      const content = await loadFileContent(file);
+      monacoSetContent(content);
+      monacoDetectLanguage(path);
     });
   }
 
@@ -712,7 +954,7 @@ Quick build from the Studio dashboard.
       {
         target: '#tile-grid',
         title: '📊 System Tiles',
-        desc: 'Each tile shows real-time status for a component — BrainStem (inference), SpecBuild (pipeline), S.U.E. (file generation), MainBrain (API key), Modules, and Safety (build gates). Click any tile for more details!',
+        desc: 'Each tile shows real-time status for a component — BrainStem (inference), SpecBuild (pipeline), S.V.E. (system validation), MainBrain (API key), Modules, and Safety (build gates). Click any tile for more details!',
         position: 'top',
       },
     ],

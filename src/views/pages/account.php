@@ -222,7 +222,7 @@
           <label class="text-sm">
             <span class="label-gold">Host URL</span>
             <input id="bs-url" name="url" type="url"
-                   placeholder="https://stressthismess-ashatos.hf.space" class="field mt-1 font-mono">
+                   placeholder="<?= e($view->env_url ?? 'https://your-brainstem-host.example') ?>" class="field mt-1 font-mono">
           </label>
           <label class="text-sm">
             <span class="label-gold">API Key</span>

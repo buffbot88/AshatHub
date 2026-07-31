@@ -62,6 +62,13 @@ final class PdoTicketRepository implements TicketRepository
         );
     }
 
+    public function delete(string $id): void
+    {
+        // Replies are removed automatically via the fk_replies_ticket
+        // ON DELETE CASCADE constraint.
+        $this->db->execute("DELETE FROM support_tickets WHERE id = ?", [$id]);
+    }
+
     public function repliesForTicket(string $ticketId): array
     {
         return $this->db->fetchAll(

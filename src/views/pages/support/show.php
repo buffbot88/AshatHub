@@ -127,5 +127,20 @@
         <button class="btn-outline text-sm">Update status</button>
       </form>
     </div>
+
+    <div class="glass-card-solid mt-4 p-5">
+      <h3 class="text-sm font-semibold mb-2" style="color: #f87171;">Danger Zone</h3>
+      <p class="text-xs mb-3" style="color: var(--gold-muted);">
+        Permanently delete this ticket and its replies. This cannot be undone.
+      </p>
+      <form method="post" action="/admin/support/<?= e($ticket['id']) ?>/delete">
+        <?= csrf_field() ?>
+        <button type="submit" class="btn-outline text-sm"
+                style="border-color: rgba(248,113,113,0.5); color: #f87171;"
+                onclick="return confirm('Delete this ticket and all its replies? This cannot be undone.');">
+          Delete ticket
+        </button>
+      </form>
+    </div>
   <?php endif; ?>
 </section>

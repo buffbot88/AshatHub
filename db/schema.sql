@@ -231,7 +231,7 @@ ASHAT Hub is a browser-based AI coding platform. To get going:
 That''s it. You don''t need to install anything.
 ', 1),
 ('concepts','concepts','Core Concepts',
- 'The big ideas behind ASHAT: Specs, Plans, Builds, Modules, BrainStem, S.U.E., and Safety Gates.',
+ 'The big ideas behind ASHAT: Specs, Plans, Builds, Modules, BrainStem, S.V.E., and Safety Gates.',
  '# Core Concepts
 
 ASHAT is built from a small number of moving parts:
@@ -241,7 +241,7 @@ ASHAT is built from a small number of moving parts:
 - **Build** — the autonomous execution of a Plan.
 - **BrainStem** — unified inference (routing + classification + chat + small codegen).
 - **MainBrain** — custom API for deep reasoning (BYO OpenAI / Anthropic / Gemini / DeepSeek).
-- **S.U.E.** — Self-Update Engine for debugging, validation, and repair.
+- **S.V.E.** — System Validation Engine for debugging, validation, and repair.
 - **Module** — plug-and-play component (Discord, IDE, Assistant, Website).
 - **Safety Gates** — 14 gates that bound every build phase.
 
@@ -257,7 +257,7 @@ The lifecycle of an ASHAT build:
 2. **Generate Plan** — ASHAT reads your spec and produces a phase tree.
 3. **Approve Plan** — review the plan, approve when you''re happy.
 4. **Build Automatically** — phases execute one at a time.
-5. **Validate & Repair** — S.U.E. catches errors and auto-fixes them.
+5. **Validate & Repair** — S.V.E. catches errors and auto-fixes them.
 6. **Review Results** — open generated files in the editor.
 7. **Iterate** — update your spec and rebuild.
 

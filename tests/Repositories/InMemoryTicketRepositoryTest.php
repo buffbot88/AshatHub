@@ -9,7 +9,7 @@ use Repositories\InMemoryTicketRepository;
  * ═══════════════════════════════════════════════════════════════════════
  * Tests\Repositories\InMemoryTicketRepositoryTest
  *
- * Full coverage of InMemoryTicketRepository — 8 interface methods + 3
+ * Full coverage of InMemoryTicketRepository — 10 interface methods + 4
  * test helpers (seedTickets, seedReplies, inspectTickets, inspectReplies).
  * ═══════════════════════════════════════════════════════════════════════
  */
@@ -212,6 +212,54 @@ final class InMemoryTicketRepositoryTest extends TestCase
     {
         $this->repo->updateStatus('nonexistent', 'closed');
         $this->assertCount(0, $this->repo->inspectTickets());
+    }
+
+    // ── delete() ───────────────────────────────────────────────────
+
+    public function test_delete_removes_ticket(): void
+    {
+        $this->repo->seedTickets([$this->ticketA]);
+        $this->repo->delete('t0000001-0000-4000-8000-000000000001');
+        $this->assertCount(0, $this->repo->inspectTickets());
+    }
+
+    public function test_delete_removes_only_target_ticket(): void
+    {
+        $this->repo->seedTickets([$this->ticketA, $this->ticketB]);
+        $this->repo->delete('t0000001-0000-4000-8000-000000000001');
+        $tickets = $this->repo->inspectTickets();
+        $this->assertCount(1, $tickets);
+        $this->assertSame('t0000002-0000-4000-8000-000000000002', $tickets[0]['id']);
+    }
+
+    public function test_delete_removes_associated_replies(): void
+    {
+        $this->repo->seedTickets([$this->ticketA]);
+        $this->repo->seedReplies([
+            ['id' => 'r1', 'ticket_id' => 't0000001-0000-4000-8000-000000000001', 'user_id' => 'u1', 'message' => 'Any update?', 'is_staff' => 0, 'created_at' => ''],
+        ]);
+        $this->repo->delete('t0000001-0000-4000-8000-000000000001');
+        $this->assertCount(0, $this->repo->inspectReplies());
+    }
+
+    public function test_delete_keeps_other_tickets_replies(): void
+    {
+        $this->repo->seedTickets([$this->ticketA, $this->ticketB]);
+        $this->repo->seedReplies([
+            ['id' => 'r1', 'ticket_id' => 't0000001-0000-4000-8000-000000000001', 'user_id' => 'u1', 'message' => 'Reply A', 'is_staff' => 0, 'created_at' => ''],
+            ['id' => 'r2', 'ticket_id' => 't0000002-0000-4000-8000-000000000002', 'user_id' => 'u2', 'message' => 'Reply B', 'is_staff' => 1, 'created_at' => ''],
+        ]);
+        $this->repo->delete('t0000001-0000-4000-8000-000000000001');
+        $replies = $this->repo->inspectReplies();
+        $this->assertCount(1, $replies);
+        $this->assertSame('r2', $replies[0]['id']);
+    }
+
+    public function test_delete_missing_ticket_is_noop(): void
+    {
+        $this->repo->seedTickets([$this->ticketA]);
+        $this->repo->delete('nonexistent');
+        $this->assertCount(1, $this->repo->inspectTickets());
     }
 
     // ── repliesForTicket() ─────────────────────────────────────────

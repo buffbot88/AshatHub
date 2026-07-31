@@ -30,6 +30,7 @@
         <input id="planner-title" class="field flex-1" style="font-size: 18px; font-weight: 600; font-family: var(--font-heading);">
         <button id="btn-save-spec" class="btn-outline" style="font-size: 11px; padding: 6px 12px; text-transform: uppercase; font-family: var(--font-heading);">Save</button>
         <button id="btn-run-build" class="btn-gold" style="font-size: 11px; padding: 6px 12px; text-transform: uppercase; font-family: var(--font-heading);">⊞ Build</button>
+        <button id="btn-approve-plan" class="btn-gold hidden" style="font-size: 11px; padding: 6px 12px; text-transform: uppercase; font-family: var(--font-heading); border-color: rgba(74,222,128,0.4);">✓ Approve &amp; Generate Files</button>
       </div>
       <div class="grid md:grid-cols-2 gap-4">
         <div>
@@ -39,6 +40,10 @@
         <div>
           <div class="label-gold mb-2">Generated Plan</div>
           <pre id="planner-plan" class="field" style="height: 288px; font-family: var(--font-mono); font-size: 14px; white-space: pre-wrap; overflow: auto;">No build yet.</pre>
+          <p id="plan-hint" class="text-xs mt-2" style="color: var(--gold-muted);">
+            Click <strong>⊞ Build</strong> to generate a plan first. Review it, then click
+            <strong>✓ Approve &amp; Generate Files</strong> to send it to the coding agent.
+          </p>
         </div>
       </div>
     </div>

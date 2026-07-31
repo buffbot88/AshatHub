@@ -22,6 +22,11 @@ final class StudioController
         try {
             return $fn();
         } catch (\Throwable $e) {
+            // Log instead of silently swallowing — an empty file list /
+            // empty stats with no explanation is a confusing failure mode.
+            if (function_exists('ashat_log_exception')) {
+                ashat_log_exception($e);
+            }
             return [];
         }
     }

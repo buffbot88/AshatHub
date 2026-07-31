@@ -138,7 +138,7 @@ final class GitUpdater
                 'commits'     => $newCommits,
                 'files'       => array_values($changedFiles),
                 'last_sha'    => $lastSha,
-                'latest_sha'  => $headSha,
+                'latest_sha'  => $latestSha,
                 'summary'     => $behind > 0
                     ? "{$behind} new commit(s) · " . count($changedFiles) . " file(s) changed"
                     : 'Up to date.',

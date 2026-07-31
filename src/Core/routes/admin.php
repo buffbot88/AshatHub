@@ -31,4 +31,5 @@ $router->group('/admin', ['middleware' => ['admin-gate']], function () use ($rou
     // Support ticket management
     $router->get('/support',                  [\Controllers\SupportController::class, 'adminIndex']);
     $router->post('/support/status',          [\Controllers\SupportController::class, 'adminUpdateStatus']);
+    $router->post('/support/{id}/delete',     [\Controllers\SupportController::class, 'adminDelete']);
 });

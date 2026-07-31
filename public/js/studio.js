@@ -649,7 +649,6 @@ Quick build from the Studio dashboard.
         desc: 'See your most recent builds here. Each build generates files from your spec that you can view and edit in the Planner or File Manager.',
         position: 'bottom',
       },
-      },
     ],
     'planner': [
       {

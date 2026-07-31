@@ -17,13 +17,21 @@
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@500;700;900&family=Quicksand:wght@400;500;600;700&display=swap" rel="stylesheet">
 
-  <!-- Tailwind CSS: CDN play build (always loaded — compile locally for production) -->
+  <?php if (APP_ENV === 'production'): ?>
+  <!-- Tailwind CSS: compiled production build (no CDN, no runtime JIT) -->
+  <link rel="stylesheet" href="<?= e(asset('/css/tailwind-prod.css')) ?>">
+  <?php else: ?>
+  <!-- Tailwind CSS: CDN play build (dev only — compile locally for production) -->
   <script src="https://cdn.tailwindcss.com?plugins=typography"></script>
+  <?php endif; ?>
 
   <!-- Project styles (✦ Ashat Gold Pulse ✦) -->
   <link rel="stylesheet" href="<?= e(asset('/css/app.css')) ?>">
 
-  <!-- Configure Tailwind dark mode + theme tokens -->
+  <?php if (APP_ENV === 'production'): ?>
+  <script>document.documentElement.classList.add('dark');</script>
+  <?php else: ?>
+  <!-- Configure Tailwind dark mode + theme tokens (used by the CDN play build) -->
   <script>
     tailwind.config = {
       darkMode: 'class',
@@ -63,6 +71,7 @@
     };
     document.documentElement.classList.add('dark');
   </script>
+  <?php endif; ?>
 </head>
 
 <body class="min-h-screen flex flex-col" data-mode="<?= e($view->mode ?? '') ?>"

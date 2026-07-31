@@ -63,7 +63,8 @@ No package.json or composer.json — **zero dependencies**.
 - API keys stored **only in localStorage** — server never sees them
 
 ### Styling
-- Tailwind via CDN (`tailwindcss.com?plugins=typography` in dev; local `tailwind-prod.css` in production)
+- Tailwind via CDN (`tailwindcss.com?plugins=typography` in dev; compiled `tailwind-prod.css` when `APP_ENV=production`)
+  - Rebuild the production stylesheet: `npm install --no-save tailwindcss@^3.4 @tailwindcss/typography && npx tailwindcss -c tailwind.config.js -i public/css/tailwind-input.css -o public/css/tailwind-prod.css --minify` (then `rm -rf node_modules`)
 - Dark-gold theme with Orbitron (headings) + Quicksand (body) fonts
 - Glass cards, gold gradients, glowing borders
 

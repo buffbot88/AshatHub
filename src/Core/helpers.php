@@ -39,7 +39,18 @@ function csrf_field(): string
  */
 function asset(string $path): string
 {
-    return '/' . ltrim($path, '/');
+    $path = '/' . ltrim($path, '/');
+
+    // Cache-bust: version the URL with the file's mtime so browsers never
+    // serve a stale copy after an update (StaticFileServer caches assets
+    // for an hour). Route paths with no matching file are unchanged.
+    $public = defined('ASHAT_PUBLIC') ? ASHAT_PUBLIC : dirname(__DIR__, 2) . '/public';
+    $file   = $public . $path;
+    if (is_file($file)) {
+        $path .= '?v=' . filemtime($file);
+    }
+
+    return $path;
 }
 
 /**

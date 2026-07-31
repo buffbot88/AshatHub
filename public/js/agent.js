@@ -306,6 +306,43 @@
     throw new Error('Could not locate a balanced JSON object in AI response.');
   }
 
+  // ── Retry helper: transient upstream failures (429 / 5xx) ────────
+  // Providers cold-start models and reply with 503 "Loading model"
+  // (OpenAI-style unavailable_error) that clears after a few seconds.
+  // Fetch again with backoff instead of failing the whole request.
+  const MAX_ATTEMPTS = 3;
+  const RETRY_BACKOFF_MS = [0, 1200, 3000]; // wait before attempts 2 and 3
+
+  function sleepMs(ms) {
+    return new Promise(function (resolve) { setTimeout(resolve, ms); });
+  }
+
+  async function fetchWithRetry(url, options, hooks) {
+    hooks = hooks || {};
+    for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {
+      try {
+        const r = await fetch(url, options);
+        if (r.ok) return r;
+        const transient = r.status === 429 || r.status >= 500;
+        if (transient && attempt < MAX_ATTEMPTS) {
+          if (hooks.onRetry) hooks.onRetry(r.status, attempt);
+          await sleepMs(RETRY_BACKOFF_MS[attempt] || 3000);
+          continue;
+        }
+        return r;
+      } catch (e) {
+        // Abort = user/timer timeout — surface it, don't retry.
+        if (e && e.name === 'AbortError') throw e;
+        if (attempt < MAX_ATTEMPTS) {
+          if (hooks.onRetry) hooks.onRetry(0, attempt);
+          await sleepMs(RETRY_BACKOFF_MS[attempt] || 3000);
+          continue;
+        }
+        throw e;
+      }
+    }
+  }
+
   // ── Public API: chat (outbound to user's LLM) ───────────────────
   async function chat(messages, opts) {
     opts = opts || {};
@@ -317,7 +354,7 @@
     const controller = (typeof AbortController !== 'undefined') ? new AbortController() : null;
     const timer = controller ? setTimeout(() => controller.abort(), REQUEST_TIMEOUT) : null;
     try {
-      const r = await fetch(cfg.endpoint, {
+      const r = await fetchWithRetry(cfg.endpoint, {
         method:  'POST',
         signal:  controller ? controller.signal : undefined,
         headers: {
@@ -331,13 +368,17 @@
           temperature: opts.temperature || 0.7,
           stream:      false,
         }),
-      });
+      }, { onRetry: function (status, attempt) {
+        console.warn('AI provider transient error ' + status + ' — retrying (' + attempt + '/' + MAX_ATTEMPTS + ')...');
+      } });
       if (!r.ok) {
         const errBody = (await r.text().catch(() => '')).slice(0, 200);
         if (r.status === 429)
           throw new Error('AI provider rate limit hit. Switch providers in /account/ or wait an hour.');
         if (r.status === 401)
           throw new Error('AI provider rejected the API key. Re-save it in /account/.');
+        if (r.status === 503 || /loading model/i.test(errBody))
+          throw new Error('The AI model is still loading. Give it a moment and try again.');
         throw new Error('AI provider error ' + r.status + ': ' + errBody);
       }
       const data = await r.json();
@@ -422,7 +463,7 @@
     }, REQUEST_TIMEOUT) : null;
 
     try {
-      const r = await fetch(cfg.endpoint, {
+      const r = await fetchWithRetry(cfg.endpoint, {
         method:  'POST',
         signal:  controller ? controller.signal : undefined,
         headers: {
@@ -436,6 +477,14 @@
           temperature: opts.temperature || 0.7,
           stream:      true,
         }),
+      }, {
+        onRetry: function (status, attempt) {
+          if (opts.onProgress) {
+            opts.onProgress(status === 503
+              ? 'Model is loading — retrying… (' + attempt + '/' + MAX_ATTEMPTS + ')'
+              : 'AI provider busy (' + status + ') — retrying… (' + attempt + '/' + MAX_ATTEMPTS + ')');
+          }
+        },
       });
 
       if (!r.ok) {
@@ -444,6 +493,8 @@
           throw new Error('AI provider rate limit hit. Switch providers in /account/ or wait an hour.');
         if (r.status === 401)
           throw new Error('AI provider rejected the API key. Re-save it in /account/.');
+        if (r.status === 503 || /loading model/i.test(errBody))
+          throw new Error('The AI model is still loading. Give it a moment and try again.');
         throw new Error('AI provider error ' + r.status + ': ' + errBody);
       }
 

@@ -75,33 +75,62 @@ final class SseStreamer
      * @param array  $payload   JSON body to POST
      * @return string|null  Accumulated content on success, null on error
      */
+    /** Max upstream attempts for transient failures (429 / 5xx). */
+    private const MAX_ATTEMPTS = 3;
+
+    /** Seconds to sleep between attempts (attempt # → delay). */
+    private const BACKOFF = [1 => 1, 2 => 3];
+
     public static function proxy(string $endpoint, array $headers, array $payload): ?string
     {
-        $streamCtx = stream_context_create([
-            'http' => [
-                'method'        => 'POST',
-                'header'        => $headers,
-                'content'       => json_encode($payload, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES),
-                'timeout'       => 120,
-                'ignore_errors' => true,
-            ],
-        ]);
+        $attempt = 0;
 
-        $stream = @fopen($endpoint, 'r', false, $streamCtx);
-        if (!$stream) {
-            self::send('error', ['message' => 'Could not connect to the upstream API endpoint.']);
-            return null;
-        }
+        while (true) {
+            $attempt++;
 
-        // Check HTTP status from the response header
-        $statusLine = $http_response_header[0] ?? '';
-        if ($statusLine !== '' && !str_contains($statusLine, '200')) {
-            $body = (string) stream_get_contents($stream);
-            fclose($stream);
-            $errData = json_decode($body, true);
-            $msg = $errData['error']['message'] ?? $errData['message'] ?? $statusLine;
-            self::send('error', ['message' => $msg]);
-            return null;
+            $streamCtx = stream_context_create([
+                'http' => [
+                    'method'        => 'POST',
+                    'header'        => $headers,
+                    'content'       => json_encode($payload, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES),
+                    'timeout'       => 120,
+                    'ignore_errors' => true,
+                ],
+            ]);
+
+            $stream = @fopen($endpoint, 'r', false, $streamCtx);
+            if (!$stream) {
+                // Connection-level failure — fail fast. Transient "Loading
+                // model" 503s always arrive as real HTTP responses and are
+                // retried via the status check below instead.
+                self::send('error', ['message' => 'Could not connect to the upstream API endpoint.']);
+                return null;
+            }
+
+            // Check HTTP status from the response header
+            $statusLine = $http_response_header[0] ?? '';
+            $status = self::statusCode($statusLine);
+
+            if ($status !== 0 && ($status < 200 || $status >= 300)) {
+                $body = (string) stream_get_contents($stream);
+                fclose($stream);
+
+                // Transient upstream failures (429 / 5xx) — e.g. OpenAI-style
+                // "Loading model" 503s that clear once the provider has
+                // finished cold-starting the model. Retry with backoff.
+                if ($attempt < self::MAX_ATTEMPTS && self::isTransient($status)) {
+                    sleep(self::BACKOFF[$attempt] ?? 2);
+                    continue;
+                }
+
+                $errData = json_decode($body, true);
+                $msg = $errData['error']['message'] ?? $errData['message'] ?? $statusLine;
+                self::send('error', ['message' => self::friendlyError($msg)]);
+                return null;
+            }
+
+            // 2xx (or unknown status) — relay the stream.
+            break;
         }
 
         $fullContent = '';
@@ -136,5 +165,29 @@ final class SseStreamer
 
         fclose($stream);
         return $fullContent;
+    }
+
+    /** Extract the numeric HTTP status from a status line ("HTTP/1.1 200 OK"). */
+    private static function statusCode(string $statusLine): int
+    {
+        if (preg_match('/\s(\d{3})\s/', $statusLine, $m)) {
+            return (int) $m[1];
+        }
+        return 0;
+    }
+
+    /** Whether a status is a transient upstream failure worth retrying. */
+    private static function isTransient(int $status): bool
+    {
+        return $status === 429 || $status >= 500;
+    }
+
+    /** Human-friendly replacement for known transient provider messages. */
+    private static function friendlyError(string $msg): string
+    {
+        if (stripos($msg, 'loading model') !== false || stripos($msg, 'model is loading') !== false) {
+            return 'The AI model is still loading. Give it a moment and try again.';
+        }
+        return $msg;
     }
 }

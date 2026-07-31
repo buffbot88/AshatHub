@@ -22,6 +22,12 @@ use Repositories\RepositoryRegistry;
  */
 final class ChatController
 {
+    // ── Upstream retry (transient 429 / 5xx — e.g. "Loading model" 503) ──
+    /** Max upstream attempts before giving up on transient failures. */
+    private const MAX_ATTEMPTS = 3;
+    /** Seconds to sleep between attempts (attempt # → delay). */
+    private const BACKOFF = [1 => 1, 2 => 3];
+
     // ── Chat (non-streaming) ─────────────────────────────────────────
 
     public function chat(RequestContext $ctx): void
@@ -42,20 +48,11 @@ final class ChatController
 
         $req = $backend->buildRequest($messages, $body, false);
 
-        $streamCtx = stream_context_create([
-            'http' => [
-                'method'        => 'POST',
-                'header'        => $req['headers'],
-                'content'       => json_encode($req['payload']),
-                'timeout'       => 120,
-                'ignore_errors' => true,
-            ],
-        ]);
-
-        $raw = @file_get_contents($req['endpoint'], false, $streamCtx);
-        if ($raw === false) {
+        $upstream = $this->postJson($req['endpoint'], $req['headers'], $req['payload']);
+        if ($upstream['body'] === false) {
             $ctx->jsonResponse(['error' => 'backend_unreachable', 'message' => 'Could not reach the AI backend. Check the BrainStem URL in Account settings.'], 502);
         }
+        $raw = $upstream['body'];
 
         $result = json_decode($raw, true);
         if (!is_array($result)) {
@@ -64,16 +61,13 @@ final class ChatController
             $ctx->jsonResponse(['error' => 'backend_invalid_response', 'message' => 'AI backend returned non-JSON. Response starts with: ' . $snippet], 502);
         }
 
-        if (isset($result['ok']) && !$result['ok']) {
+        if ((isset($result['ok']) && !$result['ok']) || !empty($result['error'])) {
+            $msg = is_array($result['error'] ?? null)
+                ? ($result['error']['message'] ?? 'Upstream API returned an error.')
+                : (is_string($result['error'] ?? null) ? $result['error'] : 'Upstream API returned an error.');
             $ctx->jsonResponse([
                 'error'   => 'backend_api_error',
-                'message' => $result['error']['message'] ?? 'Upstream API returned an error.',
-            ], 502);
-        }
-        if (!empty($result['error'])) {
-            $ctx->jsonResponse([
-                'error'   => 'backend_api_error',
-                'message' => $result['error']['message'] ?? 'Upstream API returned an error.',
+                'message' => self::friendlyError($msg),
             ], 502);
         }
 
@@ -109,21 +103,13 @@ final class ChatController
         // do a non-streaming request and send the result as a single 'done' event.
         if (!$backend->supportsStreaming()) {
             $req = $backend->buildRequest($messages, $body, false);
-            $streamCtx = stream_context_create([
-                'http' => [
-                    'method'        => 'POST',
-                    'header'        => $req['headers'],
-                    'content'       => json_encode($req['payload']),
-                    'timeout'       => 120,
-                    'ignore_errors' => true,
-                ],
-            ]);
 
-            $raw = @file_get_contents($req['endpoint'], false, $streamCtx);
-            if ($raw === false) {
+            $upstream = $this->postJson($req['endpoint'], $req['headers'], $req['payload']);
+            if ($upstream['body'] === false) {
                 SseStreamer::send('error', ['message' => 'Could not reach the AI backend.']);
                 return;
             }
+            $raw = $upstream['body'];
 
             $result = json_decode($raw, true);
             if (!is_array($result)) {
@@ -136,8 +122,10 @@ final class ChatController
 
             // Check for upstream error responses (OpenAI-compatible error + ashat ok flag)
             if ((isset($result['ok']) && !$result['ok']) || !empty($result['error'])) {
-                $msg = $result['error']['message'] ?? $result['message'] ?? 'AI backend returned an error.';
-                SseStreamer::send('error', ['message' => $msg]);
+                $msg = is_array($result['error'] ?? null)
+                    ? ($result['error']['message'] ?? $result['message'] ?? 'AI backend returned an error.')
+                    : (is_string($result['error'] ?? null) ? $result['error'] : 'AI backend returned an error.');
+                SseStreamer::send('error', ['message' => self::friendlyError($msg)]);
                 return;
             }
 
@@ -184,6 +172,80 @@ final class ChatController
             ], 500);
         }
         $ctx->jsonResponse(['config' => RepositoryRegistry::brainstemConfig()->get()]);
+    }
+
+    // ── Upstream request helpers (shared by chat + chatStream) ─────────
+
+    /**
+     * POST JSON to an OpenAI-compatible endpoint with retry/backoff on
+     * transient failures (429 / 5xx). Non-2xx responses are returned with
+     * the body intact once retries are exhausted.
+     *
+     * @return array{status:int, body:string|false} body is false only when
+     *         the connection itself failed on every attempt.
+     */
+    private function postJson(string $endpoint, array $headers, array $payload): array
+    {
+        $attempt = 0;
+
+        while (true) {
+            $attempt++;
+
+            $streamCtx = stream_context_create([
+                'http' => [
+                    'method'        => 'POST',
+                    'header'        => $headers,
+                    'content'       => json_encode($payload),
+                    'timeout'       => 120,
+                    'ignore_errors' => true,
+                ],
+            ]);
+
+            $raw = @file_get_contents($endpoint, false, $streamCtx);
+            $status = self::statusCode($http_response_header[0] ?? '');
+
+            if ($raw === false) {
+                // Connection-level failure — fail fast. Transient "Loading
+                // model" 503s arrive as real HTTP responses and are retried
+                // via the status check below instead.
+                return ['status' => 0, 'body' => false];
+            }
+
+            if ($status === 0 || ($status >= 200 && $status < 300)) {
+                return ['status' => $status, 'body' => (string) $raw];
+            }
+
+            if ($attempt < self::MAX_ATTEMPTS && self::isTransient($status)) {
+                sleep(self::BACKOFF[$attempt] ?? 2);
+                continue;
+            }
+
+            return ['status' => $status, 'body' => (string) $raw];
+        }
+    }
+
+    /** Extract the numeric HTTP status from a status line ("HTTP/1.1 200 OK"). */
+    private static function statusCode(string $statusLine): int
+    {
+        if (preg_match('/\s(\d{3})\s/', $statusLine, $m)) {
+            return (int) $m[1];
+        }
+        return 0;
+    }
+
+    /** Whether a status is a transient upstream failure worth retrying. */
+    private static function isTransient(int $status): bool
+    {
+        return $status === 429 || $status >= 500;
+    }
+
+    /** Human-friendly replacement for known transient provider messages. */
+    private static function friendlyError(string $msg): string
+    {
+        if (stripos($msg, 'loading model') !== false || stripos($msg, 'model is loading') !== false) {
+            return 'The AI model is still loading. Give it a moment and try again.';
+        }
+        return $msg;
     }
 
 }

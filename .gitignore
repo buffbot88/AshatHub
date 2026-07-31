@@ -30,6 +30,9 @@ Thumbs.db
 public/css/build/
 public/js/build/
 
+# Temporary dev deps (only needed to recompile public/css/tailwind-prod.css)
+node_modules/
+
 # AshatOS_Old archive should NOT be committed
 AshatOS_Old/
 /.freebuff

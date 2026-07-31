@@ -317,6 +317,89 @@
     return removed;
   }
 
+  // Rename generated files matching a path or folder prefix across ALL
+  // saved builds in localStorage (File Manager rename action). The server
+  // row is renamed separately via /api/files/rename; this keeps the
+  // browser-side content (which lives ONLY here) in sync. Mirrors
+  // removeFilesByPrefix's normalization: 'src' and 'src/' both mean the
+  // src/ folder. Returns the number of files renamed.
+  function renameFilesByPrefix(oldPath, newPath) {
+    const oldP = String(oldPath || '').trim().replace(/^\/+/, '').replace(/\/+$/, '');
+    const newP = String(newPath || '').trim().replace(/^\/+/, '').replace(/\/+$/, '');
+    if (!oldP || !newP || oldP === newP) return 0;
+    let renamed = 0;
+    for (const entry of listGenerated()) {
+      const files = entry.files || [];
+      let changed = false;
+      const moved = files.map((f) => {
+        const p = (f && f.path) || '';
+        if (p === oldP || p.startsWith(oldP + '/')) {
+          f.path = newP + p.slice(oldP.length);
+          renamed++;
+          changed = true;
+        }
+        return f;
+      });
+      if (!changed) continue;
+      entry.files = moved;
+      if (Array.isArray(entry.file_meta)) {
+        entry.file_meta = entry.file_meta.map((m) => {
+          const p = (m && m.path) || '';
+          if (p === oldP || p.startsWith(oldP + '/')) {
+            m.path = newP + p.slice(oldP.length);
+          }
+          return m;
+        });
+      }
+      // listGenerated() injects local_key into the parsed object — strip
+      // it before re-serializing so it never pollutes stored JSON.
+      const key = entry.local_key;
+      delete entry.local_key;
+      try { localStorage.setItem(key, JSON.stringify(entry)); }
+      catch (_) { /* storage full/unavailable — best effort */ }
+    }
+    return renamed;
+  }
+
+  // Duplicate one generated file (exact path) into the SAME saved builds
+  // where it exists — the File Manager Duplicate action. The server row is
+  // duplicated via /api/files/duplicate; this copies the browser-side
+  // content (which lives ONLY here) to the new path. No-op when the source
+  // is missing or the target name is already taken. Returns copies added.
+  function duplicateFileLocal(oldPath, newPath) {
+    const oldP = String(oldPath || '').trim().replace(/^\/+/, '').replace(/\/+$/, '');
+    const newP = String(newPath || '').trim().replace(/^\/+/, '').replace(/\/+$/, '');
+    if (!oldP || !newP || oldP === newP) return 0;
+    let copied = 0;
+    for (const entry of listGenerated()) {
+      const files = entry.files || [];
+      const src = files.find((f) => f && f.path === oldP);
+      if (!src) continue;
+      if (files.some((f) => f && f.path === newP)) continue; // name taken
+      files.push({
+        path:     newP,
+        content:  src.content,
+        language: src.language || '',
+      });
+      if (Array.isArray(entry.file_meta)) {
+        entry.file_meta.push({
+          path:               newP,
+          language:           src.language || '',
+          size_bytes:         (src.content || '').length,
+          language_detected:  src.language || '',
+        });
+      }
+      copied++;
+      // listGenerated() injects local_key into the parsed object — strip
+      // it before re-serializing so it never pollutes stored JSON.
+      const key = entry.local_key;
+      delete entry.local_key;
+      try { localStorage.setItem(key, JSON.stringify(entry)); }
+      catch (_) { /* storage full/unavailable — best effort */ }
+    }
+    return copied;
+  }
+
   // Update one file's content within a saved build — used when the user
   // edits an AI-generated file in Monaco and hits "Save".
   function updateFile(buildId, path, newContent) {
@@ -966,7 +1049,7 @@
     getByoConfig,
     // Generated-code store
     saveGenerated, loadGenerated, listGenerated, pruneGenerated, updateFile,
-    removeFilesByPrefix,
+    removeFilesByPrefix, renameFilesByPrefix, duplicateFileLocal,
     uuid,
     escapeHtml,
     // LLM driver

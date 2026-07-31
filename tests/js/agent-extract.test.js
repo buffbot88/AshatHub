@@ -195,5 +195,84 @@ eq('trailing slash folder remove', (() => {
 // 23. Removing the last file drops the whole build entry (null)
 eq('empty entry removed', agent.loadGenerated('b-del-3'), null);
 
+console.log('\n── renameFilesByPrefix (File Manager rename) ──\n');
+
+// 24. Folder rename moves every descendant path (server rows + local)
+eq('folder rename moves paths', (() => {
+  _mem.clear();
+  agent.saveGenerated('b-ren-1', { plan: 'p', files: [
+    { path: 'src/main.py', content: 'x' },
+    { path: 'src/util.py', content: 'y' },
+    { path: 'README.md',   content: 'z' },
+  ] });
+  const renamed = agent.renameFilesByPrefix('src', 'lib');
+  const after = agent.loadGenerated('b-ren-1');
+  return [renamed, (after.files || []).map(f => f.path)];
+})(), [2, ['lib/main.py', 'lib/util.py', 'README.md']]); // order preserved
+
+// 25. Exact file rename moves just that file
+// 26. file_meta paths stay in sync with files
+eq('file rename + meta synced', (() => {
+  _mem.clear();
+  agent.saveGenerated('b-ren-2', { plan: 'p', files: [
+    { path: 'a.ts', content: 'x' },
+    { path: 'b.ts', content: 'y' },
+  ] });
+  agent.renameFilesByPrefix('a.ts', 'c.ts');
+  const entry = agent.loadGenerated('b-ren-2');
+  return [
+    (entry.files || []).map(f => f.path),
+    (entry.file_meta || []).map(m => m.path),
+  ];
+})(), [['c.ts', 'b.ts'], ['c.ts', 'b.ts']]); // order preserved
+
+// 27. No-op for empty args / same path / no match
+eq('no-op on empty args', (() => {
+  _mem.clear();
+  agent.saveGenerated('b-ren-3', { plan: 'p', files: [{ path: 'a.ts', content: 'x' }] });
+  const n1 = agent.renameFilesByPrefix('', 'x');
+  const n2 = agent.renameFilesByPrefix('a.ts', 'a.ts');
+  const n3 = agent.renameFilesByPrefix('nope', 'x');
+  return [n1, n2, n3, agent.loadGenerated('b-ren-3').files[0].path];
+})(), [0, 0, 0, 'a.ts']);
+
+// 28. Trailing-slash source behaves like the bare folder name
+eq('trailing slash rename', (() => {
+  _mem.clear();
+  agent.saveGenerated('b-ren-4', { plan: 'p', files: [{ path: 'lib/x.js', content: 'x' }] });
+  agent.renameFilesByPrefix('lib/', 'mod');
+  return agent.loadGenerated('b-ren-4').files[0].path;
+})(), 'mod/x.js');
+
+console.log('\n── duplicateFileLocal (File Manager duplicate) ──\n');
+
+// 29. Duplicate copies content + meta to the new path, keeps the source
+eq('duplicate copies file', (() => {
+  _mem.clear();
+  agent.saveGenerated('b-dup-1', { plan: 'p', files: [
+    { path: 'a.ts', content: 'x', language: 'typescript' },
+  ] });
+  const copied = agent.duplicateFileLocal('a.ts', 'a (copy).ts');
+  const entry = agent.loadGenerated('b-dup-1');
+  return [
+    copied,
+    (entry.files || []).map(f => [f.path, f.content, f.language]),
+    (entry.file_meta || []).map(m => m.path),
+  ];
+})(), [1, [['a.ts', 'x', 'typescript'], ['a (copy).ts', 'x', 'typescript']], ['a.ts', 'a (copy).ts']]);
+
+// 30. No-op when the source is missing or the target name is taken
+eq('duplicate no-op edge cases', (() => {
+  _mem.clear();
+  agent.saveGenerated('b-dup-2', { plan: 'p', files: [
+    { path: 'a.ts', content: 'x' },
+    { path: 'b.ts', content: 'y' },
+  ] });
+  const n1 = agent.duplicateFileLocal('nope.ts', 'c.ts');   // source missing
+  const n2 = agent.duplicateFileLocal('a.ts', 'b.ts');      // name taken
+  const n3 = agent.duplicateFileLocal('a.ts', 'a.ts');      // same path
+  return [n1, n2, n3, (agent.loadGenerated('b-dup-2').files || []).length];
+})(), [0, 0, 0, 2]);
+
 console.log('\n' + pass + ' passed, ' + fail + ' failed');
 process.exit(fail ? 1 : 0);

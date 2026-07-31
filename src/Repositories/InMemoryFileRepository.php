@@ -144,6 +144,90 @@ final class InMemoryFileRepository implements FileRepository
         return $count;
     }
 
+    /**
+     * Rename a file or a folder prefix (mirrors PdoFileRepository::rename
+     * semantics — see the interface docblock for the result contract).
+     * Folder-marker rows ('foo/') move along: 'foo/' → 'bar/'.
+     */
+    public function rename(string $userId, string $oldPath, string $newPath): array
+    {
+        $old = trim($oldPath, '/');
+        $new = trim($newPath, '/');
+        if ($old === '' || $new === '') return ['renamed' => 0, 'error' => 'invalid'];
+        if ($old === $new) return ['renamed' => 0, 'same' => true];
+        // Defense in depth: a folder can't be moved into itself
+        // ('src' → 'src/main') — the collision check below can't catch
+        // it because the colliding row is itself being moved.
+        if (str_starts_with($new, $old . '/')) return ['renamed' => 0, 'error' => 'nested_move'];
+
+        // 1. Rows being moved: exact path + every descendant.
+        $affected = [];
+        foreach ($this->rows as $id => $r) {
+            if (($r['user_id'] ?? '') !== $userId) continue;
+            $path = (string) ($r['path'] ?? '');
+            if ($path === $old || str_starts_with($path, $old . '/')) {
+                $affected[$id] = $path;
+            }
+        }
+        if (!$affected) return ['renamed' => 0, 'error' => 'not_found'];
+
+        // 2. Collision check — any non-moved row at the target path or
+        //    under the target prefix aborts the rename.
+        foreach ($this->rows as $id => $r) {
+            if (($r['user_id'] ?? '') !== $userId) continue;
+            if (array_key_exists($id, $affected)) continue;
+            $path = (string) ($r['path'] ?? '');
+            if ($path === $new || str_starts_with($path, $new . '/')) {
+                return ['renamed' => 0, 'error' => 'conflict', 'paths' => [$path]];
+            }
+        }
+
+        // 3. Swap the old prefix for the new one, row by row.
+        $count = 0;
+        foreach ($affected as $id => $path) {
+            $this->rows[$id]['path'] = $new . substr($path, strlen($old));
+            $count++;
+        }
+        return ['renamed' => $count, 'old' => $old, 'new' => $new];
+    }
+
+    /**
+     * Duplicate a file (mirrors PdoFileRepository::duplicate semantics —
+     * see the interface docblock for the result contract).
+     */
+    public function duplicate(string $userId, string $path): array
+    {
+        $path = trim($path, '/');
+        if ($path === '') return ['duplicated' => 0, 'error' => 'invalid'];
+        $source = $this->findByPath($userId, $path);
+        if (!$source) return ['duplicated' => 0, 'error' => 'not_found'];
+
+        $newPath = $this->nextCopyName($userId, $path);
+        $id = Uuid::v4();
+        $this->rows[$id] = array_merge($source, [
+            'id'          => $id,
+            'path'        => $newPath,
+            'saved'       => 1,
+            'modified_at' => date('Y-m-d H:i:s'),
+        ]);
+        return ['duplicated' => 1, 'path' => $newPath];
+    }
+
+    /** Find the next free 'name (copy N).ext' for a path (user-scoped). */
+    private function nextCopyName(string $userId, string $path): string
+    {
+        // $pos > 0 (not !== false) so dotfiles like '.gitignore' keep
+        // their leading dot in the stem instead of becoming ' (copy).gitignore'.
+        $pos  = strrpos($path, '.');
+        $ext  = ($pos > 0 && strpos($path, '/', $pos) === false) ? substr($path, $pos) : '';
+        $stem = $ext !== '' ? substr($path, 0, $pos) : $path;
+        for ($n = 1; $n <= 100; $n++) {
+            $candidate = $stem . ' (copy' . ($n > 1 ? ' ' . $n : '') . ')' . $ext;
+            if (!$this->findByPath($userId, $candidate)) return $candidate;
+        }
+        return $path . ' (copy)';
+    }
+
     public function countAll(): array
     {
         return ['c' => count($this->rows)];

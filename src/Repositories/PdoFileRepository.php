@@ -90,6 +90,106 @@ final class PdoFileRepository implements FileRepository
         );
     }
 
+    /**
+     * Rename a file or a folder prefix in ONE transaction so a mid-move
+     * failure can't leave the project half-renamed. Collision check:
+     * any row (other than the ones being moved) that already occupies the
+     * target path — or sits under the target prefix — aborts with 'conflict'.
+     * Folder-marker rows ('foo/') move along: 'foo/' → 'bar/'.
+     */
+    public function rename(string $userId, string $oldPath, string $newPath): array
+    {
+        $old = trim($oldPath, '/');
+        $new = trim($newPath, '/');
+        if ($old === '' || $new === '') return ['renamed' => 0, 'error' => 'invalid'];
+        if ($old === $new) return ['renamed' => 0, 'same' => true];
+        // Defense in depth: a folder can't be moved into itself
+        // ('src' → 'src/main') — the collision check below can't catch
+        // it because the colliding row is itself being moved.
+        if (str_starts_with($new, $old . '/')) return ['renamed' => 0, 'error' => 'nested_move'];
+
+        return $this->db->transaction(function () use ($userId, $old, $new) {
+            // 1. Rows being moved: exact path + every descendant (incl.
+            //    the folder marker 'foo/', which LIKE 'foo/%' matches).
+            $escapedOld = str_replace(['%', '_'], ['\\%', '\\_'], $old);
+            $affected = $this->db->fetchAll(
+                "SELECT id, path FROM files WHERE user_id = ? AND (path = ? OR path LIKE ?) ORDER BY path ASC",
+                [$userId, $old, $escapedOld . '/%']
+            );
+            if (!$affected) return ['renamed' => 0, 'error' => 'not_found'];
+
+            // 2. Collision check — exclude the rows we're about to move.
+            $affectedIds = array_column($affected, 'id');
+            $escapedNew = str_replace(['%', '_'], ['\\%', '\\_'], $new);
+            $placeholders = implode(',', array_fill(0, count($affectedIds), '?'));
+            $collisions = $this->db->fetchAll(
+                "SELECT path FROM files WHERE user_id = ? AND (path = ? OR path LIKE ?) AND id NOT IN ($placeholders)",
+                array_merge([$userId, $new, $escapedNew . '/%'], $affectedIds)
+            );
+            if ($collisions) {
+                return ['renamed' => 0, 'error' => 'conflict', 'paths' => array_column($collisions, 'path')];
+            }
+
+            // 3. Move: swap the old prefix for the new one, row by row.
+            $count = 0;
+            foreach ($affected as $row) {
+                $moved = $new . substr((string) $row['path'], strlen($old));
+                $this->db->execute(
+                    "UPDATE files SET path = ?, modified_at = NOW() WHERE id = ? AND user_id = ?",
+                    [$moved, $row['id'], $userId]
+                );
+                $count++;
+            }
+            return ['renamed' => $count, 'old' => $old, 'new' => $new];
+        });
+    }
+
+    /**
+     * Duplicate a file: copies the source row to a new path. The copy
+     * name auto-increments — 'main.ts' → 'main (copy).ts' →
+     * 'main (copy 2).ts' — until it finds a free path for this user.
+     */
+    public function duplicate(string $userId, string $path): array
+    {
+        $path = trim($path, '/');
+        if ($path === '') return ['duplicated' => 0, 'error' => 'invalid'];
+        $source = $this->findByPath($userId, $path);
+        if (!$source) return ['duplicated' => 0, 'error' => 'not_found'];
+
+        $newPath = $this->nextCopyName($userId, $path);
+        $id = Uuid::v4();
+        $this->db->execute(
+            "INSERT INTO files (id, user_id, path, content, language, saved, generated, build_id, build_phase)
+             VALUES (?, ?, ?, ?, ?, 1, ?, ?, ?)",
+            [
+                $id,
+                $userId,
+                $newPath,
+                $source['content'] ?? null,
+                $source['language'] ?? '',
+                (int) ($source['generated'] ?? 0),
+                $source['build_id'] ?? null,
+                $source['build_phase'] ?? null,
+            ]
+        );
+        return ['duplicated' => 1, 'path' => $newPath];
+    }
+
+    /** Find the next free 'name (copy N).ext' for a path (user-scoped). */
+    private function nextCopyName(string $userId, string $path): string
+    {
+        // $pos > 0 (not !== false) so dotfiles like '.gitignore' keep
+        // their leading dot in the stem instead of becoming ' (copy).gitignore'.
+        $pos  = strrpos($path, '.');
+        $ext  = ($pos > 0 && strpos($path, '/', $pos) === false) ? substr($path, $pos) : '';
+        $stem = $ext !== '' ? substr($path, 0, $pos) : $path;
+        for ($n = 1; $n <= 100; $n++) {
+            $candidate = $stem . ' (copy' . ($n > 1 ? ' ' . $n : '') . ')' . $ext;
+            if (!$this->findByPath($userId, $candidate)) return $candidate;
+        }
+        return $path . ' (copy)';
+    }
+
     public function countAll(): array
     {
         $row = $this->db->fetchOne("SELECT COUNT(*) AS c FROM files");

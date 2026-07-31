@@ -40,10 +40,17 @@ $router->group('/api', function () use ($router) {
             $router->get('',          [\Controllers\FilesController::class,  'list']);
             $router->get('/{id}',     [\Controllers\FilesController::class,  'show']);
             $router->post('',         [\Controllers\FilesController::class,  'save']);
-            // Folder delete — MUST be declared before /{id} so 'tree'
-            // isn't captured as an id.
+            // Static-suffix routes MUST be declared before /{id} so
+            // 'rename' / 'duplicate' aren't captured as an id.
+            $router->post('/rename',    [\Controllers\FilesController::class,  'rename']);
+            $router->post('/duplicate', [\Controllers\FilesController::class,  'duplicate']);
             $router->delete('/tree',  [\Controllers\FilesController::class,  'deleteTree']);
             $router->delete('/{id}',  [\Controllers\FilesController::class,  'delete']);
+        });
+
+        // ─── Folders (empty-folder markers) ──────────────────────
+        $router->group('/folders', function () use ($router) {
+            $router->post('', [\Controllers\FilesController::class, 'createFolder']);
         });
 
         // ─── Builds ───────────────────────────────────────────

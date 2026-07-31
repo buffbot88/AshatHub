@@ -26,27 +26,27 @@ No build step. No bundler. Drop the folder on a PHP-capable host and run.
 ├── public/                ← document root (exposed to web)
 │   ├── index.php          ← Front Controller — all requests go here
 │   ├── .htaccess          ← Apache rewrite rules
-│   ├── css/app.css        ← Custom styles (Midnight Protocol)
-│   ├── js/                ← Vanilla JS (app.js, studio.js)
+│   ├── css/app.css        ← Custom styles (Midnight Protocol / Ashat Gold Pulse)
+│   ├── js/                ← Vanilla JS (app.js, agent.js, studio.js)
 │   └── assets/            ← logo, favicon
 ├── src/
-│   ├── Core/              ← Router, Database, Auth, View, Session
-│   ├── Models/            ← User, Spec, File, Build, ApiConfig
-│   ├── Controllers/       ← Home, Auth, Community, Docs, Studio, Account, Admin, Api
-│   ├── Repositories/      ← PDO + InMemory data access (User, Session, Spec, Build, etc.)
-│   ├── Data/              ← ErrorPages, CategoryLabels
+│   ├── Core/              ← Router, Database, Auth, View, Session (+ routes/*.php)
+│   ├── Models/            ← BuildPayload, ChatBackend
+│   ├── Controllers/       ← 15 controllers (Home, Auth, Community, Docs, Studio, Account, Admin, Api, Chat, ChatPage, Builds, Files, Specs, Support, Error)
+│   ├── Repositories/      ← PDO + InMemory data access (User, Session, Spec, Build, File, …)
+│   ├── Data/              ← CategoryLabels, LanguageOptions
 │   └── views/             ← Layouts (header.php, footer.php) + page views
 ├── config/
-│   ├── bootstrap.php      ← Boot sequence (env, autoloader, session, error handling)
-│   ├── config.php         ← Constants (APP_NAME, DB_*, SESSION_*, etc.)
-│   └── conn.php.example   ← Shared-hosting override (copy to conn.php)
+│   ├── bootstrap.php      ← Boot sequence + all APP_*/DB_*/SESSION_* constants
+│   └── server_config.json ← Live config for shared hosts (not a dotfile, gitignored)
 ├── db/
 │   ├── schema.sql           ← MySQL schema + seed data (full-access setup)
-│   └── schema-tables-only.sql ← tables + seeds only (shared-hosting setup)
+│   ├── schema-tables-only.sql ← tables + seeds only (shared-hosting setup)
+│   ├── spec-language.sql    ← Migration: adds specs.language (project language picker)
+│   └── sve-rename.sql       ← Migration: System Update Engine → System Validation Engine
 ├── router.php             ← Built-in PHP server fallback
 ├── .htaccess              ← Apache rules for shared-hosting / flat deploy
 ├── index.php              ← Entry point when project is in webroot
-├── .env.example           ← Config template (copy → .env)
 └── README.md              ← This file
 ```
 
@@ -82,12 +82,18 @@ mysql -u root -p < db/schema.sql
 
 **Configure the app:**
 
-```bash
-# Copy env template and fill in your DB credentials
-cp .env.example .env
-# Edit .env: DB_NAME=your_host_assigned_db, DB_USER=your_user,
-#            DB_PASS=your_password, DB_HOST=localhost (usually)
+All settings (`APP_*`, `DB_*`, `SESSION_*`) are centralized in `config/bootstrap.php` and overridden from **`config/server_config.json`** — a regular JSON file that works even on hosts that block dotfiles. Create/edit it and set your real credentials (see `config/bootstrap.php` for the expected keys):
+
+```json
+{
+  "DB_NAME": "your_host_assigned_db",
+  "DB_USER": "your_user",
+  "DB_PASS": "your_password",
+  "DB_HOST": "localhost"
+}
 ```
+
+`server_config.json` is loaded before `.env` — when it exists, `.env` is skipped.
 
 After install, point your web root at `public/` (Apache) or run `php -S localhost:8000 router.php` (dev).
 
@@ -145,20 +151,20 @@ This sets the admin password to `admin1234`. Or just visit `/register/`, create 
 
 ### 5. Free shared-hosting setup (ByetHost, VistaPanel, dotfile-hostile hosts)
 
-If your host blocks dotfile uploads or `.env` doesn't seem to load, copy **`config/conn.php.example`** to **`config/conn.php`** and edit your real DB credentials there. This is a regular PHP file — no dotfile issue. Each `putenv()` in `conn.php` overrides `.env` and the hardcoded defaults.
+If your host blocks dotfile uploads or `.env` doesn't seem to load, use **`config/server_config.json`** — a regular JSON file, no dotfile issue. It covers ALL settings (`APP_*`, `DB_*`, `SESSION_*`), is loaded before `.env`, and skips `.env` entirely when present. Put your real database credentials there.
 
 **ByetHost free-specific tips:**
 
 | Quirk | Consequence | Fix |
 |---|---|---|
 | Default PHP version may be 7.x | Fatal on `str_starts_with` / `never` return type | VistaPanel → "Select PHP Version" → set to 8.1+ before uploading |
-| MySQL host is NOT `localhost` | PDO connection refused | Open VistaPanel → MySQL Databases → copy the exact hostname into `DB_HOST=` in `conn.php` |
+| MySQL host is NOT `localhost` | PDO connection refused | Open VistaPanel → MySQL Databases → copy the exact hostname into `DB_HOST=` in `server_config.json` |
 | DB name + user are auto-prefixed | "Access denied" for user | Use the FULL prefixed names from VistaPanel's "Current Databases" list |
 | **mod_rewrite is disabled** | `.htaccess` rewrite rules don't fire | Built-in fix: the `.htaccess` uses `ErrorDocument` directives + PHP `REDIRECT_URL` restoration instead |
 | Web user can't create folders | `storage/logs/` mkdir fails silently | Pre-create via FileZilla with CHMOD 775, or rely on the `?debug=1` lever |
 | `php_value` in `.htaccess` causes 500 | Avoided by design | Already confirmed compliant — root + public `.htaccess` use only `mod_alias` + `mod_headers`, no `php_value` |
 
-For any other free host: open `config/conn.php.example`, find the "generic shared cPanel / managed MySQL" pattern, and fill in your credentials there.
+For any other free host: create/edit `config/server_config.json`, set the `DB_*` keys there (see `config/bootstrap.php` for the full key list), and fill in your credentials.
 
 ### 6. Diagnosing 500 Errors
 
@@ -174,7 +180,7 @@ If the home page returns a plain 500, three diagnostic paths ship with the proje
 
 1. **PHP version < 8.1.** The `never` return type in RequestContext.php requires PHP 8.1+. Select PHP 8.1+ in your hosting control panel.
 2. **Missing `public/` folder** or incomplete upload. The `?__diag=1` endpoint shows ✓/✗ for every critical file.
-3. **Database credentials not configured.** If `.env` is blocked, use `config/conn.php` instead.
+3. **Database credentials not configured.** If `.env` is blocked, use `config/server_config.json` instead.
 
 ## Features
 
@@ -185,9 +191,10 @@ If the home page returns a plain 500, three diagnostic paths ship with the proje
 | `/community/project/:slug` | Project Detail    | Stack, likes, downloads                  |
 | `/docs/`                   | Docs index        | Articles grouped by category             |
 | `/docs/:slug`              | Docs article      | Markdown rendered to HTML                |
-| `/ide/`                    | Studio            | Monaco editor + file tree + console      |
-| `/ide/planner`             | Planner           | Spec → Plan → Approved Builds            |
+| `/ide/`                    | Studio Dashboard  | Quick spec, stats, recent builds         |
+| `/ide/planner`             | Planner           | Two-phase build: Plan → Approve → Generate |
 | `/ide/autonomy`            | Mission Control   | Phase tree + timeline                    |
+| `/ide/files`               | File Manager      | Recursive tree, context menu, rename/duplicate/delete, refresh-restore |
 | `/ide/spec-chat`           | Spec Chat         | AI-assisted project brainstorming        |
 | `/account/`                | Account           | Profile, stats                           |
 | `/account/active-users/`   | Active Users      | Recent sign-ins (admin)                  |
@@ -204,6 +211,7 @@ If the home page returns a plain 500, three diagnostic paths ship with the proje
 - **SQLi**: every query via PDO prepared statements.
 - **Sessions**: signed by PHP, `HttpOnly`, `SameSite=Lax`, optional `Secure` flag.
 - **BYO API keys**: stored **only in the user's browser** (`localStorage["ashat.api"]`). The server never sees them.
+- **Generated file content**: lives **only in the browser** (`localStorage["ashat.generated.*"]`); the server stores metadata rows only.
 - **Roles**: `Member` (default), `Pro`, `Admin` — enforced by middleware (`pro-or-admin`, `admin-gate`).
 
 

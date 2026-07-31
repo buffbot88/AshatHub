@@ -56,6 +56,31 @@ interface FileRepository
      */
     public function deleteByPrefix(string $userId, string $pathPrefix): int;
 
+    /**
+     * Rename a file OR a folder (path prefix) — 'src' moves 'src/main.ts'
+     * and 'src/lib/util.ts' to 'lib/main.ts' / 'lib/util.ts'. Auth-scoped
+     * to user. Folder-marker rows (path 'foo/') are moved too.
+     *
+     * Returns a result array:
+     *   ['renamed' => n, 'old' => ..., 'new' => ...]   on success
+     *   ['renamed' => 0, 'same' => true]               old === new
+     *   ['renamed' => 0, 'error' => 'not_found']       nothing matched
+     *   ['renamed' => 0, 'error' => 'conflict', 'paths' => [...]]  target occupied
+     *   ['renamed' => 0, 'error' => 'invalid']          empty path
+     */
+    public function rename(string $userId, string $oldPath, string $newPath): array;
+
+    /**
+     * Duplicate a single file: copies the row (content, language,
+     * generated/build metadata) to a new auto-named path ('main.ts' →
+     * 'main (copy).ts', then 'main (copy 2).ts' on collision). Auth-scoped
+     * to user. Returns:
+     *   ['duplicated' => 1, 'path' => newPath]      on success
+     *   ['duplicated' => 0, 'error' => 'not_found'] nothing matched
+     *   ['duplicated' => 0, 'error' => 'invalid']   empty path
+     */
+    public function duplicate(string $userId, string $path): array;
+
     /** Count all files across all users. Returns ['c' => int]. */
     public function countAll(): array;
 }

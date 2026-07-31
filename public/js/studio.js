@@ -11,6 +11,7 @@
   // ── Monacovars (set by files.php init script) ─────────────────
   var monacoEd;
   var monacoPendingContent = null;
+  var monacoPendingScrollTop = null;   // restored scroll, applied after content replay
   var monacoDetect = setInterval(function () {
     var m = window.__monacoEditor;
     if (m) {
@@ -25,11 +26,18 @@
         if (ta.value && ta.value !== monacoPendingContent) monacoPendingContent = ta.value;
         if (ta.parentNode) ta.parentNode.removeChild(ta);
       }
-      // Replay any content that was set before Monaco was ready
+      // Replay any content that was set before Monaco was ready, THEN
+      // apply the persisted scroll position (setValue resets scroll).
       if (monacoPendingContent !== null) {
         monacoEd.setValue(monacoPendingContent);
         monacoPendingContent = null;
       }
+      if (monacoPendingScrollTop != null && monacoEd.setScrollTop) {
+        monacoEd.setScrollTop(monacoPendingScrollTop);
+        monacoPendingScrollTop = null;
+      }
+      // Persist the editor scroll position as the user reads (debounced).
+      if (typeof wireEditorScrollSave === 'function') wireEditorScrollSave(monacoEd);
     }
   }, 300);
 
@@ -385,7 +393,142 @@ Quick build from the Studio dashboard.
   const editorTitle = document.getElementById('editor-title');
   const btnSaveFile = document.getElementById('btn-save-file');
   const btnNewFile  = document.getElementById('btn-new-file');
+  const btnNewFolder = document.getElementById('btn-new-folder');
   let activeFile = null;
+
+  // IDE-explorer selection + right-click context menu state.
+  let fmSelected = null;   // { type: 'file' | 'folder', path }
+  let fmMenu = null;       // lazily-created context menu element
+  let fmMenuOpen = false;
+
+  // Per-folder collapse state, persisted so it survives re-renders and
+  // page reloads (capped to avoid unbounded growth). Keyed by the FULL
+  // folder path ('src/lib'), so nested folders collapse independently.
+  const FM_COLLAPSE_KEY = 'ashat.fm.collapsed';
+  function loadCollapsedFolders() {
+    try {
+      const arr = JSON.parse(localStorage.getItem(FM_COLLAPSE_KEY) || '[]');
+      return new Set(Array.isArray(arr) ? arr : []);
+    } catch (_) { return new Set(); }
+  }
+  function persistCollapsedFolders() {
+    try {
+      const arr = Array.from(collapsedFolders).slice(0, 300);
+      localStorage.setItem(FM_COLLAPSE_KEY, JSON.stringify(arr));
+    } catch (_) { /* storage unavailable — state stays in-memory */ }
+  }
+  const collapsedFolders = loadCollapsedFolders();
+
+  // ── Persisted IDE state (refresh restore) ──────────────────────
+  // Remembers the open file + page/editor scroll positions so a page
+  // refresh restores exactly what the user was looking at. Saved on
+  // open/rename/delete, debounced on scroll, and flushed on pagehide.
+  const FM_STATE_KEY = 'ashat.fm.state';
+  let fmStateRestored = false;   // restore only on the FIRST hydration
+
+  function loadFmState() {
+    try { return JSON.parse(localStorage.getItem(FM_STATE_KEY) || 'null'); }
+    catch (_) { return null; }
+  }
+
+  function saveFmState(editorScrollVal) {
+    let editorScroll = 0;
+    if (typeof editorScrollVal === 'number') {
+      // Explicit value (e.g. 0 right after opening a file — a freshly
+      // opened file starts at the top, not where the PREVIOUS file was).
+      editorScroll = Math.max(0, editorScrollVal);
+    } else if (monacoEd && monacoEd.getScrollTop) {
+      editorScroll = Math.max(0, monacoEd.getScrollTop());
+    } else {
+      const ta = editor ? editor.querySelector('textarea.fallback-editor') : null;
+      if (ta) editorScroll = Math.max(0, ta.scrollTop);
+    }
+    try {
+      localStorage.setItem(FM_STATE_KEY, JSON.stringify({
+        file:         activeFile ? activeFile.path : null,
+        pageScroll:   Math.max(0, window.scrollY || 0),
+        editorScroll: editorScroll,
+      }));
+    } catch (_) { /* storage unavailable — best effort */ }
+  }
+
+  let fmStateTimer = null;
+  function debounceSaveFmState() {
+    clearTimeout(fmStateTimer);
+    fmStateTimer = setTimeout(saveFmState, 250);
+  }
+
+  // Monaco's editor scrolls inside .monaco-scrollable-element — listen on
+  // that native scroll event (Monaco has no public onScroll callback).
+  function wireEditorScrollSave(editorInstance) {
+    if (!editorInstance || !editorInstance.getDomNode) return;
+    const scrollEl = editorInstance.getDomNode().querySelector('.monaco-scrollable-element');
+    if (scrollEl) scrollEl.addEventListener('scroll', debounceSaveFmState, { passive: true });
+  }
+
+  // Keep the page scroll position fresh while the user scrolls.
+  window.addEventListener('scroll', debounceSaveFmState, { passive: true });
+
+  // Flush the last known state on refresh / navigation (beforeunload is
+  // unreliable; pagehide fires in both refresh and bfcache cases).
+  window.addEventListener('pagehide', saveFmState);
+
+  // Apply a persisted editor scrollTop once content is in place — if
+  // Monaco hasn't booted yet, defer via monacoPendingScrollTop (applied
+  // right after the content replay in monacoDetect).
+  function restoreEditorScrollSoon(top) {
+    if (top == null) return;
+    if (monacoEd && monacoEd.setScrollTop) {
+      monacoEd.setScrollTop(top);
+      return;
+    }
+    monacoPendingScrollTop = top;
+    const ta = editor ? editor.querySelector('textarea.fallback-editor') : null;
+    if (ta) ta.scrollTop = top;
+  }
+
+  // Expand every collapsed ancestor of a path so the target row is
+  // actually visible after restore (returns true if anything expanded).
+  function revealPathInTree(path) {
+    const segs = String(path).split('/');
+    segs.pop();   // the file itself — only ancestors matter
+    let cur = '';
+    let changed = false;
+    segs.forEach(function (seg) {
+      cur = cur ? cur + '/' + seg : seg;
+      if (collapsedFolders.delete(cur)) changed = true;
+    });
+    if (changed) {
+      persistCollapsedFolders();
+      renderFileList(fmFiles);
+    }
+    return changed;
+  }
+
+  // First-hydration restore: reopen the persisted file (expanding its
+  // ancestors first) and put the page/editor back where the user left off.
+  function restoreFmState() {
+    const state = loadFmState();
+    if (!state) return;
+
+    if (state.file) revealPathInTree(state.file);
+
+    const target = state.file && fmFiles.some((f) => f.path === state.file) ? state.file : null;
+    if (target) {
+      selectRow('file', target);
+      openFile(target).then(function () {
+        if (state.editorScroll != null) restoreEditorScrollSoon(state.editorScroll);
+        const row = document.querySelector('button.file-pick[data-path="' + cssSel(target) + '"]');
+        if (row) row.scrollIntoView({ block: 'nearest' });
+      });
+    }
+
+    if (state.pageScroll) {
+      window.scrollTo(0, state.pageScroll);
+      // Re-apply once layout has settled (async hydration above).
+      setTimeout(function () { window.scrollTo(0, state.pageScroll); }, 60);
+    }
+  }
 
   // In-memory merged list (server rows + localStorage-generated files),
   // populated by loadFileList() on page load. The click handler reads
@@ -415,10 +558,11 @@ Quick build from the Studio dashboard.
     return i === -1 ? '/' : p.slice(0, i);
   }
 
-  // ── Render the sidebar as a folder tree from the merged list ────
-  // Root-level files appear first; every directory becomes a
-  // collapsible folder row with a delete button, and each file row has
-  // its own delete button (both handle server rows + localStorage).
+  // ── Render the sidebar as a RECURSIVE folder tree ──────────────
+  // 'src/lib/util.ts' renders as src → lib → util.ts, expanding level by
+  // level. Folders sort before files (natural order) like a real IDE.
+  // Folder-marker rows (paths ending in '/') create empty folders; every
+  // other path creates intermediate folder nodes along the way.
   function renderFileList(files) {
     if (!fileList) return;
     fileList.innerHTML = '';
@@ -431,24 +575,67 @@ Quick build from the Studio dashboard.
       return;
     }
 
-    // Group by directory ('/' = root level).
-    const folders = {};
-    const roots = [];
+    // 1. Build the nested tree from the flat path list.
+    const root = { name: '', path: '', type: 'folder', children: [] };
+    const folderNodes = new Map();   // full path -> folder node
+    folderNodes.set('', root);
+    const getFolder = (path) => {
+      let node = folderNodes.get(path);
+      if (!node) {
+        node = { name: path.split('/').pop() || path, path: path, type: 'folder', children: [] };
+        folderNodes.set(path, node);
+      }
+      return node;
+    };
+    // Create + link every folder in a segment chain, returning the last one.
+    const linkChain = (segments) => {
+      let cur = root;
+      let curPath = '';
+      segments.forEach(function (seg) {
+        curPath = curPath ? curPath + '/' + seg : seg;
+        const child = getFolder(curPath);
+        if (!cur.children.includes(child)) cur.children.push(child);
+        cur = child;
+      });
+      return cur;
+    };
+
     files.forEach(function (f) {
-      const dir = pathDir(f.path);
-      if (dir === '/' || dir === '') { roots.push(f); }
-      else { (folders[dir] = folders[dir] || []).push(f); }
+      const p = f.path || '';
+      if (p.length > 1 && p.endsWith('/')) {
+        linkChain(p.slice(0, -1).split('/'));   // empty-folder marker
+        return;
+      }
+      const segs = p.split('/');
+      const name = segs.pop();
+      linkChain(segs).children.push({ name: name, path: p, type: 'file' });
     });
 
-    function makeDeleteBtn(kind, value, label) {
-      const del = document.createElement('button');
-      del.type = 'button';
-      del.className = 'file-del';
-      del.dataset[kind] = value;
-      del.title = label;
-      del.textContent = '🗑';
-      del.setAttribute('aria-label', label);
-      return del;
+    // 2. Sort: folders first, then files — natural (numeric-aware) order.
+    const sortChildren = (node) => {
+      node.children.sort(function (a, b) {
+        if (a.type !== b.type) return a.type === 'folder' ? -1 : 1;
+        return a.name.localeCompare(b.name, undefined, { numeric: true });
+      });
+      node.children.forEach(function (c) { if (c.type === 'folder') sortChildren(c); });
+    };
+    sortChildren(root);
+
+    // 3. Prune collapse state for folders that no longer exist.
+    const stale = [];
+    collapsedFolders.forEach(function (p) { if (!folderNodes.has(p)) stale.push(p); });
+    stale.forEach(function (p) { collapsedFolders.delete(p); });
+    if (stale.length) persistCollapsedFolders();
+
+    function makeActionBtn(cls, kind, value, label, glyph) {
+      const b = document.createElement('button');
+      b.type = 'button';
+      b.className = cls;
+      b.dataset[kind] = value;
+      b.title = label;
+      b.textContent = glyph;
+      b.setAttribute('aria-label', label);
+      return b;
     }
 
     function makeFileRow(f) {
@@ -468,18 +655,18 @@ Quick build from the Studio dashboard.
       btn.appendChild(name);
       btn.appendChild(dir);
       li.appendChild(btn);
-      li.appendChild(makeDeleteBtn('deleteFile', f.path, 'Delete ' + f.path));
+      li.appendChild(makeActionBtn('file-edit', 'renameFile', f.path, 'Rename ' + f.path, '✏️'));
+      li.appendChild(makeActionBtn('file-del', 'deleteFile', f.path, 'Delete ' + f.path, '🗑'));
       return li;
     }
 
-    // Root-level files first (sorted).
-    roots.sort(function (a, b) { return a.path.localeCompare(b.path); });
-    roots.forEach(function (f) { fileList.appendChild(makeFileRow(f)); });
-
-    // One collapsible folder row per directory, then its files.
-    Object.keys(folders).sort().forEach(function (dir) {
+    // 4. Render recursively. Nested ul.file-folder-children CSS indents
+    //    each level automatically, and every folder li carries its full
+    //    path in data-folder-path for the context menu + keyboard nav.
+    function renderFolder(node, parentEl) {
       const li = document.createElement('li');
       li.className = 'file-folder';
+      li.dataset.folderPath = node.path;
 
       const toggle = document.createElement('button');
       toggle.type = 'button';
@@ -489,19 +676,38 @@ Quick build from the Studio dashboard.
       caret.textContent = '▸';
       const name = document.createElement('span');
       name.className = 'folder-name';
-      name.textContent = '📁 ' + dir;
+      name.textContent = '📁 ' + node.name;
       toggle.appendChild(caret);
       toggle.appendChild(name);
-      toggle.title = dir + '/ — click to collapse/expand';
+      toggle.title = node.path + '/ — click to collapse/expand';
       li.appendChild(toggle);
-      li.appendChild(makeDeleteBtn('deleteFolder', dir, 'Delete folder ' + dir + '/'));
+      li.appendChild(makeActionBtn('file-edit', 'renameFolder', node.path, 'Rename folder ' + node.path + '/', '✏️'));
+      li.appendChild(makeActionBtn('file-del', 'deleteFolder', node.path, 'Delete folder ' + node.path + '/', '🗑'));
 
       const ul = document.createElement('ul');
       ul.className = 'file-folder-children';
-      folders[dir].sort(function (a, b) { return a.path.localeCompare(b.path); });
-      folders[dir].forEach(function (f) { ul.appendChild(makeFileRow(f)); });
+      if (collapsedFolders.has(node.path)) {
+        ul.classList.add('collapsed');
+        toggle.classList.add('collapsed');   // keep the caret indicator in sync
+      }
+      if (node.children.length === 0) {
+        const empty = document.createElement('li');
+        empty.className = 'file-folder-empty';
+        empty.textContent = '(empty folder)';
+        ul.appendChild(empty);
+      } else {
+        node.children.forEach(function (child) {
+          if (child.type === 'file') ul.appendChild(makeFileRow(child));
+          else renderFolder(child, ul);
+        });
+      }
       li.appendChild(ul);
-      fileList.appendChild(li);
+      parentEl.appendChild(li);
+    }
+
+    root.children.forEach(function (child) {
+      if (child.type === 'file') fileList.appendChild(makeFileRow(child));
+      else renderFolder(child, fileList);
     });
   }
 
@@ -533,6 +739,7 @@ Quick build from the Studio dashboard.
         activeFile = null;
         editorTitle.textContent = 'pick a file →';
         monacoSetContent('');
+        saveFmState();   // the deleted file must not be reopened on refresh
       }
       ashatToast('Deleted ' + path + (localRemoved ? ' (local copy removed)' : ''), 'ok');
       await reloadFileList();
@@ -542,9 +749,16 @@ Quick build from the Studio dashboard.
   }
 
   async function deleteFolder(dir) {
-    const members = fmFiles.filter((f) => f.path === dir || f.path.startsWith(dir + '/'));
-    if (members.length === 0) return ashatToast('Folder is empty.', 'warn');
-    if (!window.confirm('Delete folder ' + dir + '/ and its ' + members.length + ' file' + (members.length === 1 ? '' : 's') + '?')) return;
+    const all = fmFiles.filter((f) => f.path === dir || (f.path || '').startsWith(dir + '/'));
+    if (all.length === 0) return ashatToast('Folder not found.', 'warn');
+    // Folder-marker rows ('assets/') are placeholders, not files — count
+    // only real files so the confirm message doesn't claim "1 file" for
+    // an empty folder.
+    const members = all.filter((f) => !(f.path || '').endsWith('/'));
+    const confirmMsg = members.length === 0
+      ? 'Delete empty folder ' + dir + '/?'
+      : 'Delete folder ' + dir + '/ and its ' + members.length + ' file' + (members.length === 1 ? '' : 's') + '?';
+    if (!window.confirm(confirmMsg)) return;
 
     try {
       // Server folder delete FIRST — if it fails, abort before touching
@@ -558,6 +772,7 @@ Quick build from the Studio dashboard.
         activeFile = null;
         editorTitle.textContent = 'pick a file →';
         monacoSetContent('');
+        saveFmState();   // the deleted file must not be reopened on refresh
       }
       ashatToast('Deleted folder ' + dir + '/' + (localRemoved ? ' (' + localRemoved + ' local)' : ''), 'ok');
       await reloadFileList();
@@ -565,6 +780,367 @@ Quick build from the Studio dashboard.
       ashatToast('Could not delete folder: ' + ((e && e.message) || 'unknown'), 'err');
     }
   }
+
+  // ── Rename helpers (server row + localStorage generated content) ─
+  // Mirrors the delete ordering: the server rename runs first (when a
+  // server row exists), then the localStorage generated-file rename.
+  async function renameFile(path) {
+    const file = fmFiles.find((f) => f.path === path);
+    if (!file) return ashatToast('File not found.', 'warn');
+    const next = window.prompt('Rename ' + path + ' to:', path);
+    if (!next) return;
+    const newPath = String(next).trim().replace(/^\/+/, '').replace(/\/+$/, '');
+    if (!newPath) return ashatToast('A path is required.', 'warn');
+    if (newPath === path) return;
+    // Local-only generated files have no server row — skip the server call.
+    await doRename(path, newPath, { tryServer: !!file.id });
+  }
+
+  async function renameFolder(dir) {
+    const next = window.prompt('Rename folder ' + dir + '/ to (moves all contents):', dir);
+    if (!next) return;
+    const newDir = String(next).trim().replace(/^\/+/, '').replace(/\/+$/, '');
+    if (!newDir) return ashatToast('A path is required.', 'warn');
+    if (newDir === dir) return;
+    // Always try the server for folders — server rows may live under it.
+    await doRename(dir, newDir, { tryServer: true });
+  }
+
+  async function doRename(oldPath, newPath, opts) {
+    opts = opts || {};
+    try {
+      if (opts.tryServer) {
+        try {
+          await ashatFetch('/api/files/rename', {
+            method: 'POST',
+            body: { path: oldPath, newPath: newPath },
+          });
+        } catch (e) {
+          // 404 = the path exists only in localStorage (generated file
+          // with no server row) — rename locally and carry on.
+          // 409 = the target is occupied — abort with a clear message.
+          if (e && e.status === 404) { /* local-only — fall through */ }
+          else if (e && e.payload && e.payload.error === 'conflict') {
+            throw new Error('A file or folder already exists at "' + newPath + '".');
+          } else {
+            throw new Error((e && e.message) || 'Rename failed.');
+          }
+        }
+      }
+      // Local generated content (agent output lives only in the browser).
+      let localRenamed = 0;
+      if (window.ASHAT && window.ASHAT.agent && typeof window.ASHAT.agent.renameFilesByPrefix === 'function') {
+        localRenamed = window.ASHAT.agent.renameFilesByPrefix(oldPath, newPath);
+      }
+      if (activeFile && activeFile.path === oldPath) {
+        activeFile.path = newPath;
+        editorTitle.textContent = newPath;
+        saveFmState();   // keep the persisted open-file path in sync
+      }
+      ashatToast(oldPath + ' → ' + newPath + (localRenamed ? ' (local copy updated)' : ''), 'ok');
+      await reloadFileList();
+    } catch (e) {
+      ashatToast('Could not rename: ' + ((e && e.message) || 'unknown'), 'err');
+    }
+  }
+
+  // ── IDE-explorer: selection, context menu, duplicate ────────────
+  // The File Manager mimics a real IDE explorer: right-click a file or
+  // folder for Open / Save / Rename / Duplicate / Delete, with keyboard
+  // shortcuts (Enter, F2, Del, Ctrl+Enter, Ctrl+D, Shift+F10) acting on
+  // the currently selected row.
+
+  function cssSel(v) {
+    return (window.CSS && CSS.escape) ? CSS.escape(String(v)) : String(v).replace(/"/g, '\\"');
+  }
+
+  function selectRow(type, path) {
+    fmSelected = { type: type, path: path };
+    document.querySelectorAll('button.file-pick').forEach((b) =>
+      b.classList.toggle('active', b.dataset.path === path)
+    );
+    document.querySelectorAll('li.file-folder').forEach((li) =>
+      li.classList.toggle('selected', li.dataset.folderPath === path)
+    );
+  }
+
+  // Toggle a folder's collapse state: keeps the persisted Set in sync
+  // with the DOM so per-folder state survives re-renders (nested folders
+  // collapse independently — 'src' and 'src/lib' are separate keys).
+  function toggleFolderCollapse(li, toggleBtn) {
+    if (!li || !li.dataset.folderPath) return;
+    const path = li.dataset.folderPath;
+    const children = li.querySelector('.file-folder-children');
+    if (!children) return;
+    const collapsing = !children.classList.contains('collapsed');
+    children.classList.toggle('collapsed', collapsing);
+    if (toggleBtn) toggleBtn.classList.toggle('collapsed', collapsing);
+    if (collapsing) collapsedFolders.add(path); else collapsedFolders.delete(path);
+    persistCollapsedFolders();
+  }
+
+  function toggleFolder(dir) {
+    const li = document.querySelector('li.file-folder[data-folder-path="' + cssSel(dir) + '"]');
+    toggleFolderCollapse(li, li ? li.querySelector('button.file-folder-toggle') : null);
+  }
+
+  // ── Arrow-key navigation (IDE-explorer style, nesting-aware) ────
+  // Rows in document order ARE tree order; a row is visible unless it
+  // lives inside a collapsed folder's children list.
+  function visibleTreeRows() {
+    return Array.prototype.filter.call(
+      fileList.querySelectorAll('li.file-row, li.file-folder'),
+      function (li) { return !li.closest('ul.file-folder-children.collapsed'); }
+    );
+  }
+
+  function rowTarget(li) {
+    if (li.classList.contains('file-folder')) {
+      return { type: 'folder', path: li.dataset.folderPath || '' };
+    }
+    const pick = li.querySelector('.file-pick');
+    return { type: 'file', path: pick ? pick.dataset.path : '' };
+  }
+
+  function parentPath(path) {
+    const i = String(path).lastIndexOf('/');
+    return i <= 0 ? '' : path.slice(0, i);
+  }
+
+  function moveSelection(delta) {
+    const rows = visibleTreeRows();
+    if (!rows.length) return;
+    let idx = -1;
+    for (let i = 0; i < rows.length; i++) {
+      const t = rowTarget(rows[i]);
+      if (t.path && t.path === fmSelected.path && t.type === fmSelected.type) { idx = i; break; }
+    }
+    const next = idx === -1 ? (delta > 0 ? 0 : rows.length - 1) : idx + delta;
+    if (next < 0 || next >= rows.length) return;
+    const t = rowTarget(rows[next]);
+    if (!t.path) return;
+    selectRow(t.type, t.path);
+    rows[next].scrollIntoView({ block: 'nearest' });
+  }
+
+  function jumpSelection(toEnd) {
+    const rows = visibleTreeRows();
+    if (!rows.length) return;
+    const target = toEnd ? rows.length - 1 : 0;
+    const t = rowTarget(rows[target]);
+    if (!t.path) return;
+    selectRow(t.type, t.path);
+    rows[target].scrollIntoView({ block: 'nearest' });
+  }
+
+  function arrowRight() {
+    if (!fmSelected || fmSelected.type !== 'folder') return;
+    const li = document.querySelector('li.file-folder[data-folder-path="' + cssSel(fmSelected.path) + '"]');
+    if (!li) return;
+    const children = li.querySelector('.file-folder-children');
+    if (children && children.classList.contains('collapsed')) {
+      toggleFolderCollapse(li, li.querySelector('button.file-folder-toggle'));   // expand first
+    }
+    const first = children && children.children ? children.children[0] : null;   // direct child only
+    if (first) {
+      const t = rowTarget(first);
+      if (t.path) {
+        selectRow(t.type, t.path);
+        first.scrollIntoView({ block: 'nearest' });
+      }
+    }
+  }
+
+  function arrowLeft() {
+    if (!fmSelected) return;
+    if (fmSelected.type === 'folder') {
+      const li = document.querySelector('li.file-folder[data-folder-path="' + cssSel(fmSelected.path) + '"]');
+      const children = li ? li.querySelector('.file-folder-children') : null;
+      if (children && !children.classList.contains('collapsed')) {
+        toggleFolderCollapse(li, li.querySelector('button.file-folder-toggle'));  // collapse
+        return;
+      }
+    }
+    // Collapsed folder or file → jump up to the parent folder (if any).
+    const parent = parentPath(fmSelected.path);
+    if (parent && document.querySelector('li.file-folder[data-folder-path="' + cssSel(parent) + '"]')) {
+      selectRow('folder', parent);
+    }
+  }
+
+  function nextCopyName(path, taken) {
+    const i = path.lastIndexOf('.');
+    const ext = (i > 0 && path.indexOf('/', i) === -1) ? path.slice(i) : '';
+    const stem = ext ? path.slice(0, i) : path;
+    for (let n = 1; n <= 100; n++) {
+      const cand = stem + ' (copy' + (n > 1 ? ' ' + n : '') + ')' + ext;
+      if (!taken.has(cand)) return cand;
+    }
+    return path + ' (copy)';
+  }
+
+  // Duplicate a file: server row first (when one exists), then the local
+  // generated content, then re-hydrate. Local-only files never touch the
+  // server — the copy name is picked from the merged list instead.
+  async function duplicateFile(path) {
+    const file = fmFiles.find((f) => f.path === path);
+    if (!file) return ashatToast('File not found.', 'warn');
+    try {
+      let newPath = '';
+      if (file.id) {
+        const resp = await ashatFetch('/api/files/duplicate', { method: 'POST', body: { path: path } });
+        newPath = (resp && resp.path) || '';
+      }
+      if (!newPath) {
+        newPath = nextCopyName(path, new Set(fmFiles.map((f) => f.path)));
+      }
+      let localCopied = 0;
+      if (window.ASHAT && window.ASHAT.agent && typeof window.ASHAT.agent.duplicateFileLocal === 'function') {
+        localCopied = window.ASHAT.agent.duplicateFileLocal(path, newPath);
+      }
+      ashatToast('Duplicated ' + path + ' → ' + newPath + (localCopied ? ' (local copy added)' : ''), 'ok');
+      await reloadFileList();
+    } catch (e) {
+      ashatToast('Could not duplicate: ' + ((e && e.message) || 'unknown'), 'err');
+    }
+  }
+
+  // Open a file in the editor from its path (used by click + menu + keys).
+  async function openFile(path) {
+    if (fmFiles.length === 0) await loadFileList();
+    const file = fmFiles.find((f) => f.path === path);
+    if (!file) return ashatToast('File not found.', 'warn');
+    activeFile = file;
+    editorTitle.textContent = path;
+    saveFmState(0);  // remember the open file; editor starts at the top
+    const content = await loadFileContent(file);
+    monacoSetContent(content);
+    monacoDetectLanguage(path);
+    return file;
+  }
+
+  // Save the currently open file (extracted from the Save button handler
+  // so the context menu and Ctrl+Enter can reuse it).
+  async function saveActiveFile() {
+    if (!activeFile) return ashatToast('Pick a file first.', 'warn');
+    const newContent = monacoGetContent();
+
+    // Agent-generated files: write back to localStorage ONLY.
+    if (Number(activeFile.generated) === 1 && window.ASHAT && window.ASHAT.agent) {
+      const list = window.ASHAT.agent.listGenerated();
+      let touched = false;
+      for (const e of list) {
+        if (e.build_id === activeFile.build_id) {
+          touched = window.ASHAT.agent.updateFile(e.build_id, activeFile.path, newContent) || touched;
+        }
+      }
+      if (!touched) ashatToast('Saved in browser only (no local copy of this older build).', 'warn');
+      else ashatToast('File saved (local).', 'ok');
+      return;
+    }
+
+    // User-authored files: server-side save.
+    await ashatFetch('/api/files/', {
+      method: 'POST',
+      body: { path: activeFile.path, content: newContent },
+    });
+    ashatToast('File saved.', 'ok');
+  }
+
+  // Context menu item → Save: open the file (loads content) then save it.
+  async function saveFromMenu(path) {
+    await openFile(path);
+    await saveActiveFile();
+  }
+
+  function closeContextMenu() {
+    if (fmMenu) fmMenu.style.display = 'none';
+    fmMenuOpen = false;
+  }
+
+  function ensureContextMenu() {
+    if (fmMenu) return fmMenu;
+    fmMenu = document.createElement('div');
+    fmMenu.className = 'ctx-menu';
+    fmMenu.style.display = 'none';
+    document.body.appendChild(fmMenu);
+    return fmMenu;
+  }
+
+  function showContextMenu(x, y, target) {
+    const menu = ensureContextMenu();
+    menu.innerHTML = '';
+    fmMenuOpen = true;
+    selectRow(target.type, target.path);
+
+    const addItem = (label, shortcut, danger, fn) => {
+      const b = document.createElement('button');
+      b.type = 'button';
+      b.className = 'ctx-menu-item' + (danger ? ' ctx-danger' : '');
+      const span = document.createElement('span');
+      span.textContent = label;
+      b.appendChild(span);
+      if (shortcut) {
+        const k = document.createElement('kbd');
+        k.className = 'ctx-shortcut';
+        k.textContent = shortcut;
+        b.appendChild(k);
+      }
+      b.addEventListener('click', () => { closeContextMenu(); fn(); });
+      menu.appendChild(b);
+      return b;
+    };
+    const sep = () => {
+      const d = document.createElement('div');
+      d.className = 'ctx-menu-sep';
+      menu.appendChild(d);
+    };
+
+    if (target.type === 'folder') {
+      addItem('Expand / Collapse', 'Enter', false, () => toggleFolder(target.path));
+      addItem('Rename', 'F2', false, () => renameFolder(target.path));
+      sep();
+      addItem('Delete Folder', 'Del', true, () => deleteFolder(target.path));
+    } else {
+      addItem('Open', 'Enter', false, () => openFile(target.path));
+      addItem('Save', 'Ctrl+Enter', false, () => saveFromMenu(target.path));
+      addItem('Rename', 'F2', false, () => renameFile(target.path));
+      addItem('Duplicate', 'Ctrl+D', false, () => duplicateFile(target.path));
+      sep();
+      addItem('Delete', 'Del', true, () => deleteFile(target.path));
+    }
+
+    // Clamp to the viewport so the menu never opens off-screen.
+    menu.style.display = 'block';
+    const mw = menu.offsetWidth || 200;
+    const mh = menu.offsetHeight || 220;
+    menu.style.left = Math.max(4, Math.min(x, window.innerWidth - mw - 8)) + 'px';
+    menu.style.top  = Math.max(4, Math.min(y, window.innerHeight - mh - 8)) + 'px';
+    const first = menu.querySelector('button');
+    if (first) first.focus();
+  }
+
+  function openContextMenuForSelection() {
+    if (!fmSelected) return;
+    const sel = fmSelected.type === 'folder'
+      ? document.querySelector('li.file-folder[data-folder-path="' + cssSel(fmSelected.path) + '"]')
+      : document.querySelector('button.file-pick[data-path="' + cssSel(fmSelected.path) + '"]');
+    const rect = sel ? sel.getBoundingClientRect() : null;
+    showContextMenu(
+      rect ? rect.left + 8 : Math.round(window.innerWidth / 2),
+      rect ? rect.bottom : Math.round(window.innerHeight / 2),
+      fmSelected
+    );
+  }
+
+  // Global context-menu plumbing: close on outside click, blur, resize,
+  // or any scroll (capture phase so sidebar scrolling closes it too).
+  document.addEventListener('click', (e) => {
+    if (fmMenuOpen && fmMenu && !fmMenu.contains(e.target)) closeContextMenu();
+  });
+  window.addEventListener('blur', closeContextMenu);
+  window.addEventListener('resize', closeContextMenu);
+  document.addEventListener('scroll', closeContextMenu, true);
 
   // Invalidate the cached hydration promise and re-fetch both sources.
   async function reloadFileList() {
@@ -635,6 +1211,11 @@ Quick build from the Studio dashboard.
 
       fmFiles = Object.keys(byPath).sort().map(function (k) { return byPath[k]; });
       renderFileList(fmFiles);
+      // First hydration only: reopen the persisted file + scroll positions.
+      if (!fmStateRestored) {
+        fmStateRestored = true;
+        restoreFmState();
+      }
     })();
     return fmLoadPromise;
   }
@@ -703,6 +1284,9 @@ Quick build from the Studio dashboard.
   }
   function monacoSetContent(val) {
     val = val || '';
+    // A fresh file invalidates any pending scroll restore (only the
+    // first-hydration restore sets it, after content is in place).
+    monacoPendingScrollTop = null;
     monacoPendingContent = val; // store for replay if Monaco not ready
     if (monacoEd && monacoEd.setValue) {
       monacoEd.setValue(val);
@@ -730,18 +1314,40 @@ Quick build from the Studio dashboard.
   }
 
   if (fileList) {
+    fileList.addEventListener('contextmenu', (e) => {
+      const row = e.target.closest('.file-row');
+      if (row) {
+        e.preventDefault();
+        const pick = row.querySelector('.file-pick');
+        if (!pick || !pick.dataset.path) return;
+        showContextMenu(e.clientX, e.clientY, { type: 'file', path: pick.dataset.path });
+        return;
+      }
+      const folderLi = e.target.closest('li.file-folder');
+      if (folderLi && folderLi.dataset.folderPath) {
+        e.preventDefault();
+        showContextMenu(e.clientX, e.clientY, { type: 'folder', path: folderLi.dataset.folderPath });
+      }
+    });
+
     fileList.addEventListener('click', async (e) => {
-      // Folder collapse/expand toggle
+      // Folder collapse/expand toggle (also selects the folder). The
+      // shared helper keeps the persisted collapse Set in sync so nested
+      // folders remember their state across re-renders.
       const folderToggle = e.target.closest('button.file-folder-toggle');
       if (folderToggle) {
         const li = folderToggle.closest('li.file-folder');
-        const children = li ? li.querySelector('.file-folder-children') : null;
-        if (children) {
-          const collapsed = children.classList.toggle('collapsed');
-          folderToggle.classList.toggle('collapsed', collapsed);
-        }
+        if (li && li.dataset.folderPath) selectRow('folder', li.dataset.folderPath);
+        toggleFolderCollapse(li, folderToggle);
         return;
       }
+
+      // Rename buttons (stopPropagation so the file-open row click below
+      // never fires for the same event)
+      const renFile = e.target.closest('[data-rename-file]');
+      if (renFile) { e.stopPropagation(); return renameFile(renFile.dataset.renameFile); }
+      const renFolder = e.target.closest('[data-rename-folder]');
+      if (renFolder) { e.stopPropagation(); return renameFolder(renFolder.dataset.renameFolder); }
 
       // Delete buttons (stopPropagation so the file-open row click below
       // never fires for the same event)
@@ -752,58 +1358,13 @@ Quick build from the Studio dashboard.
 
       const btn = e.target.closest('button.file-pick');
       if (!btn) return;
-      const path = btn.dataset.path;
-      document.querySelectorAll('button.file-pick').forEach((b) =>
-        b.classList.toggle('active', b === btn)
-      );
-
-      // Read from the merged list — the server fetch alone would miss
-      // local-only generated files. The server-rendered sidebar is
-      // clickable before hydration resolves, so await the load when
-      // the merged list isn't populated yet.
-      if (fmFiles.length === 0) await loadFileList();
-      const file = fmFiles.find((f) => f.path === path);
-      if (!file) return ashatToast('File not found.', 'warn');
-      activeFile = file;
-      editorTitle.textContent = path;
-
-      const content = await loadFileContent(file);
-      monacoSetContent(content);
-      monacoDetectLanguage(path);
+      selectRow('file', btn.dataset.path);
+      await openFile(btn.dataset.path);
     });
   }
 
   if (btnSaveFile) {
-    btnSaveFile.addEventListener('click', async () => {
-      if (!activeFile) return ashatToast('Pick a file first.', 'warn');
-      const newContent = monacoGetContent();
-
-      // Agent-generated files: write back to localStorage ONLY
-      // (server has the metadata but no content; we don't want to
-      //  push content to MySQL on user edits either).
-      if (Number(activeFile.generated) === 1 && window.ASHAT && window.ASHAT.agent) {
-        const list = window.ASHAT.agent.listGenerated();
-        let touched = false;
-        for (const e of list) {
-          if (e.build_id === activeFile.build_id) {
-            touched = window.ASHAT.agent.updateFile(e.build_id, activeFile.path, newContent) || touched;
-          }
-        }
-        if (!touched) {
-          ashatToast('Saved in browser only (no local copy of this older build).', 'warn');
-        } else {
-          ashatToast('File saved (local).', 'ok');
-        }
-        return;
-      }
-
-      // User-authored files: server-side save as before.
-      await ashatFetch('/api/files/', {
-        method: 'POST',
-        body: { path: activeFile.path, content: newContent },
-      });
-      ashatToast('File saved.', 'ok');
-    });
+    btnSaveFile.addEventListener('click', saveActiveFile);
   }
 
   if (btnNewFile) {
@@ -814,6 +1375,20 @@ Quick build from the Studio dashboard.
         await ashatFetch('/api/files/', { method: 'POST', body: { path, content: '' } });
         window.location.reload();
       } catch (e) { ashatToast('Create failed.', 'err'); }
+    });
+  }
+
+  if (btnNewFolder) {
+    btnNewFolder.addEventListener('click', async () => {
+      const path = prompt('New folder path (e.g. assets/icons):');
+      if (!path) return;
+      const cleaned = String(path).trim().replace(/^\/+/, '').replace(/\/+$/, '');
+      if (!cleaned) return ashatToast('Folder path required.', 'warn');
+      try {
+        await ashatFetch('/api/folders/', { method: 'POST', body: { path: cleaned } });
+        ashatToast('Folder created.', 'ok');
+        await reloadFileList();
+      } catch (e) { ashatToast('Could not create folder: ' + ((e && e.message) || 'unknown'), 'err'); }
     });
   }
 
@@ -978,6 +1553,13 @@ Quick build from the Studio dashboard.
       return;
     }
 
+    // Escape — Close the context menu (highest priority)
+    if (fmMenuOpen && key === 'Escape') {
+      e.preventDefault();
+      closeContextMenu();
+      return;
+    }
+
     // Escape — Close help modal
     if (key === 'Escape') {
       var help = document.getElementById('shortcuts-help');
@@ -1034,6 +1616,69 @@ Quick build from the Studio dashboard.
         var newFileBtn = document.getElementById('btn-new-file');
         if (newFileBtn && !newFileBtn.disabled) newFileBtn.click();
         return;
+      }
+      // Ctrl+Shift+N — New folder
+      if (ctrl && e.shiftKey && key === 'N') {
+        e.preventDefault();
+        var newFolderBtn = document.getElementById('btn-new-folder');
+        if (newFolderBtn && !newFolderBtn.disabled) newFolderBtn.click();
+        return;
+      }
+
+      // ── IDE-explorer shortcuts (act on the selected row) ───────
+      // Never hijack keys while the user is typing in the editor.
+      var inEditor = e.target && e.target.closest && !!e.target.closest('#monaco-shell');
+      if (!inEditor && !fmMenuOpen && fmSelected) {
+        // Arrow keys — move selection through VISIBLE rows only, so
+        // collapsed folders are skipped; Right/Left expand-collapse
+        // and dive into / climb out of the nesting (VS Code style).
+        if (key === 'ArrowDown' && !ctrl && !e.shiftKey && !e.altKey) { e.preventDefault(); moveSelection(1); return; }
+        if (key === 'ArrowUp' && !ctrl && !e.shiftKey && !e.altKey) { e.preventDefault(); moveSelection(-1); return; }
+        if (key === 'ArrowRight' && !ctrl && !e.shiftKey && !e.altKey) { e.preventDefault(); arrowRight(); return; }
+        if (key === 'ArrowLeft' && !ctrl && !e.shiftKey && !e.altKey) { e.preventDefault(); arrowLeft(); return; }
+        // Home / End — jump to the first / last visible row
+        if (key === 'Home') { e.preventDefault(); jumpSelection(false); return; }
+        if (key === 'End') { e.preventDefault(); jumpSelection(true); return; }
+
+        // Enter — Open (file) / Expand-Collapse (folder)
+        if (key === 'Enter' && !ctrl && !e.shiftKey && !e.altKey) {
+          e.preventDefault();
+          if (fmSelected.type === 'file') openFile(fmSelected.path);
+          else toggleFolder(fmSelected.path);
+          return;
+        }
+        // F2 — Rename
+        if (key === 'F2') {
+          e.preventDefault();
+          if (fmSelected.type === 'file') renameFile(fmSelected.path);
+          else renameFolder(fmSelected.path);
+          return;
+        }
+        // Delete — Delete (with confirm)
+        if (key === 'Delete' && !ctrl && !e.shiftKey && !e.altKey) {
+          e.preventDefault();
+          if (fmSelected.type === 'file') deleteFile(fmSelected.path);
+          else deleteFolder(fmSelected.path);
+          return;
+        }
+        // Ctrl+Enter — Save the selected file
+        if (ctrl && key === 'Enter' && fmSelected.type === 'file') {
+          e.preventDefault();
+          saveFromMenu(fmSelected.path);
+          return;
+        }
+        // Ctrl+D — Duplicate the selected file
+        if (ctrl && key === 'd' && fmSelected.type === 'file') {
+          e.preventDefault();
+          duplicateFile(fmSelected.path);
+          return;
+        }
+        // Shift+F10 — open the context menu on the selection
+        if (key === 'F10' && e.shiftKey) {
+          e.preventDefault();
+          openContextMenuForSelection();
+          return;
+        }
       }
     }
 

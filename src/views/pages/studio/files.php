@@ -23,6 +23,7 @@
       <div class="flex gap-2">
         <button id="btn-save-file" class="btn-outline" style="font-size: 11px; padding: 6px 12px; text-transform: uppercase; font-family: var(--font-heading);">Save</button>
         <button id="btn-new-file" class="btn-outline" style="font-size: 11px; padding: 6px 12px; text-transform: uppercase; font-family: var(--font-heading);">+ New</button>
+        <button id="btn-new-folder" class="btn-outline" title="Create an empty folder (Ctrl+Shift+N)" style="font-size: 11px; padding: 6px 12px; text-transform: uppercase; font-family: var(--font-heading);">+ Folder</button>
       </div>
     </div>
     <div id="monaco-shell" class="flex-1 rounded-md"

@@ -295,7 +295,8 @@ button.file-pick.active {
   display: none;
 }
 
-/* Each file row: clickable picker + hover-revealed delete button */
+/* Each file row: clickable picker + hover-revealed action buttons
+   (rename ✏️ / delete 🗑 — shared .file-del and .file-edit styles) */
 .file-row {
   display: flex;
   align-items: center;
@@ -305,7 +306,8 @@ button.file-pick.active {
   flex: 1;
   min-width: 0;
 }
-.file-del {
+.file-del,
+.file-edit {
   background: none;
   border: none;
   cursor: pointer;
@@ -314,31 +316,110 @@ button.file-pick.active {
   line-height: 1;
   opacity: 0;
   flex-shrink: 0;
-  color: var(--gold-err);
   transition: opacity .12s ease, transform .12s ease;
 }
+.file-del  { color: var(--gold-err); }
+.file-edit { color: var(--gold); }
 .file-row:hover .file-del,
-.file-folder:hover > .file-del {
+.file-row:hover .file-edit,
+.file-folder:hover > .file-del,
+.file-folder:hover > .file-edit {
   opacity: .5;
 }
-.file-del:hover {
+.file-del:hover,
+.file-edit:hover {
   opacity: 1 !important;
   transform: scale(1.1);
 }
-.file-del:focus-visible {
+.file-del:focus-visible,
+.file-edit:focus-visible {
   opacity: 1;
   outline: 1px solid var(--gold);
   outline-offset: 1px;
 }
 
-/* Touch devices have no hover — keep delete buttons visible */
+/* Empty folders (marker rows) get a subtle hint inside the tree */
+.file-folder-empty {
+  font-size: 10px;
+  font-family: var(--font-mono);
+  font-style: italic;
+  color: var(--gold-dim);
+  padding: 4px 8px;
+}
+
+/* Touch devices have no hover — keep action buttons visible */
 @media (hover: none) {
-  .file-del {
+  .file-del,
+  .file-edit {
     opacity: .55;
   }
-  .file-del:hover {
+  .file-del:hover,
+  .file-edit:hover {
     opacity: 1;
   }
+}
+
+/* Selected row highlight (IDE-explorer selection) */
+.file-folder.selected > .file-folder-toggle {
+  background: var(--gold-soft);
+  color: var(--gold);
+  border-color: var(--gold-line);
+}
+
+/* ── Right-click context menu (IDE file explorer) ──────────────── */
+.ctx-menu {
+  position: fixed;
+  z-index: 9999;
+  min-width: 210px;
+  padding: 6px;
+  background: rgba(15, 15, 23, 0.97);
+  border: 1px solid var(--gold-line);
+  border-radius: 10px;
+  box-shadow: 0 10px 34px rgba(0, 0, 0, 0.65), var(--gold-glow-soft);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  font-family: var(--font-body);
+  animation: chat-fade-in .12s ease-out;
+}
+.ctx-menu-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  text-align: left;
+  background: none;
+  border: none;
+  color: var(--gold-text);
+  font-size: 12.5px;
+  font-weight: 500;
+  padding: 7px 10px;
+  border-radius: 6px;
+  cursor: pointer;
+  white-space: nowrap;
+}
+.ctx-menu-item:hover,
+.ctx-menu-item:focus-visible {
+  background: rgba(255, 215, 0, 0.1);
+  color: var(--gold);
+  outline: none;
+}
+.ctx-menu-item .ctx-shortcut {
+  margin-left: auto;
+  font-size: 10px;
+  font-family: var(--font-mono);
+  color: var(--gold-dim);
+}
+.ctx-menu-item.ctx-danger { color: var(--gold-err); }
+.ctx-menu-item.ctx-danger:hover,
+.ctx-menu-item.ctx-danger:focus-visible {
+  background: rgba(248, 113, 113, 0.12);
+  color: var(--gold-err);
+}
+.ctx-menu-sep {
+  height: 1px;
+  background: var(--gold-line);
+  opacity: .35;
+  margin: 4px 6px;
 }
 
 /* ── Animations ───────────────────────────────────────────────────── */

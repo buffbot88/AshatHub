@@ -332,6 +332,178 @@ final class InMemoryFileRepositoryTest extends TestCase
         $this->assertSame(2, $count);
     }
 
+    // ── Folder markers (empty-folder placeholder rows) ─────────────
+
+    public function test_save_can_create_folder_marker(): void
+    {
+        $id = $this->repo->save('u1', 'assets/', '', 'markdown', false, null, null);
+        $marker = $this->repo->find($id, 'u1');
+        $this->assertSame('assets/', $marker['path']);
+        $this->assertSame('', $marker['content']);
+    }
+
+    public function test_deleteByPrefix_removes_folder_marker(): void
+    {
+        $marker = array_merge($this->fileA, ['id' => 'f-marker', 'path' => 'assets/', 'content' => '']);
+        $this->repo->seed([$marker, $this->fileA]);
+        // Deleting the empty folder also removes its placeholder row.
+        $count = $this->repo->deleteByPrefix('u1', 'assets');
+        $this->assertSame(1, $count);
+        $this->assertCount(1, $this->repo->inspect());
+    }
+
+    // ── rename() — file & folder rename ────────────────────────────
+
+    public function test_rename_moves_file(): void
+    {
+        $this->repo->seed([$this->fileA]);
+        $result = $this->repo->rename('u1', 'src/main.ts', 'src/entry.ts');
+        $this->assertSame(1, $result['renamed']);
+        $this->assertNull($this->repo->findByPath('u1', 'src/main.ts'));
+        $this->assertNotNull($this->repo->findByPath('u1', 'src/entry.ts'));
+    }
+
+    public function test_rename_moves_folder_with_children(): void
+    {
+        $this->repo->seed([$this->fileA, $this->fileB]); // src/main.ts, src/utils.ts
+        $result = $this->repo->rename('u1', 'src', 'lib');
+        $this->assertSame(2, $result['renamed']);
+        $this->assertNotNull($this->repo->findByPath('u1', 'lib/main.ts'));
+        $this->assertNotNull($this->repo->findByPath('u1', 'lib/utils.ts'));
+        $this->assertCount(2, $this->repo->allForUser('u1'));
+    }
+
+    public function test_rename_moves_folder_marker(): void
+    {
+        $marker = array_merge($this->fileA, ['id' => 'f-marker', 'path' => 'assets/', 'content' => '']);
+        $this->repo->seed([$marker]);
+        $result = $this->repo->rename('u1', 'assets', 'media');
+        $this->assertSame(1, $result['renamed']);
+        $this->assertNotNull($this->repo->findByPath('u1', 'media/'));
+        $this->assertNull($this->repo->findByPath('u1', 'assets/'));
+    }
+
+    public function test_rename_conflict_returns_error(): void
+    {
+        $fileC = array_merge($this->fileB, ['id' => 'f3', 'path' => 'lib/main.ts']);
+        $this->repo->seed([$this->fileA, $fileC]); // src/main.ts + lib/main.ts
+        $result = $this->repo->rename('u1', 'src', 'lib');
+        $this->assertSame('conflict', $result['error']);
+        $this->assertSame(0, $result['renamed']);
+        // Nothing was moved.
+        $this->assertNotNull($this->repo->findByPath('u1', 'src/main.ts'));
+        $this->assertNotNull($this->repo->findByPath('u1', 'lib/main.ts'));
+    }
+
+    public function test_rename_not_found_returns_error(): void
+    {
+        $this->repo->seed([$this->fileA]);
+        $result = $this->repo->rename('u1', 'missing', 'gone');
+        $this->assertSame('not_found', $result['error']);
+    }
+
+    public function test_rename_same_path_is_noop(): void
+    {
+        $this->repo->seed([$this->fileA]);
+        $result = $this->repo->rename('u1', 'src/main.ts', 'src/main.ts');
+        $this->assertTrue($result['same']);
+        $this->assertSame(0, $result['renamed']);
+        $this->assertNotNull($this->repo->findByPath('u1', 'src/main.ts'));
+    }
+
+    public function test_rename_empty_path_invalid(): void
+    {
+        $this->repo->seed([$this->fileA]);
+        $this->assertSame('invalid', $this->repo->rename('u1', '', 'x')['error']);
+        $this->assertSame('invalid', $this->repo->rename('u1', 'src/main.ts', '')['error']);
+    }
+
+    public function test_rename_nested_move_rejected(): void
+    {
+        $this->repo->seed([$this->fileA]);
+        // A folder can't be moved into itself ('src' → 'src/main').
+        $result = $this->repo->rename('u1', 'src', 'src/main');
+        $this->assertSame('nested_move', $result['error']);
+        $this->assertNotNull($this->repo->findByPath('u1', 'src/main.ts'));
+    }
+
+    public function test_rename_scoped_to_user(): void
+    {
+        $fileOther = array_merge($this->fileA, ['id' => 'f4', 'user_id' => 'u2']);
+        $this->repo->seed([$fileOther]);
+        $result = $this->repo->rename('u1', 'src/main.ts', 'moved.ts');
+        $this->assertSame('not_found', $result['error']);
+        // Other user's file untouched.
+        $this->assertNotNull($this->repo->findByPath('u2', 'src/main.ts'));
+    }
+
+    // ── duplicate() — file duplication (IDE "Duplicate" action) ───
+
+    public function test_duplicate_copies_file(): void
+    {
+        $this->repo->seed([$this->fileA]);
+        $result = $this->repo->duplicate('u1', 'src/main.ts');
+        $this->assertSame(1, $result['duplicated']);
+        $this->assertSame('src/main (copy).ts', $result['path']);
+
+        $this->assertCount(2, $this->repo->allForUser('u1'));
+        $copy = $this->repo->findByPath('u1', 'src/main (copy).ts');
+        $this->assertNotNull($copy);
+        $this->assertSame($this->fileA['content'], $copy['content']);
+        $this->assertSame($this->fileA['language'], $copy['language']);
+        $this->assertSame($this->fileA['generated'], $copy['generated']);
+        $this->assertNotSame($this->fileA['id'], $copy['id']);
+        $this->assertNotSame($this->fileA['path'], $copy['path']);
+    }
+
+    public function test_duplicate_increments_suffix_on_collision(): void
+    {
+        $copy1 = array_merge($this->fileA, ['id' => 'f-c1', 'path' => 'src/main (copy).ts']);
+        $this->repo->seed([$this->fileA, $copy1]);
+        $result = $this->repo->duplicate('u1', 'src/main.ts');
+        $this->assertSame('src/main (copy 2).ts', $result['path']);
+    }
+
+    public function test_duplicate_file_without_extension(): void
+    {
+        $noExt = array_merge($this->fileA, ['id' => 'f-noext', 'path' => 'LICENSE']);
+        $this->repo->seed([$noExt]);
+        $result = $this->repo->duplicate('u1', 'LICENSE');
+        $this->assertSame('LICENSE (copy)', $result['path']);
+    }
+
+    public function test_duplicate_dotfile_keeps_leading_dot(): void
+    {
+        $dot = array_merge($this->fileA, ['id' => 'f-dot', 'path' => '.gitignore', 'content' => 'vendor/']);
+        $this->repo->seed([$dot]);
+        $result = $this->repo->duplicate('u1', '.gitignore');
+        // '.gitignore' must become '.gitignore (copy)', not ' (copy).gitignore'.
+        $this->assertSame('.gitignore (copy)', $result['path']);
+        $this->assertNotNull($this->repo->findByPath('u1', '.gitignore (copy)'));
+    }
+
+    public function test_duplicate_not_found_returns_error(): void
+    {
+        $this->repo->seed([$this->fileA]);
+        $result = $this->repo->duplicate('u1', 'missing.ts');
+        $this->assertSame('not_found', $result['error']);
+    }
+
+    public function test_duplicate_empty_path_invalid(): void
+    {
+        $this->repo->seed([$this->fileA]);
+        $this->assertSame('invalid', $this->repo->duplicate('u1', '')['error']);
+    }
+
+    public function test_duplicate_scoped_to_user(): void
+    {
+        $fileOther = array_merge($this->fileA, ['id' => 'f4', 'user_id' => 'u2']);
+        $this->repo->seed([$fileOther]);
+        $result = $this->repo->duplicate('u1', 'src/main.ts');
+        $this->assertSame('not_found', $result['error']);
+        $this->assertCount(1, $this->repo->inspect());
+    }
+
     // ── countAll() ─────────────────────────────────────────────────
 
     public function test_countAll_returns_total(): void

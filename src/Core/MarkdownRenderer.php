@@ -32,7 +32,7 @@ final class MarkdownRenderer
 
         // Code fences
         $md = preg_replace_callback(
-            '/```([a-zA-Z0-9_-]*)\n(.*?)\n```/s',
+            '/```([a-zA-Z0-9_+#-]*)\n(.*?)\n```/s',
             static function ($m) {
                 $lang = static::escape($m[1]);
                 return '<pre><code class="lang-' . $lang . '">' . $m[2] . '</code></pre>';
@@ -62,9 +62,11 @@ final class MarkdownRenderer
         $md = preg_replace('/(<li>.*<\/li>(\s*<li>.*<\/li>)*)/s', '<ul>$1</ul>', $md);
         // Ordered list items
         $md = preg_replace('/^\s*\d+\.\s+(.+)$/m', '<li>$1</li>', $md);
-        // Paragraphs (any block of text on its own line)
+        // Paragraphs (any block of text on its own line; a blank line
+        // ends the paragraph so blank-line-separated blocks render as
+        // separate <p> elements)
         $md = preg_replace(
-            '/(?:^|\n)([A-Z].*(?:\n(?!<h\d|<ul|<ol|<li|<pre|<p).*)*)/',
+            '/(?:^|\n)([A-Z][^\n]*(?:\n(?![<\n])[^\n]*)*)/',
             "\n<p>$1</p>\n",
             $md
         );

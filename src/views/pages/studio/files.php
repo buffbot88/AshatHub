@@ -58,7 +58,7 @@
         return;
       }
       // Define a custom flat theme matching the hub (no gold, no glow)
-      monaco.editor.defineTheme('ashat-gold', {
+      monaco.editor.defineTheme('ashat', {
         base: 'vs-dark',
         inherit: true,
         rules: [
@@ -95,7 +95,7 @@
       window.__monacoEditor = monaco.editor.create(document.getElementById('monaco-shell'), {
         value: '// Select a file from the sidebar, or create a new one.',
         language: 'plaintext',
-        theme: 'ashat-gold',
+        theme: 'ashat',
         fontSize: 13,
         fontFamily: 'ui-monospace, "JetBrains Mono", Menlo, Consolas, monospace',
         minimap: { enabled: false },

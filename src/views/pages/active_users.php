@@ -31,12 +31,10 @@
   <?php else: ?>
     <!-- ─── Left: Ball of Orbs ────────────────────────────────── -->
     <div class="lg:col-span-3 relative">
-      <canvas id="orb-canvas" class="w-full rounded-xl" style="border: 1px solid var(--gold-line); background: rgba(6,6,11,0.6);"
-              style="aspect-ratio: 4/3; display: block;"></canvas>
-      <div              id="orb-tooltip" class="glass-card-solid absolute pointer-events-none
-                  px-3 py-1.5 text-sm" style="background: rgba(17,17,26,0.95); white-space:nowrap; z-index:10;"
-           style="opacity:0; visibility:hidden; transform:translate(-50%, -100%); white-space:nowrap; z-index:10;
-                  transition: opacity .15s ease, visibility 0s .15s;"></div>
+      <canvas id="orb-canvas" class="w-full rounded-xl" style="border: 1px solid var(--gold-line); background: var(--bg-soft); aspect-ratio: 4/3; display: block;"></canvas>
+      <div id="orb-tooltip" class="glass-card-solid absolute pointer-events-none px-3 py-1.5 text-sm"
+           style="background: var(--surface); white-space:nowrap; z-index:10; opacity:0; visibility:hidden;
+                  transform:translate(-50%, -100%); transition: opacity .15s ease, visibility 0s .15s;"></div>
     </div>
 
     <!-- ─── Right: Model Usage Table ─────────────────────────── -->
@@ -238,14 +236,10 @@
       var cx = o.x * W;
       var cy = o.y * H;
 
-      // Glow
-      var glow = ctx.createRadialGradient(cx, cy, 0, cx, cy, r * 4);
-      glow.addColorStop(0, o.color + '66');
-      glow.addColorStop(0.5, o.color + '22');
-      glow.addColorStop(1, o.color + '00');
+      // Flat halo (no radial gradient — plain translucent circle)
       ctx.beginPath();
-      ctx.arc(cx, cy, r * 4, 0, Math.PI * 2);
-      ctx.fillStyle = glow;
+      ctx.arc(cx, cy, r * 3, 0, Math.PI * 2);
+      ctx.fillStyle = o.color + '22';
       ctx.fill();
 
       // Core

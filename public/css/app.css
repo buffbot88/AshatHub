@@ -470,20 +470,6 @@ button.file-pick.active {
 .fade-in-up-delay-1 { animation: gold-fade-in-up 0.5s ease-out 0.15s both; }
 .fade-in-up-delay-2 { animation: gold-fade-in-up 0.5s ease-out 0.3s both; }
 
-/* Retired decorative effects — kept as inert classes so no JS breaks */
-.particles,
-.gear-deco,
-.gear-deco-tl,
-.gear-deco-br,
-.gear-deco-tr,
-.gear-deco-bl { display: none; }
-.pulse-box,
-.bob,
-.spin-gear,
-.spin-gear-reverse,
-.scan-eye,
-.scan-eye-delayed { animation: none; }
-
 /* ── Helper classes ───────────────────────────────────────────────── */
 .gold-gradient-text {
   background: none;

@@ -5,6 +5,7 @@ namespace Tests\Core;
 
 use Core\FakeContext;
 use Core\RequestContext;
+use Core\ViewContext;
 use PHPUnit\Framework\TestCase;
 
 /**
@@ -100,9 +101,11 @@ class FakeContextTest extends TestCase
 
     public function test_fake_with_csrf_token_override(): void
     {
-        $ctx = RequestContext::fake(['csrf_token' => 'test-token-123']);
+        $ctx = RequestContext::fake([
+            'csrf_token' => 'test-token-123',
+            'post'       => ['_csrf' => 'test-token-123'],
+        ]);
         // Verify assertCsrf uses the configured token from post data
-        $ctx->postData['_csrf'] = 'test-token-123';
         $ctx->assertCsrf();
         $this->assertFalse($ctx->hasResponded(), 'correct token should not trigger a response');
     }
@@ -193,7 +196,11 @@ class FakeContextTest extends TestCase
     public function test_requireRole_blocks_wrong_role(): void
     {
         $ctx = RequestContext::fake(['user' => self::memberUser()]);
-        $ctx = $this->capture(fn($c) => $c->requireRole('Admin'));
+        try {
+            $ctx->requireRole('Admin');
+        } catch (\RuntimeException $e) {
+            // Expected — FakeContext throws instead of exit()
+        }
         $this->assertTrue($ctx->hasResponded());
         $this->assertStringContainsString('/403/', $ctx->lastRedirectUrl);
     }
@@ -435,8 +442,10 @@ class FakeContextTest extends TestCase
 
     public function test_assertCsrf_passes_with_correct_token(): void
     {
-        $ctx = RequestContext::fake(['csrf_token' => 'abc123']);
-        $ctx->postData['_csrf'] = 'abc123';
+        $ctx = RequestContext::fake([
+            'csrf_token' => 'abc123',
+            'post'       => ['_csrf' => 'abc123'],
+        ]);
         // Should not throw
         $ctx->assertCsrf();
         $this->assertFalse($ctx->hasResponded());
@@ -444,8 +453,10 @@ class FakeContextTest extends TestCase
 
     public function test_assertCsrf_fails_with_wrong_token(): void
     {
-        $ctx = RequestContext::fake(['csrf_token' => 'abc123']);
-        $ctx->postData['_csrf'] = 'wrong';
+        $ctx = RequestContext::fake([
+            'csrf_token' => 'abc123',
+            'post'       => ['_csrf' => 'wrong'],
+        ]);
 
         try {
             $ctx->assertCsrf();

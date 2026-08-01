@@ -66,3 +66,10 @@ require ASHAT_ROOT . '/src/Core/helpers.php';
 
 // ─── ConfigBag (needs autoloader — must run after autoloader) ────────
 \Core\ConfigBag::setInstance(new \Core\ConfigBag('', ''));
+
+// ─── Test mode: production exit() paths throw instead of exit-ing ────
+// Responder::terminate() exits in production, but under PHPUnit it throws
+// a RuntimeException. A stray real exit() (e.g. dispatching the real Router
+// on a non-GET route without a CSRF token) would otherwise kill the PHPUnit
+// process mid-run and produce a misleading EXIT=0 with no summary.
+\Core\Responder::enableTestMode();

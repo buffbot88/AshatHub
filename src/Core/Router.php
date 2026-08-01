@@ -121,8 +121,8 @@ final class Router
                 $handler = $route['handler'];
                 $ctx     = RequestContext::fromGlobals();
 
-                // CSRF check for non-GET
-                if ($method !== 'GET' && $method !== 'HEAD') {
+                // CSRF check for non-GET (OPTIONS/CORS preflights carry no token)
+                if ($method !== 'GET' && $method !== 'HEAD' && $method !== 'OPTIONS') {
                     $ctx->assertCsrf();
                 }
 

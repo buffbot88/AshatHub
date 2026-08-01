@@ -19,44 +19,71 @@ use PHPUnit\Framework\TestCase;
  */
 class SseStreamerTest extends TestCase
 {
+    /**
+     * Run a closure and capture everything it echoes, even though
+     * SseStreamer::send()/proxy() call ob_flush()+flush() internally
+     * (which would empty a plain ob_start() buffer). A user callback
+     * buffer swallows the flushed chunks into $captured instead.
+     */
+    private function captureOutput(callable $fn): string
+    {
+        $captured = '';
+        ob_start(function (string $chunk) use (&$captured): string {
+            $captured .= $chunk;
+            return '';
+        });
+        try {
+            $fn();
+        } finally {
+            ob_end_clean();
+        }
+        return $captured;
+    }
+
     // ── headers() ─────────────────────────────────────────────────
 
     public function test_headers_cleans_output_buffer(): void
     {
-        // Start a dummy buffer so we can verify ob_end_clean runs
+        // Start a dummy buffer, echo junk, then let headers() discard it.
+        // headers() cleans (not closes) the innermost buffer, so the junk
+        // is gone but our own buffer is still ours to close.
         ob_start();
         echo 'garbage';
 
         SseStreamer::headers();
 
-        // After headers(), the buffer should be clean and implicit flush on
-        $this->assertTrue(ob_implicit_flush());
-        // Any existing level was cleaned, but headers() doesn't start a new buffer
-        $this->assertEquals(0, ob_get_level());
+        $remaining = ob_get_clean();
+        $this->assertSame('', $remaining, 'pre-existing buffered output should be discarded');
     }
 
-    public function test_headers_sets_implicit_flush(): void
+    public function test_headers_does_not_echo_output(): void
     {
-        // headers() calls header() (no-op in CLI) and sets implicit flush
-        SseStreamer::headers();
-        $this->assertTrue(ob_implicit_flush());
+        // headers() emits headers (no-op in CLI) + configures flushing;
+        // it must not echo any body itself.
+        $output = $this->captureOutput(fn() => SseStreamer::headers());
+        $this->assertSame('', $output);
     }
 
     public function test_headers_does_not_throw_when_no_buffer(): void
     {
-        // headers() guards its own ob_end_clean() with ob_get_level(),
-        // so calling it without an active buffer should be safe
-        SseStreamer::headers();
-        $this->assertTrue(ob_implicit_flush());
+        // headers() guards its buffer cleanup with ob_get_level(), so it
+        // must not throw even if the caller has no buffer of its own.
+        // (ob_implicit_flush() returns void on PHP 8.4, so the implicit-
+        // flush flag can't be asserted via its return value.)
+        $threw = null;
+        try {
+            SseStreamer::headers();
+        } catch (\Throwable $e) {
+            $threw = $e;
+        }
+        $this->assertNull($threw);
     }
 
     // ── send() ────────────────────────────────────────────────────
 
     public function test_send_formats_event_correctly(): void
     {
-        ob_start();
-        SseStreamer::send('progress', ['percent' => 50]);
-        $output = ob_get_clean();
+        $output = $this->captureOutput(fn() => SseStreamer::send('progress', ['percent' => 50]));
 
         $this->assertStringContainsString('event: progress', $output);
         $this->assertStringContainsString('data: ', $output);
@@ -67,22 +94,20 @@ class SseStreamerTest extends TestCase
 
     public function test_send_with_empty_data(): void
     {
-        ob_start();
-        SseStreamer::send('ping', []);
-        $output = ob_get_clean();
+        $output = $this->captureOutput(fn() => SseStreamer::send('ping', []));
 
         $this->assertStringContainsString('event: ping', $output);
-        $this->assertStringContainsString('data: {}', $output);
+        // json_encode([]) is '[]' — not '{}' — because the data is a PHP
+        // list, not an associative map. Assert the real serialized form.
+        $this->assertStringContainsString('data: []', $output);
     }
 
     public function test_send_with_nested_data(): void
     {
-        ob_start();
-        SseStreamer::send('result', [
+        $output = $this->captureOutput(fn() => SseStreamer::send('result', [
             'user' => ['name' => 'Alice', 'id' => 42],
             'tags' => ['a', 'b'],
-        ]);
-        $output = ob_get_clean();
+        ]));
 
         $this->assertStringContainsString('"user":{"name":"Alice","id":42}', $output);
         $this->assertStringContainsString('"tags":["a","b"]', $output);
@@ -90,9 +115,7 @@ class SseStreamerTest extends TestCase
 
     public function test_send_uses_unescaped_unicode(): void
     {
-        ob_start();
-        SseStreamer::send('message', ['text' => 'héllo wörld ★']);
-        $output = ob_get_clean();
+        $output = $this->captureOutput(fn() => SseStreamer::send('message', ['text' => 'héllo wörld ★']));
 
         // Unicode characters should NOT be escaped (\uXXXX)
         $this->assertStringContainsString('héllo wörld ★', $output);
@@ -101,9 +124,7 @@ class SseStreamerTest extends TestCase
 
     public function test_send_uses_unescaped_slashes(): void
     {
-        ob_start();
-        SseStreamer::send('url', ['path' => '/api/v1/users']);
-        $output = ob_get_clean();
+        $output = $this->captureOutput(fn() => SseStreamer::send('url', ['path' => '/api/v1/users']));
 
         // Forward slashes should NOT be escaped
         $this->assertStringContainsString('/api/v1/users', $output);
@@ -112,9 +133,7 @@ class SseStreamerTest extends TestCase
 
     public function test_send_outputs_event_before_data_line(): void
     {
-        ob_start();
-        SseStreamer::send('done', ['status' => 'ok']);
-        $output = ob_get_clean();
+        $output = $this->captureOutput(fn() => SseStreamer::send('done', ['status' => 'ok']));
 
         // SSE format requires: event line before data line
         $lines = explode("\n", $output);
@@ -124,9 +143,7 @@ class SseStreamerTest extends TestCase
 
     public function test_send_terminates_with_double_newline(): void
     {
-        ob_start();
-        SseStreamer::send('tick', ['ts' => 1]);
-        $output = ob_get_clean();
+        $output = $this->captureOutput(fn() => SseStreamer::send('tick', ['ts' => 1]));
 
         // SSE events end with \n\n
         $this->assertStringEndsWith("\n\n", $output);
@@ -151,13 +168,14 @@ class SseStreamerTest extends TestCase
 
     public function test_proxy_returns_null_on_unreachable_endpoint(): void
     {
-        ob_start();
-        $result = SseStreamer::proxy(
-            'http://127.0.0.1:1/nonexistent',  // port 1 — almost certainly nothing listening
-            ['Content-Type: application/json'],
-            ['model' => 'test', 'messages' => []]
-        );
-        $output = ob_get_clean();
+        $result = null;
+        $output = $this->captureOutput(function () use (&$result): void {
+            $result = SseStreamer::proxy(
+                'http://127.0.0.1:1/nonexistent',  // port 1 — almost certainly nothing listening
+                ['Content-Type: application/json'],
+                ['model' => 'test', 'messages' => []]
+            );
+        });
 
         $this->assertNull($result, 'unreachable endpoint should return null');
         $this->assertStringContainsString('event: error', $output);
@@ -166,13 +184,14 @@ class SseStreamerTest extends TestCase
 
     public function test_proxy_sends_error_event_on_failure(): void
     {
-        ob_start();
-        $result = SseStreamer::proxy(
-            'http://127.0.0.1:9/bogus',
-            [],
-            ['test' => true]
-        );
-        $output = ob_get_clean();
+        $result = null;
+        $output = $this->captureOutput(function () use (&$result): void {
+            $result = SseStreamer::proxy(
+                'http://127.0.0.1:9/bogus',
+                [],
+                ['test' => true]
+            );
+        });
 
         $this->assertNull($result);
         $this->assertStringContainsString('event: error', $output);

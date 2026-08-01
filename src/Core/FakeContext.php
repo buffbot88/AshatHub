@@ -100,7 +100,10 @@ class FakeContext extends RequestContext
         // Token submitted — validate against the configured CSRF token
         $expected = $this->flashBag['_csrf_token'] ?? $_SESSION['_csrf'] ?? '';
         if (!is_string($expected) || $expected === '' || !hash_equals($expected, (string) $submitted)) {
-            parent::jsonResponse(['error' => 'csrf_failed'], 419);
+            // Must call $this->jsonResponse() — NOT parent::jsonResponse() —
+            // so the FakeContext override captures + throws instead of
+            // echoing a real HTTP response and calling exit().
+            $this->jsonResponse(['error' => 'csrf_failed'], 419);
         }
     }
 

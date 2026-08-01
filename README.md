@@ -22,7 +22,6 @@ No build step. No bundler. Drop the folder on a PHP-capable host and run.
 
 ```
 /AshatOS (project root)
-├── AshatOS_Old/           ← archived React SPA (not deployed)
 ├── public/                ← document root (exposed to web)
 │   ├── index.php          ← Front Controller — all requests go here
 │   ├── .htaccess          ← Apache rewrite rules

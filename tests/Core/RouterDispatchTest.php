@@ -228,6 +228,32 @@ final class RouterDispatchTest extends TestCase
         $this->assertSame(['id' => '99'], $spy->params);
     }
 
+    // ── CSRF failure must NOT exit the process ─────────────────────
+
+    public function test_post_without_csrf_throws_instead_of_exiting(): void
+    {
+        // Regression guard for the old "false green" suite killer: dispatching
+        // the REAL Router on a non-GET route without a valid CSRF token used to
+        // hit RequestContext::jsonResponse() → real exit() → PHPUnit died
+        // mid-run with a misleading EXIT=0. With test mode enabled,
+        // Responder::terminate() throws instead, so the failure is visible.
+        $router = $this->routerWithRoutes(function (RouteCollection $c): void {
+            $c->post('/submit', function (RequestContext $ctx): void {
+                $this->fail('handler must not run when CSRF fails');
+            });
+        });
+
+        // POST with NO CSRF token submitted and none in the session.
+        $_SESSION['_csrf'] = '';
+        unset($_POST['_csrf']);
+        $_SERVER['REQUEST_METHOD'] = 'POST';
+        $_SERVER['REQUEST_URI']    = '/submit';
+
+        $this->expectException(\RuntimeException::class);
+        $this->expectExceptionMessage('Test-mode termination blocked');
+        $router->handleDispatch();
+    }
+
     // ── Any method matching ───────────────────────────────────────
 
     public function test_any_route_matches_any_method(): void

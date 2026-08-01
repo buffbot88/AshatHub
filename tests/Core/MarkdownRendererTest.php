@@ -24,7 +24,7 @@ final class MarkdownRendererTest extends TestCase
         $input  = "```php\necho 'hello';\n```";
         $output = MarkdownRenderer::render($input);
         $this->assertStringContainsString('<pre><code class="lang-php">', $output);
-        $this->assertStringContainsString("echo 'hello';", $output);
+        $this->assertStringContainsString("echo &apos;hello&apos;;", $output);
         $this->assertStringContainsString('</code></pre>', $output);
     }
 
@@ -399,12 +399,13 @@ final class MarkdownRendererTest extends TestCase
         $this->assertStringContainsString('&amp;amp;', $output);
     }
 
-    public function test_code_fence_language_with_hyphen(): void
+    public function test_code_fence_language_with_plus(): void
     {
+        // c++ is a valid fence language — + and # are allowed in the tag
         $input  = "```c++\ncout << \"hello\";\n```";
         $output = MarkdownRenderer::render($input);
         $this->assertStringContainsString(
-            'class="lang-c"',
+            'class="lang-c++"',
             $output
         );
     }

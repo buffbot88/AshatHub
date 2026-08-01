@@ -165,7 +165,9 @@ class RequestContext
                 $ctrl->showJson(403, $message);
             } else {
                 $ctrl->show(403, $message);
-                exit;
+                // Route through Responder so tests get a throwable instead
+                // of a real exit() that would truncate the PHPUnit run.
+                \Core\Responder::terminate('RequestContext::requireRole (403 page)');
             }
         }
     }
@@ -342,7 +344,10 @@ class RequestContext
         $this->responded = true;
         http_response_code($status);
         header('Location: ' . $url);
-        exit;
+        // Seam for test mode — FakeContext overrides this method entirely,
+        // so the real exit() only runs on real requests or if a test
+        // constructs a raw RequestContext (then it throws, not exits).
+        \Core\Responder::terminate('RequestContext::redirect');
     }
 
     /**
@@ -357,15 +362,20 @@ class RequestContext
         // before sending JSON. Without this, PHP errors with display_errors=On
         // get prepended to the JSON payload, breaking the client's JSON parser.
         // ErrorController::show() does the same for HTML error pages.
-        while (ob_get_level() > 0) {
-            ob_end_clean();
+        // Only the innermost buffer is cleaned — never close buffers that
+        // callers capturing output (or PHPUnit) own.
+        if (ob_get_level() > 0) {
+            ob_clean();
         }
 
         http_response_code($status);
         header('Content-Type: application/json; charset=utf-8');
         header('X-Content-Type-Options: nosniff');
         echo json_encode($data, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
-        exit;
+        // Seam for test mode — FakeContext overrides jsonResponse() to
+        // capture + throw; the real exit() only runs on real requests or
+        // if a test constructs a raw RequestContext (then it throws).
+        \Core\Responder::terminate('RequestContext::jsonResponse');
     }
 
     /**

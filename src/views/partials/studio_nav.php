@@ -14,7 +14,7 @@ $navIcons = [
     'autonomy'  => '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="6" y="6" width="12" height="12" rx="2"/><rect x="10.5" y="10.5" width="3" height="3"/><path d="M9 2.5v3.5M15 2.5V6M9 18v3.5M15 18v3.5M2.5 9H6M2.5 15H6M18 9h3.5M18 15h3.5"/></svg>',
 ];
 ?>
-<div style="background: rgba(13, 13, 15, 0.9); backdrop-filter: blur(8px); -webkit-backdrop-filter: blur(8px); border-bottom: 1px solid var(--line);" class="sticky top-0 z-30">
+<div style="background: var(--bg); border-bottom: 1px solid var(--line);" class="sticky top-0 z-30">
   <div class="container mx-auto px-6 h-12 flex items-center justify-between gap-4">
     <div class="flex items-center gap-3 min-w-0">
       <a href="/" class="flex items-center gap-2.5 group shrink-0">

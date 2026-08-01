@@ -32,8 +32,8 @@ final class AuthServiceTest extends TestCase
 {
     private InMemoryUserRepository $users;
     private InMemorySessionRepository $sessions;
-    private array $oldUser;
-    private array $oldSession;
+    private mixed $oldUser;
+    private mixed $oldSession;
 
     protected function setUp(): void
     {
@@ -116,7 +116,7 @@ final class AuthServiceTest extends TestCase
                 'id'            => 'u2',
                 'username'      => 'bob',
                 'email'         => 'bob@example.com',
-                'password_hash' => self::VALID_HASH,
+                'password_hash' => password_hash('password1234', PASSWORD_BCRYPT),
                 'display_name'  => 'Bob',
                 'role'          => 'Member',
                 'is_active'     => 0,
@@ -138,12 +138,12 @@ final class AuthServiceTest extends TestCase
     public function test_login_touches_last_login(): void
     {
         $userBefore = $this->users->find('u1');
-        $this->assertNull($userBefore['last_login_at']);  // not set on seed
+        $this->assertNull($userBefore['last_login_at'] ?? null);  // not set on seed
 
         AuthService::login('alice', 'password1234');
 
         $userAfter = $this->users->find('u1');
-        $this->assertNotNull($userAfter['last_login_at']);
+        $this->assertNotNull($userAfter['last_login_at'] ?? null);
     }
 
     // ── register() — validation errors ─────────────────────────────

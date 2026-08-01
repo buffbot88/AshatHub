@@ -38,8 +38,13 @@ final class SseStreamer
         header('Cache-Control: no-cache');
         header('X-Accel-Buffering: no');
         header('Connection: keep-alive');
-        if (ob_get_level()) {
-            ob_end_clean();
+        // Discard any pre-existing buffered content (stray echoes/notices)
+        // WITHOUT closing the outermost buffer — callers capturing output
+        // (and PHPUnit itself) keep their own buffer open. Closing foreign
+        // buffers here marks PHPUnit tests as risky and breaks stream
+        // capture in production code that wraps output.
+        if (ob_get_level() > 0) {
+            ob_clean();
         }
         ob_implicit_flush(true);
     }

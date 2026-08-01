@@ -28,6 +28,54 @@ The version displayed in the UI comes from `APP_VERSION` in `config/bootstrap.ph
     views render the new look with no per-view rewrites
   - `tailwind.config.js` + the inline dev config in `header.php`/`session_login.php`
     updated; `tailwind-prod.css` rebuilt
+  - Headers (navbar + studio nav) are now solid `var(--bg)` — the last
+    backdrop-filter blur removed; active-users orb visualization flattened
+    (no radial-gradient glow); dead `.particles`/`.gear-deco`/`scan-eye` CSS
+    deleted; Monaco editor theme renamed `ashat-gold` → `ashat`
+
+### Fixed — test suite is now genuinely green
+
+- **The full PHPUnit suite previously never completed** — a test triggered a
+  real `exit()` (via `RequestContext::jsonResponse` on a CSRF failure), which
+  killed the PHPUnit process mid-run and produced a misleading `EXIT=0` with
+  no summary. Root cause: `FakeContext::assertCsrf()` called
+  `parent::jsonResponse()` (the real one, which echoes + exits) instead of
+  the throwing `FakeContext` override — now calls `$this->jsonResponse()`.
+  `Router::handleDispatch()` also skips CSRF for `OPTIONS` (CORS preflights
+  carry no token).
+- `AuthServiceTest` — `$oldUser`/`$oldSession` were typed `array` but
+  `RepositoryRegistry::swap()` returns the old repository *object*;
+  undefined `VALID_HASH` constant replaced with a runtime `password_hash()`.
+- `FakeContextTest` — `Tests\Core\ViewContext` namespace typo (class is
+  `Core\ViewContext`), protected `$postData` accesses, and the
+  `requireRole` expectation (`/login/` when unauthenticated).
+- `SseStreamerTest` — asserted `ob_implicit_flush()`'s return value (void on
+  PHP 8.4); rewritten around a callback capture buffer.
+- `MarkdownRendererTest` — code-fence apostrophe expectation (`&apos;`),
+  paragraph splitting (blank lines now end a paragraph), `c++`/`c#` fence
+  languages now parse.
+- `InMemoryUserRepositoryTest` — bogus `'role' => 'guest'` in the
+  default-role test; `InMemoryBrainstemConfigRepositoryTest` — masked-key
+  expectation corrected to the documented 4+4 scheme (15-char key →
+  `sk-a•••••••3456`); `BuildPayload` `sanitizePath()` now collapses slash
+  runs so `/../../../` sanitizes to an empty (rejected) path.
+- Output-buffer handling in `SseStreamer::headers()`, `ErrorController::show()/
+  showJson()`, and `RequestContext::jsonResponse()` switched from
+  `ob_end_clean()` loops (which closed PHPUnit's own buffer → risky tests) to
+  cleaning only the innermost buffer; `Session::destroy()`/`AuthService::login()`
+  guard session calls so tests without a session produce no warnings.
+- **Latent exit() traps closed** — the last ways a test could still hit a real
+  `exit;` (silently truncating the PHPUnit run) are now routed through a new
+  `Core\Responder` seam: `RequestContext::redirect()/jsonResponse()/requireRole()`
+  and `ErrorController::showJson()` end with `Responder::terminate()`, which
+  `exit`s in production but **throws** under test mode (enabled by
+  `tests/bootstrap.php`). Regression tests cover a real-Router POST without a
+  CSRF token, a real `jsonResponse()`, and a real `showJson()` — all now fail
+  loudly instead of killing the run.
+
+**Result:** `php phpunit.phar` → 513 tests, 941 assertions, 0 failures,
+0 risky, 0 warnings (1 intentional skip); `node tests/js/agent-extract.test.js`
+→ 35/35 pass.
 
 ## [v5.5] — 2026-07-31
 

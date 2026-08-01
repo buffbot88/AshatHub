@@ -79,10 +79,24 @@ No package.json or composer.json — **zero dependencies**.
   whenever `tailwind.config.js` or the color tokens in `header.php` change
 
 ### Testing
-- PHPUnit 10.5 in `phpunit.xml.dist`
+- PHPUnit 10.5 in `phpunit.xml.dist` (run: `php phpunit.phar` — 506 tests, 930 assertions, green)
 - Tests bootstrap from `tests/bootstrap.php` (minimal — no session, no DB)
 - FakeContext + InMemoryRepositories = no database needed
-- 17 PHPUnit test files across `tests/Core/`, `tests/Models/`, `tests/Repositories/`
+- **Golden rule**: `FakeContext::assertCsrf()` must call `$this->jsonResponse()`
+  (the throwing override) — `parent::jsonResponse()` echoes a real body and
+  `exit()`s, killing the PHPUnit process mid-run (false green, 0-byte JUnit
+  log). Any new test that dispatches the real Router on a non-GET route must
+  set `$_SESSION['_csrf']` + `$_POST['_csrf']`, or CSRF will 419-exit.
+- **All real exit() paths route through `Core\Responder::terminate()`** —
+  `RequestContext::redirect()/jsonResponse()/requireRole()` and
+  `ErrorController::showJson()`. `tests/bootstrap.php` enables
+  `Responder::enableTestMode()`, so under PHPUnit a stray `exit;` throws a
+  `RuntimeException('Test-mode termination blocked…')` instead of truncating
+  the run. Never write a bare `exit;` in `src/Core`/`src/Controllers` — use
+  the seam.
+- `ob_end_clean()` loops in SseStreamer/ErrorController/RequestContext are
+  gone — they close PHPUnit's own buffer (risky tests). Buffer cleanup is a
+  single `ob_clean()` of the innermost buffer only.
 - JS unit tests in `tests/js/agent-extract.test.js` (node, no framework) — agent.js helpers via a small eval shim
 
 ### Studio / IDE (Planner, Mission Control, File Manager)

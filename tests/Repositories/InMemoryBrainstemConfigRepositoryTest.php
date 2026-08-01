@@ -83,7 +83,8 @@ final class InMemoryBrainstemConfigRepositoryTest extends TestCase
     {
         $this->repo->upsert('http://h', 'sk-abcdef123456', 'admin');
         $row = $this->repo->get();
-        $this->assertSame('sk-a••••••••456', $row['api_key_masked']);
+        // 15-char key: first 4 + last 4 visible, 7 dots = 15 chars
+        $this->assertSame('sk-a•••••••3456', $row['api_key_masked']);
     }
 
     public function test_upsert_masks_short_key_fully(): void

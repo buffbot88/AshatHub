@@ -48,6 +48,10 @@ final class Session
                 $params['httponly']
             );
         }
-        session_destroy();
+        // Only destroy when a session actually exists — PHP raises a warning
+        // otherwise (e.g. tests that call logout() without a started session).
+        if (session_status() === PHP_SESSION_ACTIVE) {
+            session_destroy();
+        }
     }
 }

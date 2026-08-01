@@ -171,6 +171,8 @@ final class BuildPayload
         $path = str_replace('\\', '/', $path);
         $path = ltrim($path, '/');
         $path = preg_replace('/\.\.+/', '', $path) ?? $path;
+        $path = preg_replace('#/+#', '/', $path) ?? $path;   // collapse slash runs
+        $path = trim($path, '/');
         $path = preg_replace('/[\x00-\x1f]/', '', $path) ?? $path;
         return $path;
     }

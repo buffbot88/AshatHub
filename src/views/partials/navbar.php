@@ -1,5 +1,5 @@
 <?php /** @var Core\ViewContext $view */ ?>
-<header class="sticky top-0 z-40" style="background: rgba(13, 13, 15, 0.9); backdrop-filter: blur(8px); -webkit-backdrop-filter: blur(8px); border-bottom: 1px solid var(--line);">
+<header class="sticky top-0 z-40" style="background: var(--bg); border-bottom: 1px solid var(--line);">
   <div class="container mx-auto px-6 h-14 flex items-center gap-6">
     <a href="/" class="flex items-center gap-2 group">
       <img srcset="<?= e(asset('/images/lion-logo-32.png')) ?> 1x, <?= e(asset('/images/lion-logo-48.png')) ?> 2x"

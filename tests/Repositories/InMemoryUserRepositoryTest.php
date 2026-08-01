@@ -179,7 +179,6 @@ final class InMemoryUserRepositoryTest extends TestCase
             'email'         => 'charlie@example.com',
             'password_hash' => '$2y$10$hashedcharlie',
             'display_name'  => 'Charlie',
-            'role'          => 'guest',
         ]);
         $this->assertNotNull($id);
         $this->assertNotEmpty($id);

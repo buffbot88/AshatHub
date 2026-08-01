@@ -43,10 +43,14 @@ final class AuthService
         if (!$user['is_active']) return null;
         if (!password_verify($password, $user['password_hash'])) return null;
 
-        // Regenerate session ID to prevent fixation
-        session_regenerate_id(true);
-
-        $_SESSION['user_id'] = $user['id'];
+        // Regenerate session ID to prevent fixation. Only meaningful when a
+        // session is actually active — guarded so callers without a started
+        // session (e.g. unit tests bootstrapping without one) don't trigger
+        // an E_WARNING from PHP's session extension.
+        if (session_status() === PHP_SESSION_ACTIVE) {
+            session_regenerate_id(true);
+            $_SESSION['user_id'] = $user['id'];
+        }
 
         // Server-side session row (so we can show "active users" elsewhere)
         RepositoryRegistry::session()->createOrTouch(
@@ -124,8 +128,10 @@ final class AuthService
         });
 
         // Fire-and-forget login (after user is durably committed)
-        session_regenerate_id(true);
-        $_SESSION['user_id'] = $sessionRow['id'];
+        if (session_status() === PHP_SESSION_ACTIVE) {
+            session_regenerate_id(true);
+            $_SESSION['user_id'] = $sessionRow['id'];
+        }
 
         return RepositoryRegistry::user()->find($sessionRow['id']) ?? [];
     }

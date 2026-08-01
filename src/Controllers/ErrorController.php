@@ -40,8 +40,11 @@ final class ErrorController
         // the header/navbar already started output). Without this, the
         // http_response_code() and header() calls below would fail with
         // "headers already sent" warnings.
-        while (ob_get_level() > 0) {
-            ob_end_clean();
+        // Only the innermost buffer is cleaned — the buffer itself stays
+        // open, so callers capturing output (e.g. tests wrapping dispatch
+        // in ob_start, or PHPUnit's own buffer) keep working.
+        if (ob_get_level() > 0) {
+            ob_clean();
         }
 
         $code = self::normaliseCode($code);
@@ -81,14 +84,22 @@ final class ErrorController
     /**
      * Render a JSON error payload. Used by /api/* paths.
      * Self-contained: no Response::json() static call.
+     *
+     * NOTE: this method terminates via \Core\Responder::terminate() — a
+     * real `exit;` in production, but a thrown RuntimeException under
+     * PHPUnit (test mode). A stray real exit() here used to silently
+     * truncate the PHPUnit run (false green). FakeContext overrides
+     * jsonResponse()/redirect()/requireRole() to throw instead; keep
+     * test-only code on FakeContext paths.
      */
     public function showJson(int $code, ?string $message = null): void
     {
         // Discard buffered output before sending JSON (same rationale as
         // RequestContext::jsonResponse — prevents PHP warnings from being
-        // prepended to the JSON body).
-        while (ob_get_level() > 0) {
-            ob_end_clean();
+        // prepended to the JSON body). Only clean the innermost buffer;
+        // never close buffers that callers (or PHPUnit) own.
+        if (ob_get_level() > 0) {
+            ob_clean();
         }
 
         $code = self::normaliseCode($code);
@@ -104,7 +115,9 @@ final class ErrorController
             'detail'     => self::safeDetail($message, $code),
             'request_id' => self::requestId(),
         ], JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
-        exit;
+        // Seam for test mode: exits in production, throws under PHPUnit so
+        // a real exit() here can never truncate the test run.
+        \Core\Responder::terminate('ErrorController::showJson');
     }
 
     /** Clamp unknown codes to 500 so we always render something. */

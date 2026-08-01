@@ -21,21 +21,21 @@
         <label class="block text-sm">
           <span class="label-gold">Category</span>
           <select name="category" class="field mt-1 w-full">
-            <option value="bug">🐛 Bug Report</option>
-            <option value="feature">💡 Feature Request</option>
-            <option value="account">👤 Account Help</option>
-            <option value="billing">💳 Billing</option>
-            <option value="other">📦 Other</option>
+            <option value="bug">Bug Report</option>
+            <option value="feature">Feature Request</option>
+            <option value="account">Account Help</option>
+            <option value="billing">Billing</option>
+            <option value="other">Other</option>
           </select>
         </label>
 
         <label class="block text-sm">
           <span class="label-gold">Priority</span>
           <select name="priority" class="field mt-1 w-full">
-            <option value="low">🟢 Low — Not urgent</option>
-            <option value="normal" selected>🟡 Normal</option>
-            <option value="high">🟠 High — Affecting work</option>
-            <option value="urgent">🔴 Urgent — System down</option>
+            <option value="low">Low — Not urgent</option>
+            <option value="normal" selected>Normal</option>
+            <option value="high">High — Affecting work</option>
+            <option value="urgent">Urgent — System down</option>
           </select>
         </label>
       </div>

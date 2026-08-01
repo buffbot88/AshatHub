@@ -57,36 +57,36 @@
         window.__monacoReady = false;
         return;
       }
-      // Define a custom dark-gold theme matching the hub
+      // Define a custom flat theme matching the hub (no gold, no glow)
       monaco.editor.defineTheme('ashat-gold', {
         base: 'vs-dark',
         inherit: true,
         rules: [
-          { token: 'comment', foreground: '8a7a3a', fontStyle: 'italic' },
-          { token: 'keyword', foreground: 'daa520', fontStyle: 'bold' },
-          { token: 'string',  foreground: 'fff7a0' },
-          { token: 'number',  foreground: 'ffd700' },
-          { token: 'type',    foreground: 'd4c590' },
-          { token: 'function', foreground: 'ffd700' },
+          { token: 'comment', foreground: '6f6f7a', fontStyle: 'italic' },
+          { token: 'keyword', foreground: 'ff8a5c', fontStyle: 'bold' },
+          { token: 'string',  foreground: '9fd1a8' },
+          { token: 'number',  foreground: 'd4b06a' },
+          { token: 'type',    foreground: '7cc4e8' },
+          { token: 'function', foreground: 'ffa06e' },
         ],
         colors: {
-          'editor.background': '#0a0a0a',
-          'editor.foreground': '#d4c590',
-          'editor.lineHighlightBackground': '#1a1505',
-          'editor.selectionBackground': '#b8860b44',
-          'editorCursor.foreground': '#ffd700',
-          'editorLineNumber.foreground': '#5a4a1a',
-          'editorLineNumber.activeForeground': '#b8860b',
-          'editor.selectionHighlightBackground': '#b8860b22',
-          'editor.inactiveSelectionBackground': '#b8860b11',
-          'editorWidget.background': '#11111a',
-          'editorWidget.border': '#b8860b',
-          'input.background': '#1a1505',
-          'input.border': '#b8860b',
-          'input.foreground': '#d4c590',
-          'scrollbarSlider.background': '#b8860b44',
-          'scrollbarSlider.hoverBackground': '#b8860b88',
-          'scrollbarSlider.activeBackground': '#daa520',
+          'editor.background': '#0d0d0f',
+          'editor.foreground': '#e9e9ee',
+          'editor.lineHighlightBackground': '#1a1a20',
+          'editor.selectionBackground': '#ff7a4533',
+          'editorCursor.foreground': '#ff7a45',
+          'editorLineNumber.foreground': '#5c5c66',
+          'editorLineNumber.activeForeground': '#8f8f9a',
+          'editor.selectionHighlightBackground': '#ff7a4522',
+          'editor.inactiveSelectionBackground': '#ff7a4511',
+          'editorWidget.background': '#17171b',
+          'editorWidget.border': '#2a2a31',
+          'input.background': '#1f1f25',
+          'input.border': '#2a2a31',
+          'input.foreground': '#e9e9ee',
+          'scrollbarSlider.background': '#2a2a3144',
+          'scrollbarSlider.hoverBackground': '#2a2a3188',
+          'scrollbarSlider.activeBackground': '#3a3a44',
         }
       });
 

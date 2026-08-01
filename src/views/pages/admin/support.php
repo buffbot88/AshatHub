@@ -12,11 +12,11 @@
    'resolved'    => '#a855f7',
    'closed'      => '#64748b',
  ];
- $priorityIcons = [
-    'low'    => '🟢',
-    'normal' => '🟡',
-    'high'   => '🟠',
-    'urgent' => '🔴',
+ $priorityDots = [
+    'low'    => '#22c55e',
+    'normal' => '#eab308',
+    'high'   => '#f97316',
+    'urgent' => '#ef4444',
  ];
 ?>
 
@@ -37,7 +37,6 @@
 
     <?php if (empty($tickets)): ?>
       <div style="color: var(--gold-muted); text-align: center; padding: 64px 0;">
-        <div class="text-4xl mb-4">✅</div>
         <p class="section-title" style="font-size: 20px; text-align: center;">No open tickets</p>
         <p class="text-sm mt-2">All support tickets have been resolved.</p>
       </div>
@@ -58,7 +57,9 @@
           <tbody>
             <?php foreach ($tickets as $t): ?>
               <tr style="border-bottom: 1px solid rgba(255,215,0,0.05);">
-                <td class="py-3 px-3" style="font-size: 16px;"><?= $priorityIcons[$t['priority']] ?? '' ?></td>
+                <td class="py-3 px-3">
+                  <span title="<?= e($t['priority']) ?> priority" style="display: inline-block; width: 9px; height: 9px; border-radius: 50%; background: <?= $priorityDots[$t['priority']] ?? '#64748b' ?>;"></span>
+                </td>
                 <td class="py-3 px-3">
                   <a href="/support/<?= e($t['id']) ?>" style="color: var(--gold-text); font-weight: 500;"
                      onmouseover="this.style.color='var(--gold)'"

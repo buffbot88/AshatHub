@@ -3,7 +3,7 @@
   $users      = $view->users ?? [];
   $modelStats = $view->modelStats ?? [];
   $total      = count($users);
-  $roleColors = ['Admin' => '#f4c55d', 'Pro' => '#22d3ee', 'Member' => '#7b7b93'];
+  $roleColors = ['Admin' => '#ff7a45', 'Pro' => '#7cc4e8', 'Member' => '#86868f'];
 ?>
 <section style="border-bottom: 1px solid var(--gold-line);">
   <div class="container mx-auto px-6 py-12">
@@ -25,9 +25,8 @@
 <section class="container mx-auto px-6 py-10 grid lg:grid-cols-5 gap-8">
   <?php if (empty($users)): ?>
     <div class="lg:col-span-5 text-center py-20" style="color: var(--gold-muted);">
-      <div class="text-5xl mb-4">🌙</div>
       <p class="section-title" style="font-size: 20px; text-align: center;">No active users</p>
-      <p class="text-sm mt-2">The constellation is dark. Check back when others are online.</p>
+      <p class="text-sm mt-2">Check back when others are online.</p>
     </div>
   <?php else: ?>
     <!-- ─── Left: Ball of Orbs ────────────────────────────────── -->
@@ -54,12 +53,11 @@
           <?php foreach ($modelStats as $i => $m):
             $pct = $total > 0 ? round(($m['user_count'] / $total) * 100) : 0;
             $isTop = $i === 0;
-          ?>
-            <div class="glass-card-solid p-4" style="<?= $isTop ? 'border-color: var(--gold); box-shadow: 0 0 20px rgba(255, 215, 0, 0.15);' : '' ?>">
+          ?>              <div class="glass-card-solid p-4" style="<?= $isTop ? 'border-color: var(--accent);' : '' ?>">
               <div class="flex items-center justify-between mb-2">
                 <div class="flex items-center gap-2 min-w-0">
                   <?php if ($isTop): ?>
-                    <span style="color: var(--gold); font-size: 14px;" title="Most used">👑</span>
+                    <span style="color: var(--accent); font-size: 12px; font-family: var(--font-mono);" title="Most used">top</span>
                   <?php endif; ?>
                   <span class="text-sm font-mono font-semibold truncate" style="color: <?= $m['model'] === 'not configured' ? 'var(--gold-muted)' : 'var(--gold-bright)' ?>;">
                     <?= e($m['model']) ?>
@@ -70,9 +68,9 @@
                 </span>
               </div>
               <!-- Bar -->
-              <div class="w-full h-1.5 rounded-full overflow-hidden" style="background: rgba(15,15,23,0.6);">
+              <div class="w-full h-1.5 rounded-full overflow-hidden" style="background: var(--surface-2); border: 1px solid var(--line);">
                 <div class="h-full rounded-full transition-all duration-700 ease-out"
-                     style="width:<?= $pct ?>%; background: <?= $isTop ? 'linear-gradient(90deg, var(--gold-deep), var(--gold))' : 'linear-gradient(90deg, var(--gold-line), var(--gold-dim))' ?>;"></div>
+                     style="width:<?= $pct ?>%; background: <?= $isTop ? 'var(--accent)' : 'var(--surface-3)' ?>;"></div>
               </div>
               <div class="mt-1.5 flex justify-between text-[10px] font-mono" style="color: var(--gold-dim);">
                 <span><?= $pct ?>% of active users</span>

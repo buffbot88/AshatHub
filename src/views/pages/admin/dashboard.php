@@ -29,22 +29,31 @@
       $gitValue = $gitOk ? ($git['branch'] ?? '') . ' @ ' . ($git['commit'] ?? '') : '—';
       $gitDirty = $gitOk && !empty($git['dirty']);
 
+      $svg = [
+        'users'   => '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="9" cy="8" r="3.5"/><path d="M2.5 20a6.5 6.5 0 0 1 13 0"/><path d="M16 5.5a3.5 3.5 0 0 1 0 7M17.5 14.5a6.5 6.5 0 0 1 4 5.5"/></svg>',
+        'session' => '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 3"/></svg>',
+        'spec'    => '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="5" y="4" width="14" height="17" rx="2"/><path d="M9 4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v1H9V4z"/><path d="M9 12h6M9 16h4"/></svg>',
+        'build'   => '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 2 2 7l10 5 10-5-10-5z"/><path d="M2 12l10 5 10-5"/><path d="M2 17l10 5 10-5"/></svg>',
+        'file'    => '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6"/></svg>',
+        'git-ok'  => '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M8.5 12.5l2.5 2.5 4.5-5"/></svg>',
+        'git-warn'=> '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3 2 20h20L12 3z"/><path d="M12 9v5M12 17.5h.01"/></svg>',
+        'git-pause'=> '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 4v16M15 4v16"/></svg>',
+      ];
+
       $cards = [
-        ['label' => 'Total Users',       'value' => $s['users'] ?? 0,           'icon' => '👥', 'color' => 'from-cyan-500/20 to-transparent'],
-        ['label' => 'Active Sessions',   'value' => $s['active_sessions'] ?? 0,  'icon' => '🟢', 'color' => 'from-ok/20 to-transparent'],
-        ['label' => 'Specs',             'value' => $s['specs'] ?? 0,           'icon' => '📋', 'color' => 'from-accent/20 to-transparent'],
-        ['label' => 'Builds',            'value' => $s['builds'] ?? 0,          'icon' => '🏗️', 'color' => 'from-violet-500/20 to-transparent'],
-        ['label' => 'Files',             'value' => $s['files'] ?? 0,           'icon' => '📄', 'color' => 'from-blue-500/20 to-transparent'],
-        ['label' => $gitLabel,           'value' => $gitValue,                  'icon' => $gitDirty ? '⚠️' : ($gitOk ? '🔀' : '⏸️'), 'color' => 'from-slate-500/20 to-transparent'],
+        ['label' => 'Total Users',       'value' => $s['users'] ?? 0,           'icon' => $svg['users']],
+        ['label' => 'Active Sessions',   'value' => $s['active_sessions'] ?? 0,  'icon' => $svg['session']],
+        ['label' => 'Specs',             'value' => $s['specs'] ?? 0,           'icon' => $svg['spec']],
+        ['label' => 'Builds',            'value' => $s['builds'] ?? 0,          'icon' => $svg['build']],
+        ['label' => 'Files',             'value' => $s['files'] ?? 0,           'icon' => $svg['file']],
+        ['label' => $gitLabel,           'value' => $gitValue,                  'icon' => $gitDirty ? $svg['git-warn'] : ($gitOk ? $svg['git-ok'] : $svg['git-pause'])],
       ];
       foreach ($cards as $card):
     ?>
-      <div class="glass-card relative overflow-hidden p-5" style="border-image: none; border: 1px solid var(--gold-line);">
-        <div class="relative z-10">
-          <div class="text-2xl mb-2"><?= e($card['icon']) ?></div>
-          <div style="font-family: var(--font-heading); font-size: 30px; font-weight: 700; color: var(--gold-bright);"><?= (int) $card['value'] ?></div>
-          <div class="label-gold mt-1"><?= e($card['label']) ?></div>
-        </div>
+      <div class="glass-card p-5" style="border: 1px solid var(--gold-line);">
+        <div style="color: var(--text-mute); margin-bottom: 10px;"><?= $card['icon'] ?></div>
+        <div style="font-family: var(--font-heading); font-size: 30px; font-weight: 600; color: var(--text); line-height: 1;"><?= (int) $card['value'] ?></div>
+        <div class="label-gold mt-2"><?= e($card['label']) ?></div>
       </div>
     <?php endforeach; ?>
   </div>
@@ -55,7 +64,7 @@
     <div class="grid sm:grid-cols-2 lg:grid-cols-4 gap-4">
       <a href="/admin/users/" class="glass-card-solid p-5" style="display: block;">
         <div class="flex items-center gap-3">
-          <span class="text-2xl">👤</span>
+          <span style="color: var(--text-mute);"><?= $svg['users'] ?></span>
           <div>
             <div style="font-weight: 500; color: var(--gold-text);">User Management</div>
             <div class="text-xs mt-0.5" style="color: var(--gold-muted);">Edit roles, activate/suspend accounts</div>
@@ -64,7 +73,7 @@
       </a>
       <a href="/admin/settings/" class="glass-card-solid p-5" style="display: block;">
         <div class="flex items-center gap-3">
-          <span class="text-2xl">⚙️</span>
+          <span style="color: var(--text-mute);"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.9l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.9-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1-1.6 1.7 1.7 0 0 0-1.9.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.9 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.6-1 1.7 1.7 0 0 0-.3-1.9l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.9.3h.1a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5h.1a1.7 1.7 0 0 0 1.9-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.9v.1a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z"/></svg></span>
           <div>
             <div style="font-weight: 500; color: var(--gold-text);">System Settings</div>
             <div class="text-xs mt-0.5" style="color: var(--gold-muted);">BrainStem host config & environment</div>
@@ -73,7 +82,7 @@
       </a>
       <a href="/account/active-users/" class="glass-card-solid p-5" style="display: block;">
         <div class="flex items-center gap-3">
-          <span class="text-2xl">🌐</span>
+          <span style="color: var(--text-mute);"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M3 12h18M12 3a14 14 0 0 1 0 18 14 14 0 0 1 0-18z"/></svg></span>
           <div>
             <div style="font-weight: 500; color: var(--gold-text);">Active Users</div>
             <div class="text-xs mt-0.5" style="color: var(--gold-muted);">See who's online right now</div>
@@ -82,10 +91,9 @@
       </a>
       <a href="/admin/settings/" class="glass-card-solid p-5 relative" style="display: block;">
         <span id="github-update-badge"
-              class="hidden absolute -top-2 -right-2 bg-err text-white text-[10px] font-bold font-mono px-2 py-0.5 rounded-full shadow-lg z-10"
-              style="box-shadow: 0 0 8px rgba(248,113,113,0.5);"></span>
+              class="hidden absolute -top-2 -right-2 bg-err text-white text-[10px] font-bold font-mono px-2 py-0.5 rounded-full z-10"></span>
         <div class="flex items-center gap-3">
-          <span class="text-2xl">📥</span>
+          <span style="color: var(--text-mute);"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><path d="M7 10l5 5 5-5"/><path d="M12 15V3"/></svg></span>
           <div>
             <div style="font-weight: 500; color: var(--gold-text);">Update from GitHub</div>
             <div class="text-xs mt-0.5" style="color: var(--gold-muted);">Pull latest code from the repository</div>
@@ -101,7 +109,6 @@
     <h2 class="text-lg font-display font-semibold mb-4">Recent Build Activity</h2>
     <?php if (empty($recentBuilds)): ?>
       <div class="glass-card-solid p-8 text-center" style="color: var(--gold-muted);">
-        <div class="text-3xl mb-2">🛸</div>
         <p>No build activity yet.</p>
       </div>
     <?php else: ?>

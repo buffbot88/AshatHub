@@ -2,14 +2,14 @@
 
   <?php require __DIR__ . '/../partials/dev_banner.php'; ?>
 
-  <footer style="border-top: 1px solid var(--gold-line); background: rgba(20, 18, 10, 0.4);">
+  <footer style="border-top: 1px solid var(--line); background: var(--bg-soft);">
     <div class="container mx-auto px-6 py-10 grid md:grid-cols-4 gap-8 text-sm">
       <div>
         <div class="flex items-center gap-2" style="color: var(--gold-text); font-weight: 600;">
           <img srcset="<?= e(asset('/images/lion-logo-32.png')) ?> 1x, <?= e(asset('/images/lion-logo-48.png')) ?> 2x"
                src="<?= e(asset('/images/lion-logo-32.png')) ?>"
                alt="ASHAT" width="24" height="24">
-          <span>ASHAT <span style="color: var(--gold);">Hub</span></span>
+          <span class="font-display">ASHAT <span style="color: var(--accent);">Hub</span></span>
         </div>
         <p style="color: var(--gold-muted); margin-top: 12px; line-height: 1.6;">An open, browser-based AI coding platform. Describe what to build — let ASHAT build it.</p>
       </div>

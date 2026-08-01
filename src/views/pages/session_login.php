@@ -6,7 +6,7 @@
   <title><?= e($view->title ?? 'Connect · ASHAT Hub') ?></title>
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@500;700;900&family=Quicksand:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <link href="https://fonts.googleapis.com/css2?family=Newsreader:opsz,wght@6..72,500;6..72,600;6..72,700&family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
   <?php if (APP_ENV === 'production'): ?>
   <link rel="stylesheet" href="<?= e(asset('/css/tailwind-prod.css')) ?>">
   <?php else: ?>
@@ -22,20 +22,20 @@
       theme: {
         extend: {
           colors: {
-            ink:    { DEFAULT: '#0a0a0f', soft: '#0f0f17', deep: '#06060b', panel: '#11111a', line: '#1c1c2a' },
-            chalk:  { DEFAULT: '#f5f5fa', soft: '#c9c9d8', mute: '#7b7b93', dim: '#4c4c66' },
-            accent: { DEFAULT: '#f4c55d', soft: '#c9a23e', deep: '#6b5524' },
-            gold:   { DEFAULT: '#ffd700', light: '#fff7a0', deep: '#b8860b' },
-            ok:     '#4ade80',
-            warn:   '#fbbf24',
-            err:    '#f87171',
+            ink:    { DEFAULT: '#0d0d0f', soft: '#121215', deep: '#0a0a0c', panel: '#17171b', line: '#2a2a31' },
+            chalk:  { DEFAULT: '#e9e9ee', soft: '#b3b3bd', mute: '#8f8f9a', dim: '#5c5c66' },
+            accent: { DEFAULT: '#ff7a45', soft: '#ff9468', deep: '#c9531f' },
+            gold:   { DEFAULT: '#ff7a45', light: '#ff9468', deep: '#c9531f' },
+            ok:     '#47d48f',
+            warn:   '#f2b23e',
+            err:    '#ff6b6b',
           },
           fontFamily: {
-            sans:    '"Quicksand", Inter, ui-sans-serif, system-ui, sans-serif',
-            mono:    'ui-monospace, "JetBrains Mono", Menlo, Consolas, monospace',
-            display: '"Orbitron", "Space Grotesk", Inter, ui-sans-serif, system-ui, sans-serif',
-            heading: '"Orbitron", sans-serif',
-            body:    '"Quicksand", sans-serif',
+            sans:    '"Inter", ui-sans-serif, system-ui, sans-serif',
+            mono:    'ui-monospace, "JetBrains Mono", "SFMono-Regular", Menlo, Consolas, monospace',
+            display: '"Newsreader", Georgia, "Times New Roman", serif',
+            heading: '"Newsreader", Georgia, serif',
+            body:    '"Inter", ui-sans-serif, system-ui, sans-serif',
           },
         }
       }
@@ -44,12 +44,12 @@
   </script>
   <?php endif; ?>
   <style>
-    html, body { background: #06060b; min-height: 100vh; }
+    html, body { background: var(--bg); min-height: 100vh; }
   </style>
 </head>
 <body class="min-h-screen flex items-center justify-center p-6"
-      style="background: radial-gradient(ellipse at center, #1a1408 0%, #0a0a0a 60%, #000 100%);
-             color: #d4c590; font-family: 'Quicksand', sans-serif; font-weight: 500;">
+      style="background-color: var(--bg);
+             color: var(--text); font-family: var(--font-body); font-weight: 400;">
   <div class="w-full max-w-sm">
     <!-- Branding -->
     <div class="flex items-center gap-2.5 justify-center mb-6">

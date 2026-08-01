@@ -36,31 +36,31 @@ module.exports = {
   theme: {
     extend: {
       colors: {
-        /* Old color names (backward compat for existing templates) */
-        ink:    { DEFAULT: '#0a0a0f', soft: '#0f0f17', deep: '#06060b', panel: '#11111a', line: '#1c1c2a' },
-        chalk:  { DEFAULT: '#f5f5fa', soft: '#c9c9d8', mute: '#7b7b93', dim: '#4c4c66' },
-        accent: { DEFAULT: '#f4c55d', soft: '#c9a23e', deep: '#6b5524' },
-        /* New gold theme (✦ Ashat Gold Pulse ✦) */
-        gold:    { DEFAULT: '#ffd700', light: '#fff7a0', mid: '#daa520', deep: '#b8860b', soft: '#1a1505' },
-        goldBg:  { DEFAULT: '#0a0a0a', warm: '#1a1408' },
-        goldTxt: { DEFAULT: '#d4c590', mute: '#8a7a3a', dim: '#5a4a1a', bright: '#fff7a0' },
-        panel:   '#14120a',
-        ok:      '#4ade80',
-        warn:    '#fbbf24',
-        err:     '#f87171',
+        /* Neutral flat palette (Plainspoken system) */
+        ink:    { DEFAULT: '#0d0d0f', soft: '#121215', deep: '#0a0a0c', panel: '#17171b', line: '#2a2a31' },
+        chalk:  { DEFAULT: '#e9e9ee', soft: '#b3b3bd', mute: '#8f8f9a', dim: '#5c5c66' },
+        accent: { DEFAULT: '#ff7a45', soft: '#ff9468', deep: '#c9531f' },
+        /* Legacy names → same palette */
+        gold:    { DEFAULT: '#ff7a45', light: '#ff9468', mid: '#ff7a45', deep: '#c9531f', soft: 'rgba(255,122,69,0.12)' },
+        goldBg:  { DEFAULT: '#0d0d0f', warm: '#121215' },
+        goldTxt: { DEFAULT: '#e9e9ee', mute: '#86868f', dim: '#5c5c66', bright: '#e9e9ee' },
+        panel:   '#17171b',
+        ok:      '#47d48f',
+        warn:    '#f2b23e',
+        err:     '#ff6b6b',
       },
       fontFamily: {
-        sans:  '"Quicksand", Inter, ui-sans-serif, system-ui, sans-serif',
-        mono:  'ui-monospace, "JetBrains Mono", Menlo, Consolas, monospace',
-        display: '"Orbitron", "Space Grotesk", Inter, ui-sans-serif, system-ui, sans-serif',
-        heading: '"Orbitron", sans-serif',
-        body:    '"Quicksand", sans-serif',
+        sans:    '"Inter", ui-sans-serif, system-ui, sans-serif',
+        mono:    'ui-monospace, "JetBrains Mono", "SFMono-Regular", Menlo, Consolas, monospace',
+        display: '"Newsreader", Georgia, "Times New Roman", serif',
+        heading: '"Newsreader", Georgia, serif',
+        body:    '"Inter", ui-sans-serif, system-ui, sans-serif',
       },
       boxShadow: {
-        crisp:   '0 1px 0 rgba(255,255,255,0.04) inset, 0 0 0 1px rgba(255,255,255,0.04)',
-        soft:    '0 2px 8px rgba(0,0,0,0.35), 0 0 0 1px rgba(255,255,255,0.04)',
-        gold:    '0 0 40px rgba(255, 215, 0, 0.3)',
-        'gold-sm': '0 0 15px rgba(255, 215, 0, 0.15)',
+        crisp:   '0 1px 0 rgba(255,255,255,0.03) inset, 0 0 0 1px rgba(255,255,255,0.03)',
+        soft:    '0 2px 8px rgba(0,0,0,0.35), 0 0 0 1px rgba(255,255,255,0.03)',
+        gold:    'none',
+        'gold-sm': 'none',
       },
     },
   },

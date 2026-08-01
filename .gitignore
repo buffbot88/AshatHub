@@ -36,3 +36,8 @@ node_modules/
 # AshatOS_Old archive should NOT be committed
 AshatOS_Old/
 /.freebuff
+
+# PHPUnit phar (no composer.json in this repo)
+phpunit.phar
+# PHPUnit cache dir (created on every run)
+.phpunit.cache/

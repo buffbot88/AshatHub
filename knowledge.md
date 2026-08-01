@@ -10,7 +10,7 @@ Key code locations:
 - **`src/Repositories/`** — Data access layer: Pdo*Repository (production) + InMemory*Repository (tests). Access via `RepositoryRegistry`
 - **`src/views/`** — `layouts/` (header, footer) and `pages/` (one per route)
 - **`public/js/`** — Vanilla JS: `app.js` (ashatFetch, toasts), `agent.js` (Coding Agent — BYO-key LLM driver + localStorage generated-code store), `studio.js` (Planner + File Manager glue, context menu, keyboard nav, refresh-restore)
-- **`public/css/app.css`** — Custom dark-gold theme (Orbitron + Quicksand)
+- **`public/css/app.css`** — Custom "Plainspoken" design system (Newsreader serif + Inter + JetBrains Mono)
 - **`src/Data/`** — `LanguageOptions` (project language picker), `CategoryLabels` (ErrorPages lives in `src/Core/`)
 - **`config/`** — `bootstrap.php` (boot sequence + all `APP_*`/`DB_*`/`SESSION_*` constants), `server_config.json` (your live config — gitignored)
 - **`.htaccess`** — Root Apache rules for flat/shared-hosting deploy (uses ErrorDocument, no mod_rewrite required)
@@ -21,7 +21,7 @@ Key code locations:
 | Command | Purpose |
 |---|---|
 | `php -S localhost:8000 router.php` | Built-in dev server |
-| `./vendor/bin/phpunit` | Run all PHP tests (17 test files) |
+| `php phpunit.phar` | Run all PHP tests (17 test files; phar lives in repo root, gitignored — get it with `curl -L -o phpunit.phar https://phar.phpunit.de/phpunit-10.5.phar`) |
 | `node tests/js/agent-extract.test.js` | Run the agent.js JS unit tests (JSON extraction + localStorage helpers) |
 | `mysql -u root -p < db/schema.sql` | Full-access DB install |
 | `mysql -u root -p < db/spec-language.sql` | Existing-DB migration: adds `specs.language` (idempotent, guarded) |
@@ -69,8 +69,14 @@ No package.json or composer.json — **zero dependencies**.
 ### Styling
 - Tailwind via CDN (`tailwindcss.com?plugins=typography` in dev; compiled `tailwind-prod.css` when `APP_ENV=production`)
   - Rebuild the production stylesheet: `npm install --no-save tailwindcss@^3.4 @tailwindcss/typography && npx tailwindcss -c tailwind.config.js -i public/css/tailwind-input.css -o public/css/tailwind-prod.css --minify` (then `rm -rf node_modules`)
-- Dark-gold theme with Orbitron (headings) + Quicksand (body) fonts
-- Glass cards, gold gradients, glowing borders
+- **"Plainspoken" theme** — flat neutral dark UI: solid surfaces, hairline borders,
+  one solid signal-orange accent (`#ff7a45`), no glass/glow/gradients/particles,
+  no emoji icons (hand-drawn inline SVGs instead)
+- Typography: Newsreader (editorial serif display) + Inter (body/UI) + JetBrains Mono (labels/code)
+- Legacy `glass-card*` / `btn-gold` / `chip-gold` / `--gold-*` names are kept as
+  aliases that point at the new palette — views work unchanged
+- The prod stylesheet (`tailwind-prod.css`) is a precompiled build — rebuild it
+  whenever `tailwind.config.js` or the color tokens in `header.php` change
 
 ### Testing
 - PHPUnit 10.5 in `phpunit.xml.dist`

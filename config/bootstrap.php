@@ -167,7 +167,7 @@ define('APP_KEY', (string) $__env('APP_KEY', ''));
 define('MAINTENANCE_MODE', filter_var($__env('MAINTENANCE_MODE', 'false'), FILTER_VALIDATE_BOOLEAN));
 define('MAINTENANCE_MESSAGE', (string) $__env('MAINTENANCE_MESSAGE', 'Our little AI is busy upgrading the hub with brand-new magic!'));
 
-define('APP_VERSION', '5.5');
+define('APP_VERSION', '5.6');
 define('APP_VERSION_DISPLAY', 'v' . APP_VERSION);
 unset($__env);
 

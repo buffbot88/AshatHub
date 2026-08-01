@@ -26,7 +26,7 @@
 
   <?php if (empty($users)): ?>
     <div class="text-center text-chalk-mute py-20">
-      <div class="text-5xl mb-4">👤</div>
+      <div class="mb-4" style="color: var(--text-dim);"><svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="8" r="4"/><path d="M4 21a8 8 0 0 1 16 0"/></svg></div>
       <p class="text-lg font-display font-semibold">No users found</p>
       <p class="text-sm mt-2">The platform has no registered users yet.</p>
     </div>

@@ -14,16 +14,24 @@
   </div>
 
   <div class="grid md:grid-cols-4 gap-5">
-    <?php foreach ([
-      ['Specs',   $specCount,  '📋', '/ide/planner/'],
-      ['Files',   $fileCount,  '🗂', '/ide/files/'],
-      ['Builds',  $buildCount, '🔨', '/ide/planner/'],
-      ['API',     $hasApiCfg ? 'configured' : 'missing', '🔑', '/account/', 'data-ashat-pill="api-tile"'],
-    ] as $tile): ?>
+    <?php
+      $tileIcons = [
+        '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="5" y="4" width="14" height="17" rx="2"/><path d="M9 4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v1H9V4z"/><path d="M9 12h6M9 16h4"/></svg>',
+        '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V7z"/></svg>',
+        '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 2 2 7l10 5 10-5-10-5z"/><path d="M2 12l10 5 10-5"/><path d="M2 17l10 5 10-5"/></svg>',
+        '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="7.5" cy="15.5" r="4.5"/><path d="M11 12l9-9M15 8l3 3"/></svg>',
+      ];
+      foreach ([
+        ['Specs',   $specCount, $tileIcons[0], '/ide/planner/'],
+        ['Files',   $fileCount, $tileIcons[1], '/ide/files/'],
+        ['Builds',  $buildCount, $tileIcons[2], '/ide/planner/'],
+        ['API',     $hasApiCfg ? 'configured' : 'missing', $tileIcons[3], '/account/', 'data-ashat-pill="api-tile"'],
+      ] as $tile):
+    ?>
       <a href="<?= e($tile[3]) ?>" <?= !empty($tile[4]) ? $tile[4] : '' ?> class="glass-card-solid p-5" style="display: block;">
         <div class="flex items-center justify-between mb-3">
           <div class="label-gold"><?= e($tile[0]) ?></div>
-          <div class="text-xl"><?= e($tile[2]) ?></div>
+          <div style="color: var(--text-mute);"><?= $tile[2] ?></div>
         </div>
         <div style="font-family: var(--font-heading); font-size: 24px; color: var(--gold-bright);"><?= e((string) $tile[1]) ?></div>
       </a>

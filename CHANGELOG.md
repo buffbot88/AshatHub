@@ -7,6 +7,28 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 The version displayed in the UI comes from `APP_VERSION` in `config/bootstrap.php`
 (`APP_VERSION_DISPLAY` = `v` + version).
 
+## [v5.6] — 2026-08-01
+
+### Changed
+
+- **Complete visual redesign — "Plainspoken" system** (replaces the dark-gold
+  glass-glow theme after community feedback about the "AI slop" look):
+  - Flat neutral dark UI: solid surfaces, hairline borders, one solid
+    signal-orange accent — no glass, no glow, no gradients, no particles,
+    no animated gear/scan-eye decorations
+  - Typography: Newsreader (editorial serif display) + Inter (body) +
+    JetBrains Mono (labels/code), replacing Orbitron + Quicksand
+  - Emoji icons removed from the home page, IDE nav, autonomy tiles, and admin
+    dashboard — replaced with hand-drawn inline SVG icons
+  - `maintenance.php` rebuilt flat (no gradient robot / golden gears);
+    `session_login.php`, `active_users.php`, `autonomy.php` gradient stats,
+    and admin stat cards brought in line
+  - Legacy `glass-card*` / `btn-gold` / `chip-gold` / `--gold-*` class and
+    variable names are retained as aliases into the new palette, so existing
+    views render the new look with no per-view rewrites
+  - `tailwind.config.js` + the inline dev config in `header.php`/`session_login.php`
+    updated; `tailwind-prod.css` rebuilt
+
 ## [v5.5] — 2026-07-31
 
 ### Added

@@ -96,37 +96,37 @@ $recentBuilds = array_slice($builds, 0, 10);
     <div class="glass-card-solid p-5">
       <div class="flex items-center justify-between mb-2">
         <span class="text-[10px] font-mono uppercase tracking-wider" style="color: var(--gold-muted);">Specs</span>
-        <span class="text-base">📋</span>
+        <span class="text-base" style="color: var(--text-dim);"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="5" y="4" width="14" height="17" rx="2"/><path d="M9 4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v1H9V4z"/><path d="M9 12h6M9 16h4"/></svg></span>
       </div>
-      <div class="text-3xl font-bold" style="background: linear-gradient(135deg, var(--gold-light), var(--gold)); -webkit-background-clip: text; background-clip: text; color: transparent; font-family: var(--font-heading);"><?= $specCount ?></div>
+      <div class="text-3xl font-bold" style="font-family: var(--font-heading); color: var(--text);"><?= $specCount ?></div>
       <div class="text-xs mt-1" style="color: var(--gold-dim);"><?= count($completedSpecs) ?> completed</div>
     </div>
     <!-- Builds -->
     <div class="glass-card-solid p-5">
       <div class="flex items-center justify-between mb-2">
         <span class="text-[10px] font-mono uppercase tracking-wider" style="color: var(--gold-muted);">Builds</span>
-        <span class="text-base">🔨</span>
+        <span class="text-base" style="color: var(--text-dim);"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 2 2 7l10 5 10-5-10-5z"/><path d="M2 12l10 5 10-5"/><path d="M2 17l10 5 10-5"/></svg></span>
       </div>
-      <div class="text-3xl font-bold" style="background: linear-gradient(135deg, var(--gold-light), var(--gold)); -webkit-background-clip: text; background-clip: text; color: transparent; font-family: var(--font-heading);"><?= $buildCount ?></div>
+      <div class="text-3xl font-bold" style="font-family: var(--font-heading); color: var(--text);"><?= $buildCount ?></div>
       <div class="text-xs mt-1" style="color: <?= $activeBuildsCount > 0 ? 'var(--gold-warn)' : 'var(--gold-dim)' ?>;"><?= $activeBuildsCount ?> in progress</div>
     </div>
     <!-- Files generated -->
     <div class="glass-card-solid p-5">
       <div class="flex items-center justify-between mb-2">
         <span class="text-[10px] font-mono uppercase tracking-wider" style="color: var(--gold-muted);">Files Generated</span>
-        <span class="text-base">🗂</span>
+        <span class="text-base" style="color: var(--text-dim);"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V7z"/></svg></span>
       </div>
-      <div class="text-3xl font-bold" style="background: linear-gradient(135deg, var(--gold-light), var(--gold)); -webkit-background-clip: text; background-clip: text; color: transparent; font-family: var(--font-heading);"><?= $fileCount ?></div>
+      <div class="text-3xl font-bold" style="font-family: var(--font-heading); color: var(--text);"><?= $fileCount ?></div>
       <div class="text-xs mt-1" style="color: var(--gold-dim);">across all builds</div>
     </div>
     <!-- Completion rate -->
     <div class="glass-card-solid p-5">
       <div class="flex items-center justify-between mb-2">
         <span class="text-[10px] font-mono uppercase tracking-wider" style="color: var(--gold-muted);">Completion</span>
-        <span class="text-base">✅</span>
+        <span class="text-base" style="color: var(--text-dim);"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M8.5 12.5l2.5 2.5 4.5-5"/></svg></span>
       </div>
-      <div class="text-3xl font-bold" style="background: linear-gradient(135deg, var(--gold-light), var(--gold)); -webkit-background-clip: text; background-clip: text; color: transparent; font-family: var(--font-heading);"><?= $completionRate ?>%</div>
-      <div style="height: 4px; background: rgba(255,215,0,0.08); border-radius: 10px; margin-top: 10px; overflow: hidden;">
+      <div class="text-3xl font-bold" style="font-family: var(--font-heading); color: var(--text);"><?= $completionRate ?>%</div>
+      <div style="height: 4px; background: rgba(255,255,255,0.06); border-radius: 10px; margin-top: 10px; overflow: hidden;">
         <div class="gold-progress-fill" style="width: <?= $completionRate ?>%;"></div>
       </div>
     </div>
@@ -135,8 +135,8 @@ $recentBuilds = array_slice($builds, 0, 10);
   <!-- ═══ Pipeline Visualization ═══ -->
   <div class="glass-card-solid p-5 mb-6">
     <div class="flex flex-wrap items-center justify-between gap-2 mb-4">
-      <h3 class="text-sm font-semibold uppercase tracking-wider" style="color: var(--gold); font-family: var(--font-heading);">
-        ⚡ Build Pipeline
+      <h3 class="text-sm font-semibold uppercase tracking-wider" style="color: var(--gold); font-family: var(--font-mono);">
+        Build Pipeline
       </h3>
       <span class="text-xs font-mono" style="color: var(--gold-dim);">
         <?= $latestBuild ? 'Latest: ' . e(mb_substr($latestBuild['spec_title'] ?? '', 0, 50)) : 'No builds yet' ?>
@@ -144,25 +144,22 @@ $recentBuilds = array_slice($builds, 0, 10);
     </div>
 
     <!-- Progress bar -->
-    <div style="height: 6px; background: rgba(255,215,0,0.08); border-radius: 10px; margin-bottom: 16px; overflow: hidden;">
+    <div style="height: 6px; background: rgba(255,255,255,0.06); border-radius: 10px; margin-bottom: 16px; overflow: hidden;">
       <div class="gold-progress-fill" style="width: <?= $pipelineProgress ?>%; transition: width 0.6s ease;"></div>
     </div>
 
     <!-- Stages -->
     <div class="grid grid-cols-5 gap-2">
       <?php foreach ($pipelineStages as $i => $stage): ?>
-        <div class="phase-stage <?= $stage[1] ?><?= $stage[2] ? ' phase-active' : '' ?> text-center p-3 rounded-lg transition-all duration-300" style="background: <?= $stage[2] ? 'rgba(255,215,0,0.08)' : 'rgba(255,255,255,0.02)' ?>; border: 1px solid <?= $stage[2] ? 'var(--gold-line)' : 'rgba(255,255,255,0.04)' ?>;">
-          <div class="text-xl mb-1"><?php
-            $icons = ['📝', '⚙️', '🔍', '🔨', '🚀'];
-            echo $icons[$i] ?? '•';
-          ?></div>
-          <div class="text-xs font-semibold" style="color: <?= $stage[2] ? 'var(--gold)' : 'var(--gold-dim)' ?>; font-family: var(--font-heading); letter-spacing: 1px;">
+        <div class="phase-stage <?= $stage[1] ?><?= $stage[2] ? ' phase-active' : '' ?> text-center p-3 rounded-lg transition-all duration-300" style="background: <?= $stage[2] ? 'rgba(255,122,69,0.1)' : 'rgba(255,255,255,0.02)' ?>; border: 1px solid <?= $stage[2] ? 'rgba(255,122,69,0.35)' : 'rgba(255,255,255,0.05)' ?>;">
+          <div class="text-xs font-mono mb-1" style="color: <?= $stage[2] ? 'var(--accent)' : 'var(--text-dim)' ?>;"><?= sprintf('%02d', $i + 1) ?></div>
+          <div class="text-xs font-semibold" style="color: <?= $stage[2] ? 'var(--text)' : 'var(--text-dim)' ?>;">
             <?= e($stage[0]) ?>
           </div>
-          <div class="text-[10px] font-mono mt-1" style="color: <?= $stage[2] ? 'var(--gold)' : 'var(--gold-dim)' ?>;">
+          <div class="text-[10px] font-mono mt-1" style="color: <?= $stage[2] ? 'var(--text-mute)' : 'var(--text-dim)' ?>;">
             <?= $stage[3] ?> <?= e($stage[4]) ?>
           </div>
-          <div style="width: 8px; height: 8px; margin: 6px auto 0; border-radius: 50%; background: <?= $stage[2] ? 'var(--gold)' : 'var(--gold-dim)' ?>; <?= $stage[2] ? 'box-shadow: 0 0 8px var(--gold);' : '' ?>"></div>
+          <div style="width: 6px; height: 6px; margin: 6px auto 0; border-radius: 50%; background: <?= $stage[2] ? 'var(--accent)' : 'var(--text-dim)' ?>;"></div>
         </div>
       <?php endforeach; ?>
     </div>
@@ -172,15 +169,14 @@ $recentBuilds = array_slice($builds, 0, 10);
   <div class="grid lg:grid-cols-3 gap-5 mb-6">
     <!-- Left: dashboard tiles (6 cards, data-driven) -->
     <div class="lg:col-span-2">
-      <h3 class="text-sm font-semibold uppercase tracking-wider mb-4" style="color: var(--gold); font-family: var(--font-heading);">
+      <h3 class="text-sm font-semibold uppercase tracking-wider mb-4" style="color: var(--gold); font-family: var(--font-mono);">
         System Components
       </h3>
       <div class="grid md:grid-cols-2 gap-5" id="tile-grid">
-        <!-- 🧠 BrainStem -->
+        <!-- BrainStem -->
         <div class="glass-card-solid p-5 autonomy-tile cursor-pointer transition-all duration-200" data-tile="brainstem" style="position: relative; overflow: hidden;">
-          <div class="gear-deco gear-deco-tr"></div>
           <div class="flex items-center justify-between mb-2">
-            <div class="text-2xl">🧠</div>
+            <div class="text-xl" style="color: var(--text-mute);"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="6" y="6" width="12" height="12" rx="2"/><rect x="10" y="10" width="4" height="4"/><path d="M9 2v4M15 2v4M9 18v4M15 18v4M2 9h4M2 15h4M18 9h4M18 15h4"/></svg></div>
             <span class="chip-gold text-xs autonomy-status" data-tile-status="brainstem">
               <span class="dot"></span> loading
             </span>
@@ -201,11 +197,10 @@ $recentBuilds = array_slice($builds, 0, 10);
           </div>
         </div>
 
-        <!-- 🔨 SpecBuild -->
+        <!-- SpecBuild -->
         <div class="glass-card-solid p-5 autonomy-tile cursor-pointer transition-all duration-200" data-tile="specbuild" style="position: relative; overflow: hidden;">
-          <div class="gear-deco gear-deco-bl"></div>
           <div class="flex items-center justify-between mb-2">
-            <div class="text-2xl">🔨</div>
+            <div class="text-xl" style="color: var(--text-mute);"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 2 2 7l10 5 10-5-10-5z"/><path d="M2 12l10 5 10-5"/><path d="M2 17l10 5 10-5"/></svg></div>
             <span class="chip-gold text-xs autonomy-status" data-tile-status="specbuild">
               <span class="dot"></span> <?= $latestBuildStatus === 'complete' ? 'active' : ($buildCount > 0 ? 'running' : 'idle') ?>
             </span>
@@ -227,11 +222,10 @@ $recentBuilds = array_slice($builds, 0, 10);
           </div>
         </div>
 
-        <!-- 🛠️ S.V.E. -->
+        <!-- S.V.E. -->
         <div class="glass-card-solid p-5 autonomy-tile cursor-pointer transition-all duration-200" data-tile="sve" style="position: relative; overflow: hidden;">
-          <div class="gear-deco gear-deco-tr"></div>
           <div class="flex items-center justify-between mb-2">
-            <div class="text-2xl">🛠️</div>
+            <div class="text-xl" style="color: var(--text-mute);"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/><path d="M9 12l2 2 4-4"/></svg></div>
             <span class="chip-gold text-xs autonomy-status" data-tile-status="sve">
               <span class="dot"></span> <?= $buildCount > 0 ? 'standby' : 'idle' ?>
             </span>
@@ -251,11 +245,10 @@ $recentBuilds = array_slice($builds, 0, 10);
           </div>
         </div>
 
-        <!-- 🔑 MainBrain -->
+        <!-- MainBrain -->
         <div class="glass-card-solid p-5 autonomy-tile cursor-pointer transition-all duration-200" data-tile="mainbrain" style="position: relative; overflow: hidden;">
-          <div class="gear-deco gear-deco-bl"></div>
           <div class="flex items-center justify-between mb-2">
-            <div class="text-2xl">🔑</div>
+            <div class="text-xl" style="color: var(--text-mute);"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="7.5" cy="15.5" r="4.5"/><path d="M11 12l9-9M15 8l3 3"/></svg></div>
             <span class="chip-gold text-xs autonomy-status" id="mainbrain-chip" data-tile-status="mainbrain">
               <span class="dot"></span> checking
             </span>
@@ -275,11 +268,10 @@ $recentBuilds = array_slice($builds, 0, 10);
           </div>
         </div>
 
-        <!-- 📦 Modules -->
+        <!-- Modules -->
         <div class="glass-card-solid p-5 autonomy-tile cursor-pointer transition-all duration-200" data-tile="modules" style="position: relative; overflow: hidden;">
-          <div class="gear-deco gear-deco-tr"></div>
           <div class="flex items-center justify-between mb-2">
-            <div class="text-2xl">📦</div>
+            <div class="text-xl" style="color: var(--text-mute);"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 8l-9-5-9 5v8l9 5 9-5V8z"/><path d="M3 8l9 5 9-5"/><path d="M12 13v8"/></svg></div>
             <span class="chip-gold text-xs autonomy-status" data-tile-status="modules">
               <span class="dot"></span> <?= e($modulesStatus) ?>
             </span>
@@ -301,11 +293,10 @@ $recentBuilds = array_slice($builds, 0, 10);
           </div>
         </div>
 
-        <!-- 🔐 Safety -->
+        <!-- Safety -->
         <div class="glass-card-solid p-5 autonomy-tile cursor-pointer transition-all duration-200" data-tile="safety" style="position: relative; overflow: hidden;">
-          <div class="gear-deco gear-deco-bl"></div>
           <div class="flex items-center justify-between mb-2">
-            <div class="text-2xl">🔐</div>
+            <div class="text-xl" style="color: var(--text-mute);"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="5" y="11" width="14" height="9" rx="2"/><path d="M8 11V7a4 4 0 0 1 8 0v4"/></svg></div>
             <span class="chip-gold text-xs autonomy-status" data-tile-status="safety">
               <span class="dot"></span> <?= $buildCount > 0 ? ($completedBuildsCount === $buildCount ? 'all clear' : ($completedBuildsCount > 0 ? 'partial' : 'pending')) : 'idle' ?>
             </span>
@@ -329,31 +320,30 @@ $recentBuilds = array_slice($builds, 0, 10);
 
     <!-- Right rail: quick actions + build activity -->
     <div class="space-y-5">
-      <!-- ⚡ Quick Actions -->
+      <!-- Quick Actions -->
       <div class="glass-card-solid p-5">
-        <h3 class="text-sm font-semibold uppercase tracking-wider mb-4" style="color: var(--gold); font-family: var(--font-heading);">
-          ⚡ Quick Actions
+        <h3 class="text-sm font-semibold uppercase tracking-wider mb-4" style="color: var(--gold); font-family: var(--font-mono);">
+          Quick Actions
         </h3>
         <div class="space-y-2">
-          <a href="/ide/planner/" class="btn-gold block text-center text-xs w-full">📋 Open Planner</a>
-          <a href="/ide/files/" class="btn-outline block text-center text-xs w-full">🗂 File Manager</a>
-          <a href="/chat/" class="btn-outline block text-center text-xs w-full">💬 Spec Chat</a>
-          <a href="/ide/" class="btn-outline block text-center text-xs w-full">◉ IDE Dashboard</a>
+          <a href="/ide/planner/" class="btn-gold block text-center text-xs w-full">Open Planner</a>
+          <a href="/ide/files/" class="btn-outline block text-center text-xs w-full">File Manager</a>
+          <a href="/chat/" class="btn-outline block text-center text-xs w-full">Spec Chat</a>
+          <a href="/ide/" class="btn-outline block text-center text-xs w-full">IDE Dashboard</a>
         </div>
       </div>
 
-      <!-- 📊 Build Activity -->
+      <!-- Build Activity -->
       <div class="glass-card-solid p-5">
         <div class="flex items-center justify-between mb-3">
-          <h3 class="text-sm font-semibold uppercase tracking-wider" style="color: var(--gold); font-family: var(--font-heading);">
-            📊 Build Activity
+          <h3 class="text-sm font-semibold uppercase tracking-wider" style="color: var(--gold); font-family: var(--font-mono);">
+            Build Activity
           </h3>
           <a href="/ide/planner/" class="text-[10px] link-accent">View all →</a>
         </div>
 
         <?php if ($buildCount === 0): ?>
           <div class="text-center py-8" style="color: var(--gold-dim);">
-            <div class="text-2xl mb-2">🔨</div>
             <p class="text-xs">No builds yet — create a spec and run your first build!</p>
             <a href="/ide/planner/" class="btn-gold inline-block mt-3 text-xs">Start Building</a>
           </div>
@@ -382,7 +372,7 @@ $recentBuilds = array_slice($builds, 0, 10);
                 default => 'var(--gold-dim)',
               };
             ?>
-            <li class="flex items-center justify-between gap-2 py-2" style="border-bottom: 1px solid rgba(255,215,0,0.05);">
+            <li class="flex items-center justify-between gap-2 py-2" style="border-bottom: 1px solid var(--line-soft);">
               <div class="min-w-0">
                 <div class="truncate text-xs" style="color: var(--gold-text);"><?= e(mb_substr($b['spec_title'] ?? 'Untitled', 0, 40)) ?></div>
                 <div class="text-[10px] font-mono" style="color: var(--gold-dim);">
@@ -401,15 +391,14 @@ $recentBuilds = array_slice($builds, 0, 10);
   <!-- ═══ Build History ═══ -->
   <div class="glass-card-solid p-5">
     <div class="flex items-center justify-between mb-4">
-      <h3 class="text-sm font-semibold uppercase tracking-wider" style="color: var(--gold); font-family: var(--font-heading);">
-        📋 Recent Builds
+      <h3 class="text-sm font-semibold uppercase tracking-wider" style="color: var(--gold); font-family: var(--font-mono);">
+        Recent Builds
       </h3>
       <a href="/ide/planner/" class="text-xs link-accent">View all →</a>
     </div>
 
     <?php if (empty($recentBuilds)): ?>
       <div class="text-center py-12" style="color: var(--gold-dim);">
-        <div class="text-3xl mb-3">🔨</div>
         <p class="text-sm">No builds yet. Create a spec and run your first build!</p>
         <a href="/chat/" class="btn-gold inline-block mt-4 text-xs">Start Building</a>
       </div>
@@ -418,11 +407,11 @@ $recentBuilds = array_slice($builds, 0, 10);
         <table class="w-full text-xs" style="border-collapse: collapse;">
           <thead>
             <tr style="color: var(--gold-muted); border-bottom: 1px solid var(--gold-line);">
-              <th class="text-left py-2 pr-3 font-semibold uppercase tracking-wider" style="font-family: var(--font-heading); font-size: 9px;">Spec</th>
-              <th class="text-left py-2 pr-3 font-semibold uppercase tracking-wider hidden md:table-cell" style="font-family: var(--font-heading); font-size: 9px;">Plan Preview</th>
-              <th class="text-left py-2 pr-3 font-semibold uppercase tracking-wider" style="font-family: var(--font-heading); font-size: 9px;">Status</th>
-              <th class="text-left py-2 pr-3 font-semibold uppercase tracking-wider" style="font-family: var(--font-heading); font-size: 9px;">Date</th>
-              <th class="text-right py-2 font-semibold uppercase tracking-wider" style="font-family: var(--font-heading); font-size: 9px;">Action</th>
+              <th class="text-left py-2 pr-3 font-semibold uppercase tracking-wider" style="font-family: var(--font-mono); font-size: 9px;">Spec</th>
+              <th class="text-left py-2 pr-3 font-semibold uppercase tracking-wider hidden md:table-cell" style="font-family: var(--font-mono); font-size: 9px;">Plan Preview</th>
+              <th class="text-left py-2 pr-3 font-semibold uppercase tracking-wider" style="font-family: var(--font-mono); font-size: 9px;">Status</th>
+              <th class="text-left py-2 pr-3 font-semibold uppercase tracking-wider" style="font-family: var(--font-mono); font-size: 9px;">Date</th>
+              <th class="text-right py-2 font-semibold uppercase tracking-wider" style="font-family: var(--font-mono); font-size: 9px;">Action</th>
             </tr>
           </thead>
           <tbody>
@@ -435,7 +424,7 @@ $recentBuilds = array_slice($builds, 0, 10);
                 default => 'var(--gold-dim)',
               };
             ?>
-            <tr style="border-bottom: 1px solid rgba(255,215,0,0.04);">
+            <tr style="border-bottom: 1px solid var(--line-soft);">
               <td class="py-3 pr-3">
                 <span style="color: var(--gold-text);"><?= e(mb_substr($b['spec_title'] ?? 'Untitled', 0, 60)) ?></span>
               </td>

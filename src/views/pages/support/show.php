@@ -16,7 +16,7 @@
    'closed'      => '#64748b',
  ];
  $priorityLabels = ['low' => 'Low', 'normal' => 'Normal', 'high' => 'High', 'urgent' => 'Urgent'];
- $priorityIcons  = ['low' => '🟢', 'normal' => '🟡', 'high' => '🟠', 'urgent' => '🔴'];
+ $priorityDots   = ['low' => '#22c55e', 'normal' => '#eab308', 'high' => '#f97316', 'urgent' => '#ef4444'];
  $staffBadge = static fn(array $r): string => ($r['is_staff'] ?? 0)
     ? '<span class="chip-gold" style="font-size:10px;background:rgba(59,130,246,0.15);border-color:rgba(59,130,246,0.4);color:#60a5fa;">Staff</span>'
     : '';
@@ -45,7 +45,8 @@
       </div>
 
       <div class="flex flex-wrap items-center gap-3 text-xs font-mono mb-4" style="color: var(--gold-muted);">
-        <span><?= $priorityIcons[$ticket['priority']] ?? '' ?> <?= e($priorityLabels[$ticket['priority']] ?? 'Normal') ?> priority</span>
+        <span style="display: inline-block; width: 8px; height: 8px; border-radius: 50%; background: <?= $priorityDots[$ticket['priority']] ?? '#86868f' ?>;"></span>
+        <span><?= e($priorityLabels[$ticket['priority']] ?? 'Normal') ?> priority</span>
         <span>·</span>
         <span>Created <?= e(date('M j, Y \a\t g:i A', strtotime($ticket['created_at'] ?? ''))) ?></span>
         <span>·</span>

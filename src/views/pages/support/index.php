@@ -12,11 +12,11 @@
    'resolved'    => '#a855f7',
    'closed'      => '#64748b',
  ];
- $priorityIcons = [
-    'low'    => '🟢',
-    'normal' => '🟡',
-    'high'   => '🟠',
-    'urgent' => '🔴',
+ $priorityDots = [
+    'low'    => '#22c55e',
+    'normal' => '#eab308',
+    'high'   => '#f97316',
+    'urgent' => '#ef4444',
  ];
 ?>
 
@@ -32,7 +32,6 @@
 
     <?php if (empty($tickets)): ?>
       <div style="color: var(--gold-muted); text-align: center; padding: 64px 0;">
-        <div class="text-4xl mb-4">🎫</div>
         <p class="section-title" style="font-size: 20px; text-align: center;">No tickets yet</p>
         <p class="text-sm mt-2">Need help? Create a support ticket and we'll get back to you.</p>
         <a href="/support/create" class="btn-gold mt-5 inline-block">Create your first ticket</a>
@@ -45,7 +44,7 @@
             <div class="flex items-start justify-between gap-4 flex-wrap">
               <div class="flex-1 min-w-0">
                 <div class="flex items-center gap-2 mb-1">
-                  <span><?= $priorityIcons[$t['priority']] ?? '' ?></span>
+                  <span title="<?= e($t['priority']) ?> priority" style="display: inline-block; width: 8px; height: 8px; border-radius: 50%; background: <?= $priorityDots[$t['priority']] ?? '#86868f' ?>;"></span>
                   <h3 class="text-base font-semibold truncate" style="color: var(--gold-text);">
                     <?= e($t['subject']) ?>
                   </h3>

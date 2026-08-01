@@ -238,7 +238,7 @@
       <div class="pt-2">
         <div class="flex items-center justify-between flex-wrap gap-2 mb-1">
           <h3 class="text-base font-display font-semibold">
-            <span>🔔</span> Auto-Update via Webhook
+            Auto-Update via Webhook
           </h3>
           <span id="wh-status-chip" class="chip-gold text-[10px]">
             <span class="dot"></span> <span id="wh-status-text">loading</span>
@@ -279,13 +279,11 @@
         <div class="flex flex-wrap items-center gap-2">
           <button id="wh-generate-btn"
                   class="px-3 py-1.5 border border-accent/50 text-accent rounded-md text-xs font-medium hover:bg-accent/10 transition disabled:opacity-30 disabled:cursor-not-allowed inline-flex items-center gap-1.5">
-            <span>🔑</span>
             <span id="wh-generate-text">Generate New Secret</span>
           </button>
           <button id="wh-clear-btn"
                   class="px-3 py-1.5 border border-err/40 text-err rounded-md text-xs font-medium hover:bg-err/10 transition disabled:opacity-30 disabled:cursor-not-allowed inline-flex items-center gap-1.5">
-            <span>🗑️</span>
-            <span>Clear Secret</span>
+            Clear Secret
           </button>
           <span id="wh-new-secret" class="hidden font-mono text-xs text-accent bg-accent/10 px-3 py-1.5 rounded-md border border-accent/30 break-all max-w-full"></span>
         </div>
@@ -777,7 +775,7 @@
     .then(function (r) { return r.json(); })
     .then(function (data) {
       if (data.ok && data.secret) {
-        whNewSecret.textContent = '🔑 New secret: ' + data.secret;
+        whNewSecret.textContent = 'New secret: ' + data.secret;
         whNewSecret.classList.remove('hidden');
         setWhStatus(true, data.secret.slice(0, 4) + '\u2022\u2022\u2022\u2022' + data.secret.slice(-4));
         whUrlDisplay.textContent = data.webhook_url || '\u2014';

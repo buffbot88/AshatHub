@@ -136,6 +136,7 @@ No package.json or composer.json — **zero dependencies**.
 
 ## Gotchas
 
+- **Script order matters for `defer`** — `app.js` (defines `ashatFetch`/`ashatToast`) is loaded with `defer` in `layouts/header.php` `<head>` so it runs BEFORE any page-body deferred script (`studio.js`/`agent.js` in `pages/studio.php`). Deferred scripts execute in **document order** — a footer copy would run after the IDE scripts and crash their load-time calls (`ReferenceError: ashatToast is not defined`). Don't move `app.js` to the footer or add `defer` scripts before it. `chat.php` deliberately loads `app.js`→`agent.js`→`assistant.js` sequentially without `defer`; keep its explicit `app.js` tag.
 - **PHP 8.1+ required** — uses `never` return type, `str_starts_with()`, `match`, named args
 - **File Manager folder markers**: an empty folder is a row whose path ends with `/`. Prefix semantics match it (`foo` ≡ `foo/`) for delete/rename — never render markers as files.
 - **Route order in `/api/files`**: `/rename`, `/duplicate`, `/tree` must precede `/{id}`, otherwise `tree` gets captured as an id.

@@ -6,7 +6,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <?php if (empty($_SESSION['_csrf'])) $_SESSION['_csrf'] = bin2hex(random_bytes(32)); ?>
   <meta name="csrf-token" content="<?= e($_SESSION['_csrf']) ?>">
-  <title><?= e($view->__title) ?></title>
+  <title>Ashat Hub - <?= e($view->__title) ?></title>
 
   <!-- Favicon: lion PNG (32px) for modern browsers; SVG A-mark for the rest -->
   <link rel="icon" type="image/png" sizes="32x32" href="<?= e(asset('/images/lion-logo-32.png')) ?>">
@@ -27,6 +27,13 @@
 
   <!-- Project styles (Plainspoken design system) -->
   <link rel="stylesheet" href="<?= e(asset('/css/app.css')) ?>">
+
+  <!-- Core JS helpers (ashatFetch / ashatToast / ASHAT.escapeHtml).
+       Loaded with defer IN THE HEAD so it runs BEFORE any page-body
+       deferred script: defer executes in document order, so a footer
+       copy would run after studio.js/agent.js and crash their load-time
+       calls (e.g. the IDE File Manager's ashatToast in loadFileList). -->
+  <script src="<?= e(asset('/js/app.js')) ?>" defer></script>
 
   <?php if (APP_ENV === 'production'): ?>
   <script>document.documentElement.classList.add('dark');</script>

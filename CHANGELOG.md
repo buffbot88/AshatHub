@@ -33,6 +33,16 @@ The version displayed in the UI comes from `APP_VERSION` in `config/bootstrap.ph
     (no radial-gradient glow); dead `.particles`/`.gear-deco`/`scan-eye` CSS
     deleted; Monaco editor theme renamed `ashat-gold` → `ashat`
 
+### Changed — homepage slimmed
+
+- **Homepage slimmed down** — removed the 8-card features grid, the 7-step
+  workflow, the 8-component architecture deep-dive, and the full SVG build-
+  pipeline diagram (all of that detail lives in `/docs/`). The homepage is now
+  a tight hero → “What you can build” (4 cards) → 3-step “How it works” strip
+  with a *Full details in the docs →* link → CTA. Hero copy tightened
+  (secondary CTA is now “Read the docs”), and the unused `$icon` map entries
+  were pruned.
+
 ### Fixed — test suite is now genuinely green
 
 - **The full PHPUnit suite previously never completed** — a test triggered a
@@ -66,12 +76,19 @@ The version displayed in the UI comes from `APP_VERSION` in `config/bootstrap.ph
   guard session calls so tests without a session produce no warnings.
 - **Latent exit() traps closed** — the last ways a test could still hit a real
   `exit;` (silently truncating the PHPUnit run) are now routed through a new
-  `Core\Responder` seam: `RequestContext::redirect()/jsonResponse()/requireRole()`
+  `Core\Responder` seam:  `RequestContext::redirect()/jsonResponse()/requireRole()`
   and `ErrorController::showJson()` end with `Responder::terminate()`, which
   `exit`s in production but **throws** under test mode (enabled by
   `tests/bootstrap.php`). Regression tests cover a real-Router POST without a
   CSRF token, a real `jsonResponse()`, and a real `showJson()` — all now fail
   loudly instead of killing the run.
+- **IDE pages crashed with `Uncaught ReferenceError: ashatToast is not
+  defined`** on load (repeated per file-list hydration). `app.js` (which
+  defines `ashatToast`/`ashatFetch`) was loaded with `defer` only from the
+  footer, while `studio.js`/`agent.js` are `defer` in the page body — deferred
+  scripts run in **document order**, so the IDE scripts executed before
+  `app.js`. `app.js` now loads with `defer` in `<head>` (`header.php`), before
+  any page-body deferred script; the redundant footer copy was removed.
 
 **Result:** `php phpunit.phar` → 513 tests, 941 assertions, 0 failures,
 0 risky, 0 warnings (1 intentional skip); `node tests/js/agent-extract.test.js`

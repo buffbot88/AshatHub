@@ -48,8 +48,6 @@ final class InMemoryFileRepository implements FileRepository
                 'language'     => $r['language'] ?? '',
                 'saved'        => $r['saved'] ?? 1,
                 'generated'    => $r['generated'] ?? 0,
-                'build_id'     => $r['build_id'] ?? null,
-                'build_phase'  => $r['build_phase'] ?? null,
                 'modified_at'  => $r['modified_at'] ?? '',
                 'size_bytes'   => strlen($content),
             ];
@@ -83,9 +81,7 @@ final class InMemoryFileRepository implements FileRepository
         string $path,
         ?string $content,
         string $language,
-        bool $generated = false,
-        ?string $buildId = null,
-        ?string $buildPhase = null
+        bool $generated = false
     ): string {
         $existing = $this->findByPath($userId, $path);
         if ($existing) {
@@ -94,8 +90,6 @@ final class InMemoryFileRepository implements FileRepository
                 'content'     => $content,
                 'language'    => $language,
                 'generated'   => $generated ? 1 : 0,
-                'build_id'    => $buildId,
-                'build_phase' => $buildPhase,
                 'modified_at' => date('Y-m-d H:i:s'),
             ]);
             return $id;
@@ -110,8 +104,6 @@ final class InMemoryFileRepository implements FileRepository
             'language'     => $language,
             'saved'        => 1,
             'generated'    => $generated ? 1 : 0,
-            'build_id'     => $buildId,
-            'build_phase'  => $buildPhase,
             'modified_at'  => $now,
         ];
         return $id;

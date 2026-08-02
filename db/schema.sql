@@ -2,8 +2,8 @@
 -- ASHAT Hub — MySQL Schema
 -- ═══════════════════════════════════════════════════════════════════════
 -- Vanilla PHP + PDO backend, full feature parity with the React SPA.
--- Creates database `ashat_hub` and all tables for users, specs, files,
--- builds, api_configs, community projects, docs, and sessions.
+-- Creates database `ashat_hub` and all tables for users, files,
+-- api_configs, community projects, docs, brainstem config, and sessions.
 --
 -- USAGE:
 --   mysql -u root -p < db/schema.sql
@@ -65,21 +65,8 @@ CREATE TABLE IF NOT EXISTS `api_configs` (
   CONSTRAINT `fk_api_user` FOREIGN KEY (`user_id`) REFERENCES `users`(`id`) ON DELETE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
--- ─── Specs ───────────────────────────────────────────────────────────
-CREATE TABLE IF NOT EXISTS `specs` (
-  `id`         CHAR(36)    NOT NULL,
-  `user_id`    CHAR(36)    NOT NULL,
-  `title`      VARCHAR(200) NOT NULL,
-  `status`     VARCHAR(30)  NOT NULL DEFAULT 'draft',
-  `content`    LONGTEXT     NOT NULL,
-  `language`   VARCHAR(50)  NOT NULL DEFAULT '',
-  `created_at` DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP,
-  `updated_at` DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-  PRIMARY KEY (`id`),
-  KEY `idx_user` (`user_id`),
-  KEY `idx_status` (`status`),
-  CONSTRAINT `fk_specs_user` FOREIGN KEY (`user_id`) REFERENCES `users`(`id`) ON DELETE CASCADE
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+-- ─── Specs (removed — Chat-only purge; see db/drop-specs-builds.sql) ──
+-- ─── Builds (removed — Chat-only purge; see db/drop-specs-builds.sql) ──
 
 -- ─── Files (project file tree, per user) ─────────────────────────────
 CREATE TABLE IF NOT EXISTS `files` (
@@ -90,32 +77,11 @@ CREATE TABLE IF NOT EXISTS `files` (
   `language`    VARCHAR(50) DEFAULT 'plaintext',
   `saved`       TINYINT(1)  NOT NULL DEFAULT 1,
   `generated`   TINYINT(1)  NOT NULL DEFAULT 0,
-  `build_id`    CHAR(36)    DEFAULT NULL,
-  `build_phase` VARCHAR(100) DEFAULT NULL,
   `modified_at` DATETIME    NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
   PRIMARY KEY (`id`),
   UNIQUE KEY `uniq_user_path` (`user_id`, `path`),
   KEY `idx_user` (`user_id`),
   CONSTRAINT `fk_files_user` FOREIGN KEY (`user_id`) REFERENCES `users`(`id`) ON DELETE CASCADE
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
-
--- ─── Builds ──────────────────────────────────────────────────────────
-CREATE TABLE IF NOT EXISTS `builds` (
-  `id`           CHAR(36)    NOT NULL,
-  `user_id`      CHAR(36)    NOT NULL,
-  `spec_id`      CHAR(36)    NOT NULL,
-  `spec_title`   VARCHAR(200) NOT NULL,
-  `plan`         LONGTEXT,
-  `status`       VARCHAR(30) NOT NULL DEFAULT 'planning',
-  `phase_tree`   LONGTEXT,             -- JSON: array of phase objects
-  `console_logs` LONGTEXT,             -- JSON: array of {type,message,timestamp}
-  `violations`   LONGTEXT,             -- JSON: {sanity,canonical,fidelity}
-  `created_at`   DATETIME    NOT NULL DEFAULT CURRENT_TIMESTAMP,
-  PRIMARY KEY (`id`),
-  KEY `idx_user` (`user_id`),
-  KEY `idx_spec` (`spec_id`),
-  CONSTRAINT `fk_builds_user` FOREIGN KEY (`user_id`) REFERENCES `users`(`id`) ON DELETE CASCADE,
-  CONSTRAINT `fk_builds_spec` FOREIGN KEY (`spec_id`) REFERENCES `specs`(`id`) ON DELETE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 -- ─── Community Projects ──────────────────────────────────────────────

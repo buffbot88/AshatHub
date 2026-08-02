@@ -32,8 +32,6 @@ final class InMemoryFileRepositoryTest extends TestCase
             'language'     => 'typescript',
             'saved'        => 1,
             'generated'    => 0,
-            'build_id'     => null,
-            'build_phase'  => null,
             'modified_at'  => '2026-06-10 14:00:00',
         ];
 
@@ -45,8 +43,6 @@ final class InMemoryFileRepositoryTest extends TestCase
             'language'     => 'typescript',
             'saved'        => 1,
             'generated'    => 0,
-            'build_id'     => null,
-            'build_phase'  => null,
             'modified_at'  => '2026-06-12 09:00:00',
         ];
     }
@@ -169,7 +165,7 @@ final class InMemoryFileRepositoryTest extends TestCase
 
     public function test_save_inserts_new_file(): void
     {
-        $id = $this->repo->save('u1', 'new.ts', 'const x = 1;', 'typescript', false, null, null);
+        $id = $this->repo->save('u1', 'new.ts', 'const x = 1;', 'typescript', false);
         $this->assertNotEmpty($id);
 
         $file = $this->repo->find($id, 'u1');
@@ -182,16 +178,14 @@ final class InMemoryFileRepositoryTest extends TestCase
 
     public function test_save_inserts_with_generated_flag(): void
     {
-        $id = $this->repo->save('u1', 'gen.ts', '// generated', 'typescript', true, 'build-1', 'agent');
+        $id = $this->repo->save('u1', 'gen.ts', '// generated', 'typescript', true);
         $file = $this->repo->find($id, 'u1');
         $this->assertSame(1, $file['generated']);
-        $this->assertSame('build-1', $file['build_id']);
-        $this->assertSame('agent', $file['build_phase']);
     }
 
     public function test_save_inserts_with_null_content(): void
     {
-        $id = $this->repo->save('u1', 'meta.ts', null, 'typescript', false, null, null);
+        $id = $this->repo->save('u1', 'meta.ts', null, 'typescript', false);
         $file = $this->repo->find($id, 'u1');
         $this->assertNull($file['content']);
         $this->assertSame(1, $file['saved']);
@@ -204,7 +198,7 @@ final class InMemoryFileRepositoryTest extends TestCase
         $this->repo->seed([$this->fileA]);
 
         // Save again with same user+path, different content
-        $id = $this->repo->save('u1', 'src/main.ts', 'console.log("updated");', 'typescript', false, null, null);
+        $id = $this->repo->save('u1', 'src/main.ts', 'console.log("updated");', 'typescript', false);
         $this->assertSame('f0000001-0000-4000-8000-000000000001', $id);  // same id
 
         $file = $this->repo->find('f0000001-0000-4000-8000-000000000001', 'u1');
@@ -215,25 +209,23 @@ final class InMemoryFileRepositoryTest extends TestCase
     public function test_save_updates_language_on_upsert(): void
     {
         $this->repo->seed([$this->fileA]);
-        $this->repo->save('u1', 'src/main.ts', 'console.log("x");', 'javascript', false, null, null);
+        $this->repo->save('u1', 'src/main.ts', 'console.log("x");', 'javascript', false);
         $file = $this->repo->find('f0000001-0000-4000-8000-000000000001', 'u1');
         $this->assertSame('javascript', $file['language']);
     }
 
-    public function test_save_updates_build_metadata_on_upsert(): void
+    public function test_save_updates_generated_on_upsert(): void
     {
         $this->repo->seed([$this->fileA]);
-        $this->repo->save('u1', 'src/main.ts', 'updated', 'typescript', true, 'new-build', 'test');
+        $this->repo->save('u1', 'src/main.ts', 'updated', 'typescript', true);
         $file = $this->repo->find('f0000001-0000-4000-8000-000000000001', 'u1');
         $this->assertSame(1, $file['generated']);
-        $this->assertSame('new-build', $file['build_id']);
-        $this->assertSame('test', $file['build_phase']);
     }
 
     public function test_save_does_not_duplicate_on_upsert(): void
     {
         $this->repo->seed([$this->fileA]);
-        $this->repo->save('u1', 'src/main.ts', 'updated', 'typescript', false, null, null);
+        $this->repo->save('u1', 'src/main.ts', 'updated', 'typescript', false);
         $files = $this->repo->allForUser('u1');
         $this->assertCount(1, $files);  // still 1 file, not 2
     }
@@ -241,7 +233,7 @@ final class InMemoryFileRepositoryTest extends TestCase
     public function test_save_inserts_new_file_when_path_is_different(): void
     {
         $this->repo->seed([$this->fileA]);
-        $id = $this->repo->save('u1', 'different.ts', 'other', 'typescript', false, null, null);
+        $id = $this->repo->save('u1', 'different.ts', 'other', 'typescript', false);
         $this->assertNotSame('f0000001-0000-4000-8000-000000000001', $id);
         $this->assertCount(2, $this->repo->allForUser('u1'));
     }
@@ -336,7 +328,7 @@ final class InMemoryFileRepositoryTest extends TestCase
 
     public function test_save_can_create_folder_marker(): void
     {
-        $id = $this->repo->save('u1', 'assets/', '', 'markdown', false, null, null);
+        $id = $this->repo->save('u1', 'assets/', '', 'markdown', false);
         $marker = $this->repo->find($id, 'u1');
         $this->assertSame('assets/', $marker['path']);
         $this->assertSame('', $marker['content']);
@@ -541,7 +533,7 @@ final class InMemoryFileRepositoryTest extends TestCase
 
     public function test_totalBytes_counts_null_content_as_zero(): void
     {
-        $this->repo->save('u1', 'meta.ts', null, 'typescript', false, null, null);
+        $this->repo->save('u1', 'meta.ts', null, 'typescript', false);
         $this->assertSame(0, $this->repo->totalBytes('u1'));
     }
 

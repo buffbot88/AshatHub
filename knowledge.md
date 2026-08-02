@@ -23,12 +23,12 @@ Vow 8 is **machine-enforced** by `tests/Core/VowDocblockTest.php`, which scans `
 
 Key code locations:
 - **`src/Core/`** — Framework: Router, Database (PDO), Session, View, RequestContext, AuthService, ConfigBag, StaticFileServer
-- **`src/Controllers/`** — 14 controllers (Home, Auth, Docs, Community, Account, Admin, Api, Chat, ChatPage, Builds, Files, Specs, Support, Error) + `FormRequests/`
+- **`src/Controllers/`** — 12 controllers (Home, Auth, Docs, Community, Account, Admin, Api, Chat, ChatPage, Files, Support, Error) + `FormRequests/`
 - **`src/Repositories/`** — Data access layer: Pdo*Repository (production) + InMemory*Repository (tests). Access via `RepositoryRegistry`
 - **`src/views/`** — `layouts/` (header, footer) and `pages/` (one per route)
-- **`public/js/`** — Vanilla JS: `app.js` (ashatFetch, toasts), `agent.js` (Coding Agent — BYO-key LLM driver + localStorage generated-code store), `assistant.js` (Chat page — conversations, spec versions, Markdown export, chat File Manager + Monaco panel)
+- **`public/js/`** — Vanilla JS: `app.js` (ashatFetch, toasts), `agent.js` (Coding Agent — BYO-key LLM driver), `assistant.js` (Chat page — conversations, spec versions, Markdown export, chat File Manager + Monaco panel)
 - **`public/css/app.css`** — Custom "Plainspoken" design system (Newsreader serif + Inter + JetBrains Mono)
-- **`src/Data/`** — `LanguageOptions` (project language picker), `CategoryLabels` (ErrorPages lives in `src/Core/`)
+- **`src/Data/`** — `CategoryLabels` (ErrorPages lives in `src/Core/`)
 - **`config/`** — `bootstrap.php` (boot sequence + all `APP_*`/`DB_*`/`SESSION_*` constants), `server_config.json` (your live config — gitignored)
 - **`.htaccess`** — Root Apache rules for flat/shared-hosting deploy (uses ErrorDocument, no mod_rewrite required)
 - **`index.php`** — Root entry point for shared hosting (restores `REDIRECT_URL` → `REQUEST_URI`)
@@ -38,10 +38,10 @@ Key code locations:
 | Command | Purpose |
 |---|---|
 | `php -S localhost:8000 router.php` | Built-in dev server |
-| `php phpunit.phar` | Run all PHP tests (20 test files; phar lives in repo root, gitignored — get it with `curl -L -o phpunit.phar https://phar.phpunit.de/phpunit-10.5.phar`) |
+| `php phpunit.phar` | Run all PHP tests (17 test files; phar lives in repo root, gitignored — get it with `curl -L -o phpunit.phar https://phar.phpunit.de/phpunit-10.5.phar`) |
 | `node tests/js/agent-extract.test.js` | Run the agent.js JS unit tests (JSON extraction + prompt building) |
 | `mysql -u root -p < db/schema.sql` | Full-access DB install |
-| `mysql -u root -p < db/spec-language.sql` | Existing-DB migration: adds `specs.language` (idempotent, guarded) |
+| `mysql -u root -p < db/drop-specs-builds.sql` | Existing-DB migration: drops dormant `specs`/`builds` tables + `files.build_id`/`build_phase` (idempotent, guarded) |
 | `mysql -u root -p < db/sve-rename.sql` | Existing-DB migration: System Update Engine → System Validation Engine |
 
 No package.json or composer.json — **zero dependencies**.
@@ -63,7 +63,7 @@ No package.json or composer.json — **zero dependencies**.
 
 ### Database / Repositories
 - **Repository pattern**: Interface → Pdo*Repository (production) + InMemory*Repository (tests)
-- Access via `RepositoryRegistry::user()` / `spec()` / `build()` / `session()` / etc.
+- Access via `RepositoryRegistry::user()` / `file()` / `session()` / etc.
 - Swap via `RepositoryRegistry::swap('user', $inMemory)` for tests
 - All SQL via PDO prepared statements — no query builder
 - `PdoDatabase` wraps PDO with fetchOne/fetchAll/execute/insert/transaction
@@ -96,7 +96,7 @@ No package.json or composer.json — **zero dependencies**.
   whenever `tailwind.config.js` or the color tokens in `header.php` change
 
 ### Testing
-- PHPUnit 10.5 in `phpunit.xml.dist` (run: `php phpunit.phar` — 527 tests, 966 assertions, green; 1 pre-existing skip)
+- PHPUnit 10.5 in `phpunit.xml.dist` (run: `php phpunit.phar` — 433 tests, 769 assertions, green; 1 pre-existing skip)
 - **Vow 8 is enforced**: `tests/Core/VowDocblockTest.php` scans every `.php`/`.js` under `src/` + `public/`, parses `/** */` docblocks, and fails if any prose exceeds 2 sentences. The counter is deliberately fair: it strips `@annotation` lines, banner-art lines, numbered-list markers, and neutralizes abbreviations (`e.g.`, `etc.`) + decimals before counting sentence ends — so keep docblocks to 1–2 crisp sentences and the suite stays green.
 - Tests bootstrap from `tests/bootstrap.php` (minimal — no session, no DB)
 - FakeContext + InMemoryRepositories = no database needed
@@ -119,7 +119,7 @@ No package.json or composer.json — **zero dependencies**.
 
 ### Chat / Project Files (the single development surface)
 - **Chat (`/chat`) is the main way to develop**: brainstorm, refine a spec, then generate files into the user's one project repo via the consent card. The IDE (`/ide/*`) was removed — `StudioController`, `studio.php` routes, `studio.js`, and the studio views/partial are gone. Don't reintroduce them.
-- **Project language picker**: `specs.language` VARCHAR(50), `''` = Auto; values from `src/Data/LanguageOptions.php`; `SpecsController` clamps to 50 chars; `buildUserMsg()` in agent.js injects an "IMPORTANT: Build this project in X" note.
+- **The Specs + Builds backend was purged** — `/api/specs` and `/api/builds` (controllers, repos, model, `specs`/`builds` tables, `files.build_id`/`build_phase`) are gone; Chat is the only dev surface. Existing installs run `db/drop-specs-builds.sql`. `ApiController::context()` now returns files only, and `agent.js` has a single build driver: `runBuildStream` (no plan phase — the consent card is the only gate).
 
 #### Project Files (chat right pane — File Manager)
 - **Recursive tree**: rendered client-side in `assistant.js` (folders-first, natural sort). Clicking a file opens it in the Monaco editor panel.
@@ -140,7 +140,7 @@ No package.json or composer.json — **zero dependencies**.
   - Static-suffix routes (`export`, `import`, `rename`, `duplicate`, `tree`) MUST be registered before `/{id}` — RouteCollection matches in registration order.
 - **`Core\ZipHelper`** — dependency-free ZIP create/extract via **zlib only** (no `ZipArchive` extension required): deflate (8) + stored (0), CRC32 verified on extract, directory entries skipped. Used by `FilesController::importZip()` / `exportZip()`; entry names are returned raw and MUST be sanitized by the caller (`normalizePath` rejects traversal, `:` drive-letter segments, and control chars).
 - **Quota**: `FilesController::QUOTA_BYTES = 150 * 1024 * 1024`. Saves check the size delta; imports pre-check the summed extracted bytes of ALL entries before writing any row (a failed import never half-applies). `FileRepository::totalBytes(userId)` sums `LENGTH(content)` (PDO — bytes, correct for utf8mb4) / `strlen` (InMemory).
-- **`FileRepository` methods**: `deleteByPrefix(userId, prefix)` (auth-scoped, LIKE-wildcard escaped), `rename(userId, old, new)` (exact OR prefix move; collision check → `conflict`; nested-move guard; Pdo runs in a transaction), `duplicate(userId, path)` (auto `(copy N)` naming, dotfile-safe).
+- **`FileRepository` methods**: `deleteByPrefix(userId, prefix)` (auth-scoped, LIKE-wildcard escaped), `rename(userId, old, new)` (exact OR prefix move; collision check → `conflict`; nested-move guard; Pdo runs in a transaction), `duplicate(userId, path)` (auto `(copy N)` naming, dotfile-safe). `save(userId, path, content, language, generated=false)` — build-metadata params were removed with the purge.
 - **localStorage state** (all keys `ashat.*`):
   | Key | Contents |
   |---|---|

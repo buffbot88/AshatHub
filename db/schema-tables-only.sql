@@ -76,22 +76,8 @@ CREATE TABLE `api_configs` (
   CONSTRAINT `fk_api_user` FOREIGN KEY (`user_id`) REFERENCES `users`(`id`) ON DELETE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
--- ─── Specs ───────────────────────────────────────────────────────────
-DROP TABLE IF EXISTS `specs`;
-CREATE TABLE `specs` (
-  `id`         CHAR(36)     NOT NULL,
-  `user_id`    CHAR(36)     NOT NULL,
-  `title`      VARCHAR(200) NOT NULL,
-  `status`     VARCHAR(30)  NOT NULL DEFAULT 'draft',
-  `content`    LONGTEXT     NOT NULL,
-  `language`   VARCHAR(50)  NOT NULL DEFAULT '',
-  `created_at` DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP,
-  `updated_at` DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-  PRIMARY KEY (`id`),
-  KEY `idx_user` (`user_id`),
-  KEY `idx_status` (`status`),
-  CONSTRAINT `fk_specs_user` FOREIGN KEY (`user_id`) REFERENCES `users`(`id`) ON DELETE CASCADE
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+-- ─── Specs (removed — Chat-only purge; see db/drop-specs-builds.sql) ──
+-- ─── Builds (removed — Chat-only purge; see db/drop-specs-builds.sql) ──
 
 -- ─── Files (per-user project file tree) ──────────────────────────────
 DROP TABLE IF EXISTS `files`;
@@ -103,8 +89,6 @@ CREATE TABLE `files` (
   `language`    VARCHAR(50) DEFAULT 'plaintext',
   `saved`       TINYINT(1)  NOT NULL DEFAULT 1,
   `generated`   TINYINT(1)  NOT NULL DEFAULT 0,
-  `build_id`    CHAR(36)    DEFAULT NULL,
-  `build_phase` VARCHAR(100) DEFAULT NULL,
   `modified_at` DATETIME    NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
   PRIMARY KEY (`id`),
   UNIQUE KEY `uniq_user_path` (`user_id`, `path`),
@@ -112,25 +96,7 @@ CREATE TABLE `files` (
   CONSTRAINT `fk_files_user` FOREIGN KEY (`user_id`) REFERENCES `users`(`id`) ON DELETE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
--- ─── Builds ──────────────────────────────────────────────────────────
-DROP TABLE IF EXISTS `builds`;
-CREATE TABLE `builds` (
-  `id`           CHAR(36)     NOT NULL,
-  `user_id`      CHAR(36)     NOT NULL,
-  `spec_id`      CHAR(36)     NOT NULL,
-  `spec_title`   VARCHAR(200) NOT NULL,
-  `plan`         LONGTEXT,
-  `status`       VARCHAR(30) NOT NULL DEFAULT 'planning',
-  `phase_tree`   LONGTEXT,             -- JSON: array of phase objects
-  `console_logs` LONGTEXT,             -- JSON: array of {type,message,timestamp}
-  `violations`   LONGTEXT,             -- JSON: {sanity,canonical,fidelity}
-  `created_at`   DATETIME    NOT NULL DEFAULT CURRENT_TIMESTAMP,
-  PRIMARY KEY (`id`),
-  KEY `idx_user` (`user_id`),
-  KEY `idx_spec` (`spec_id`),
-  CONSTRAINT `fk_builds_user` FOREIGN KEY (`user_id`) REFERENCES `users`(`id`) ON DELETE CASCADE,
-  CONSTRAINT `fk_builds_spec` FOREIGN KEY (`spec_id`) REFERENCES `specs`(`id`) ON DELETE CASCADE
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
 
 -- ─── Community Projects ──────────────────────────────────────────────
 DROP TABLE IF EXISTS `community_projects`;

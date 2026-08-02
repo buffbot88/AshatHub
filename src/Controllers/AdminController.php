@@ -22,19 +22,17 @@ final class AdminController
      */
     public function dashboard(RequestContext $ctx): void
     {
-        $user         = $ctx->user();
-        $stats        = self::gatherStats();
-        $recentBuilds = RepositoryRegistry::build()->recent(10);
+        $user      = $ctx->user();
+        $stats     = self::gatherStats();
 
         // Get git status (GitUpdater handles all errors internally)
         $gitStatus = (new GitUpdater())->status();
 
         $ctx->view('pages/admin/dashboard', [
-            'title'        => 'Admin · Dashboard · ' . APP_NAME,
-            'user'         => $user,
-            'stats'        => $stats,
-            'recent_builds' => $recentBuilds,
-            'git'          => $gitStatus,
+            'title' => 'Admin · Dashboard · ' . APP_NAME,
+            'user'  => $user,
+            'stats' => $stats,
+            'git'   => $gitStatus,
         ]);
     }
 
@@ -272,10 +270,8 @@ final class AdminController
     private static function gatherStats(): array
     {
         return [
-            'users'     => RepositoryRegistry::user()->count(),
-            'specs'     => (int) (current(RepositoryRegistry::spec()->countAll()) ?: 0),
-            'builds'    => (int) (current(RepositoryRegistry::build()->countAll()) ?: 0),
-            'files'     => (int) (current(RepositoryRegistry::file()->countAll()) ?: 0),
+            'users'           => RepositoryRegistry::user()->count(),
+            'files'           => (int) (current(RepositoryRegistry::file()->countAll()) ?: 0),
             'active_sessions' => RepositoryRegistry::session()->countActive(),
         ];
     }

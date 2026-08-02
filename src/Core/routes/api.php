@@ -5,9 +5,7 @@ declare(strict_types=1);
 //
 // Note: routes that involve the Coding Agent (/agent/config, /account/api)
 // were intentionally removed during the local-first pivot. BYO API keys
-// and generated file content now live in browser localStorage only.
-// The server never sees them — only metadata (paths, sizes) flows through
-// the /api/builds/ endpoint.
+// live in browser localStorage only — the server never sees them.
 
 $router->group('/api', function () use ($router) {
 
@@ -48,22 +46,6 @@ $router->group('/api', function () use ($router) {
 
     // ─── Protected routes (pro or admin required) ──────────────
     $router->group('', ['middleware' => ['pro-or-admin']], function () use ($router) {
-
-        // ─── Specs ────────────────────────────────────────────
-        $router->group('/specs', function () use ($router) {
-            $router->get('',          [\Controllers\SpecsController::class,  'list']);
-            $router->get('/{id}',     [\Controllers\SpecsController::class,  'show']);
-            $router->post('',         [\Controllers\SpecsController::class,  'create']);
-            $router->put('/{id}',     [\Controllers\SpecsController::class,  'update']);
-            $router->delete('/{id}',  [\Controllers\SpecsController::class,  'delete']);
-        });
-
-        // ─── Builds ───────────────────────────────────────────
-        $router->group('/builds', function () use ($router) {
-            $router->get('',          [\Controllers\BuildsController::class, 'list']);
-            $router->post('',         [\Controllers\BuildsController::class, 'create']);
-            $router->post('/{id}/approve', [\Controllers\BuildsController::class, 'approve']);
-        });
 
         // ─── Static asset proxy ─────────────────────────────────
         // Serves files from the public/ directory through the API.

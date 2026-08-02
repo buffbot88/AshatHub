@@ -22,7 +22,7 @@ final class PdoFileRepository implements FileRepository
     public function allForUser(string $userId): array
     {
         return $this->db->fetchAll(
-            "SELECT id, path, language, saved, generated, build_id, build_phase, modified_at,
+            "SELECT id, path, language, saved, generated, modified_at,
                     LENGTH(content) AS size_bytes
              FROM files WHERE user_id = ? ORDER BY path ASC",
             [$userId]
@@ -50,24 +50,22 @@ final class PdoFileRepository implements FileRepository
         string $path,
         ?string $content,
         string $language,
-        bool $generated = false,
-        ?string $buildId = null,
-        ?string $buildPhase = null
+        bool $generated = false
     ): string {
         $existing = $this->findByPath($userId, $path);
         if ($existing) {
             $this->db->execute(
-                "UPDATE files SET content = ?, language = ?, generated = ?, build_id = ?, build_phase = ?, modified_at = NOW()
+                "UPDATE files SET content = ?, language = ?, generated = ?, modified_at = NOW()
                  WHERE id = ?",
-                [$content, $language, $generated ? 1 : 0, $buildId, $buildPhase, $existing['id']]
+                [$content, $language, $generated ? 1 : 0, $existing['id']]
             );
             return $existing['id'];
         }
         $id = Uuid::v4();
         $this->db->execute(
-            "INSERT INTO files (id, user_id, path, content, language, saved, generated, build_id, build_phase)
-             VALUES (?, ?, ?, ?, ?, 1, ?, ?, ?)",
-            [$id, $userId, $path, $content, $language, $generated ? 1 : 0, $buildId, $buildPhase]
+            "INSERT INTO files (id, user_id, path, content, language, saved, generated)
+             VALUES (?, ?, ?, ?, ?, 1, ?)",
+            [$id, $userId, $path, $content, $language, $generated ? 1 : 0]
         );
         return $id;
     }
@@ -158,8 +156,8 @@ final class PdoFileRepository implements FileRepository
         $newPath = $this->nextCopyName($userId, $path);
         $id = Uuid::v4();
         $this->db->execute(
-            "INSERT INTO files (id, user_id, path, content, language, saved, generated, build_id, build_phase)
-             VALUES (?, ?, ?, ?, ?, 1, ?, ?, ?)",
+            "INSERT INTO files (id, user_id, path, content, language, saved, generated)
+             VALUES (?, ?, ?, ?, ?, 1, ?)",
             [
                 $id,
                 $userId,
@@ -167,8 +165,6 @@ final class PdoFileRepository implements FileRepository
                 $source['content'] ?? null,
                 $source['language'] ?? '',
                 (int) ($source['generated'] ?? 0),
-                $source['build_id'] ?? null,
-                $source['build_phase'] ?? null,
             ]
         );
         return ['duplicated' => 1, 'path' => $newPath];

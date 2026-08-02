@@ -7,6 +7,36 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 The version displayed in the UI comes from `APP_VERSION` in `config/bootstrap.php`
 (`APP_VERSION_DISPLAY` = `v` + version).
 
+## [v5.8] — 2026-08-02
+
+### Removed
+
+- **Specs + Builds backend fully purged — the backend is now Chat-only**
+  - Deleted: `SpecsController`, `BuildsController`, all six spec/build
+    repositories (interface + Pdo + InMemory), `Models\BuildPayload`,
+    `Data\LanguageOptions`, and the `db/spec-language.sql` migration
+  - Removed routes: `/api/specs/*` and `/api/builds/*` (were dormant —
+    the chat never called them); `ApiController::context()` now returns
+    Project Files only
+  - DB: `specs` and `builds` tables dropped, `files.build_id` /
+    `files.build_phase` columns removed — new guarded migration
+    `db/drop-specs-builds.sql` brings existing installs up to date;
+    `db/schema.sql` + `db/schema-tables-only.sql` no longer define them
+  - File layer: `FileRepository::save()` dropped the `$buildId` /
+    `$buildPhase` params (interface + Pdo + InMemory + `createFolder()`
+    call site); `duplicate()` no longer copies build metadata
+  - `agent.js`: removed the dead `runBuild` (non-streaming) driver and
+    `PLAN_SYSTEM_PROMPT`; `runBuildStream` is now the single build
+    driver and is build-only (no separate plan phase — the chat consent
+    card is the only gate)
+  - Dashboards: admin stat grid lost the Specs/Builds tiles and the
+    "Recent Build Activity" table; account activity tiles are now
+    Files / 150 MB quota / 1 repo
+  - Tests: 3 spec/build test files deleted; `InMemoryFileRepositoryTest`
+    updated to the new `save()` signature; dummy route fixtures in
+    `RouteCollectionTest`/`MiddlewareTest`/`FakeContextTest` no longer
+    reference `/api/specs`
+
 ## [v5.7] — 2026-08-02
 
 ### Removed

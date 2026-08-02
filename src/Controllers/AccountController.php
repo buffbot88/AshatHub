@@ -38,9 +38,7 @@ final class AccountController
             'brainstem_config' => self::safeRepo(fn() => RepositoryRegistry::brainstemConfig()->get(), null),
             'env_url'         => ConfigBag::getInstance()->brainstemUrl(),
             'stats' => [
-                'specs'  => count(self::safeRepo(fn() => RepositoryRegistry::spec()->allForUser($user['id']))),
-                'files'  => count(self::safeRepo(fn() => RepositoryRegistry::file()->allForUser($user['id']))),
-                'builds' => count(self::safeRepo(fn() => RepositoryRegistry::build()->allForUser($user['id']))),
+                'files' => count(self::safeRepo(fn() => RepositoryRegistry::file()->allForUser($user['id']))),
             ],
         ]);
     }

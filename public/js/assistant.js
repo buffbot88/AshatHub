@@ -97,7 +97,7 @@
       '<!--/SPEC-->',
       '',
       'When the spec is complete and in the markers, also summarize in a sentence',
-      'that the spec is ready to copy or send to the Planner.',
+      'that the spec is ready — the app will offer to generate the project files.',
       '',
       'IMPORTANT — CODE CONSENT POLICY:',
       '- Never write code files directly in the chat. No code blocks that are meant to',
@@ -327,8 +327,6 @@
   var contextLoadingEl = document.getElementById('context-loading');
   var contextLoadedEl  = document.getElementById('context-loaded');
   var contextEmptyEl   = document.getElementById('context-empty');
-  var contextSpecsEl   = document.getElementById('context-specs');
-  var contextBuildsEl  = document.getElementById('context-builds');
   var contextFilesEl   = document.getElementById('context-files');
   var refreshCtxBtn    = document.getElementById('btn-refresh-context');
 
@@ -337,11 +335,9 @@
     if (!contextStatusEl) return;
     if (contextLoadingEl) contextLoadingEl.style.display = 'none';
 
-    if (ctx && ctx.stats && (ctx.stats.specs > 0 || ctx.stats.builds > 0 || ctx.stats.files > 0)) {
+    if (ctx && ctx.stats && ctx.stats.files > 0) {
       if (contextLoadedEl) contextLoadedEl.classList.remove('hidden');
       if (contextEmptyEl) contextEmptyEl.classList.add('hidden');
-      if (contextSpecsEl) contextSpecsEl.textContent = ctx.stats.specs;
-      if (contextBuildsEl) contextBuildsEl.textContent = ctx.stats.builds;
       if (contextFilesEl) contextFilesEl.textContent = ctx.stats.files;
     } else if (ctx) {
       // Empty workspace
@@ -389,55 +385,25 @@
    * the main system prompt so the assistant can build on existing work.
    */
   function buildContextSystemMessage(ctx) {
-    if (!ctx || !ctx.stats || (ctx.stats.specs === 0 && ctx.stats.builds === 0 && ctx.stats.files === 0)) {
+    if (!ctx || !ctx.stats || !(ctx.stats.files > 0)) {
       return null;
     }
 
     var lines = [
       '[Project Context — Current Workspace State]',
-      'The user you are helping has the following existing work in their ASHAT Hub workspace:',
+      'The user you are helping has the following existing files in their Project Files:',
       '',
+      '📁 **Files** (' + ctx.stats.files + ' total):',
     ];
-
-    if (ctx.stats.specs > 0) {
-      lines.push('📋 **Specs** (' + ctx.stats.specs + ' total):');
-      // Show the most recent specs (up to 5)
-      var specs = (ctx.specs || []).slice(0, 5);
-      for (var i = 0; i < specs.length; i++) {
-        var s = specs[i];
-        var statusEmoji = s.status === 'complete' ? '✅' : (s.status === 'draft' ? '📝' : '🔄');
-        var preview = s.preview ? s.preview.slice(0, 80) : '';
-        lines.push('  ' + statusEmoji + ' **' + s.title + '** (' + s.status + ')' + (preview ? ' — ' + preview : ''));
-      }
-      if (ctx.stats.specs > 5) {
-        lines.push('  ... and ' + (ctx.stats.specs - 5) + ' more specs');
-      }
-      lines.push('');
+    var files = (ctx.files || []).slice(0, 6);
+    for (var k = 0; k < files.length; k++) {
+      var f = files[k];
+      lines.push('  - ' + f.path + (f.generated ? ' (generated)' : ''));
     }
-
-    if (ctx.stats.builds > 0) {
-      lines.push('🔨 **Recent Builds** (' + ctx.stats.builds + ' total):');
-      var builds = (ctx.builds || []).slice(0, 4);
-      for (var j = 0; j < builds.length; j++) {
-        var b = builds[j];
-        var bEmoji = b.status === 'complete' ? '✅' : (b.status === 'error' ? '❌' : '🔄');
-        lines.push('  ' + bEmoji + ' ' + (b.spec_title || 'Untitled') + ' — ' + b.status);
-      }
-      lines.push('');
+    if (ctx.stats.files > 6) {
+      lines.push('  ... and ' + (ctx.stats.files - 6) + ' more files');
     }
-
-    if (ctx.stats.files > 0) {
-      lines.push('📁 **Files** (' + ctx.stats.files + ' total):');
-      var files = (ctx.files || []).slice(0, 6);
-      for (var k = 0; k < files.length; k++) {
-        var f = files[k];
-        lines.push('  - ' + f.path + (f.generated ? ' (generated)' : ''));
-      }
-      if (ctx.stats.files > 6) {
-        lines.push('  ... and ' + (ctx.stats.files - 6) + ' more files');
-      }
-      lines.push('');
-    }
+    lines.push('');
 
     lines.push('[End of Project Context]');
     lines.push('Use this context to build on the user\'s existing work. Suggest improvements,');
@@ -1041,7 +1007,7 @@
    * Append a consent card to the latest assistant bubble when a spec is
    * detected. The chat AI NEVER writes code itself — it asks first, and
    * only when the user explicitly says yes does it hand off to the
-   * coding agent (Planner), which still requires approving the plan.
+   * coding agent (runBuildStream) to generate the project files.
    */
   function appendSpecConsentCard(spec) {
     if (!spec || !messagesEl) return;
@@ -1597,7 +1563,7 @@
 
       // Check for spec markers in the response. The chat AI never writes
       // code itself — it shows a consent card so the user can choose to
-      // hand the spec to the coding agent (Planner) or wait.
+      // hand the spec to the coding agent (runBuildStream) or wait.
       var spec = extractSpec(content);
       if (spec) {
         setSpec(spec);

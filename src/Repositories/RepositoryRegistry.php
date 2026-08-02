@@ -29,22 +29,10 @@ final class RepositoryRegistry
         return self::resolve('user');
     }
 
-    public static function spec(): SpecRepository
-    {
-        /** @var SpecRepository */
-        return self::resolve('spec');
-    }
-
     public static function file(): FileRepository
     {
         /** @var FileRepository */
         return self::resolve('file');
-    }
-
-    public static function build(): BuildRepository
-    {
-        /** @var BuildRepository */
-        return self::resolve('build');
     }
 
     public static function brainstemConfig(): BrainstemConfigRepository
@@ -147,9 +135,7 @@ final class RepositoryRegistry
 
         return match ($key) {
             'user'            => new PdoUserRepository($pdoDb),
-            'spec'            => new PdoSpecRepository($pdoDb),
             'file'            => new PdoFileRepository($pdoDb),
-            'build'           => new PdoBuildRepository($pdoDb),
             'brainstem_config' => new PdoBrainstemConfigRepository($pdoDb, $config),
             'session'           => new PdoSessionRepository($pdoDb),
             'community_project'  => new PdoCommunityProjectRepository($pdoDb),

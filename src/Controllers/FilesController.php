@@ -97,7 +97,7 @@ final class FilesController
             $ctx->jsonResponse(['folder' => $marker, 'exists' => true]);
             return;
         }
-        RepositoryRegistry::file()->save($userId, $marker, '', '', false, null, null);
+        RepositoryRegistry::file()->save($userId, $marker, '', '', false);
         $ctx->jsonResponse(['folder' => $marker]);
     }
 

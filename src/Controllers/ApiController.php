@@ -10,11 +10,9 @@ use Repositories\RepositoryRegistry;
  * ═══════════════════════════════════════════════════════════════════════
  * Controllers\ApiController — JSON-only health + session info.
  *
- * Domain-specific endpoints (specs, files, builds, chat, admin config)
- * are now extracted into their own controllers:
- *   - SpecsController
+ * Domain-specific endpoints (files, chat, admin config) are now
+ * extracted into their own controllers:
  *   - FilesController
- *   - BuildsController
  *   - ChatController
  *
  * Middleware gating (pro-or-admin, admin-gate) is declared in routes
@@ -41,42 +39,16 @@ final class ApiController
     }
 
     /**
-     * Return a combined project context summary (specs + builds + files)
-     * for the authenticated user. Used by the Spec Chat to inject
-     * awareness of the user's existing work into the AI's context.
+     * Return a combined project context summary (files only) for the
+     * authenticated user. Used by Chat to inject awareness of the user's
+     * existing Project Files into the AI's context.
      */
     public function context(RequestContext $ctx): void
     {
         $userId = (string) $ctx->user()['id'];
-
-        $specs  = RepositoryRegistry::spec()->allForUser($userId);
-        $builds = RepositoryRegistry::build()->allForUser($userId);
         $files  = RepositoryRegistry::file()->allForUser($userId);
 
-        // Format specs: keep title, status, updated_at, and a preview snippet
-        $formattedSpecs = [];
-        foreach ($specs as $s) {
-            $formattedSpecs[] = [
-                'id'         => $s['id'],
-                'title'      => $s['title'],
-                'status'     => $s['status'],
-                'updated_at' => $s['updated_at'],
-                'preview'    => $s['preview'] ?? '',
-            ];
-        }
-
-        // Format builds: keep spec_title, status, created_at
-        $formattedBuilds = [];
-        foreach ($builds as $b) {
-            $formattedBuilds[] = [
-                'id'          => $b['id'],
-                'spec_title'  => $b['spec_title'],
-                'status'      => $b['status'],
-                'created_at'  => $b['created_at'],
-            ];
-        }
-
-        // Format files: keep path, language, build_id, modified_at
+        // Format files: keep path, language, generated, modified_at
         $formattedFiles = [];
         foreach ($files as $f) {
             $formattedFiles[] = [
@@ -90,12 +62,8 @@ final class ApiController
 
         $ctx->jsonResponse([
             'context' => [
-                'specs'  => $formattedSpecs,
-                'builds' => $formattedBuilds,
                 'files'  => $formattedFiles,
                 'stats'  => [
-                    'specs'  => count($formattedSpecs),
-                    'builds' => count($formattedBuilds),
                     'files'  => count($formattedFiles),
                 ],
             ],

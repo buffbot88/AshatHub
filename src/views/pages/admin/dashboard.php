@@ -32,8 +32,6 @@
       $svg = [
         'users'   => '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="9" cy="8" r="3.5"/><path d="M2.5 20a6.5 6.5 0 0 1 13 0"/><path d="M16 5.5a3.5 3.5 0 0 1 0 7M17.5 14.5a6.5 6.5 0 0 1 4 5.5"/></svg>',
         'session' => '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 3"/></svg>',
-        'spec'    => '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="5" y="4" width="14" height="17" rx="2"/><path d="M9 4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v1H9V4z"/><path d="M9 12h6M9 16h4"/></svg>',
-        'build'   => '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 2 2 7l10 5 10-5-10-5z"/><path d="M2 12l10 5 10-5"/><path d="M2 17l10 5 10-5"/></svg>',
         'file'    => '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6"/></svg>',
         'git-ok'  => '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M8.5 12.5l2.5 2.5 4.5-5"/></svg>',
         'git-warn'=> '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3 2 20h20L12 3z"/><path d="M12 9v5M12 17.5h.01"/></svg>',
@@ -43,9 +41,7 @@
       $cards = [
         ['label' => 'Total Users',       'value' => $s['users'] ?? 0,           'icon' => $svg['users']],
         ['label' => 'Active Sessions',   'value' => $s['active_sessions'] ?? 0,  'icon' => $svg['session']],
-        ['label' => 'Specs',             'value' => $s['specs'] ?? 0,           'icon' => $svg['spec']],
-        ['label' => 'Builds',            'value' => $s['builds'] ?? 0,          'icon' => $svg['build']],
-        ['label' => 'Files',             'value' => $s['files'] ?? 0,           'icon' => $svg['file']],
+        ['label' => 'Project Files',     'value' => $s['files'] ?? 0,           'icon' => $svg['file']],
         ['label' => $gitLabel,           'value' => $gitValue,                  'icon' => $gitDirty ? $svg['git-warn'] : ($gitOk ? $svg['git-ok'] : $svg['git-pause'])],
       ];
       foreach ($cards as $card):
@@ -103,54 +99,6 @@
     </div>
   </div>
 
-  <!-- ─── Recent Activity Feed ──────────────────────────────────── -->
-  <?php $recentBuilds = $view->recent_builds ?? []; ?>
-  <div class="mt-12">
-    <h2 class="text-lg font-display font-semibold mb-4">Recent Build Activity</h2>
-    <?php if (empty($recentBuilds)): ?>
-      <div class="glass-card-solid p-8 text-center" style="color: var(--gold-muted);">
-        <p>No build activity yet.</p>
-      </div>
-    <?php else: ?>
-      <div class="overflow-x-auto rounded-xl glass-card-solid">
-        <table class="w-full text-sm">
-          <thead>
-            <tr class="label-gold" style="background: rgba(15,15,23,0.5);">
-              <th class="text-left py-3 px-4">Spec</th>
-              <th class="text-left py-3 px-4 hidden sm:table-cell">User</th>
-              <th class="text-left py-3 px-4">Status</th>
-              <th class="text-right py-3 px-4 hidden md:table-cell">When</th>
-            </tr>
-          </thead>
-          <tbody>
-            <?php foreach ($recentBuilds as $b): ?>
-              <tr style="border-top: 1px solid var(--gold-line);" onmouseover="this.style.background='rgba(15,15,23,0.3)'" onmouseout="this.style.background=''">
-                <td class="py-3 px-4 font-medium truncate max-w-[220px]" style="color: var(--gold-text);"><?= e($b['spec_title'] ?: 'Untitled') ?></td>
-                <td class="py-3 px-4 text-xs hidden sm:table-cell" style="color: var(--gold-muted);">
-                  <?= e($b['display_name'] ?: $b['username'] ?: '—') ?>
-                </td>
-                <td class="py-3 px-4">
-                  <?php
-                    $statusColors = [
-                      'planning' => 'var(--gold-warn)',
-                      'approved' => 'var(--gold-ok)',
-                      'complete' => 'var(--gold-ok)',
-                      'error'    => 'var(--gold-err)',
-                    ];
-                    $color = $statusColors[$b['status']] ?? 'var(--gold-muted)';
-                  ?>
-                  <span class="font-mono text-xs" style="color: <?= e($color) ?>;"><?= e($b['status']) ?></span>
-                </td>
-                <td class="py-3 px-4 text-right text-xs hidden md:table-cell font-mono" style="color: var(--gold-muted);">
-                  <?= e(time_ago($b['created_at'])) ?>
-                </td>
-              </tr>
-            <?php endforeach; ?>
-          </tbody>
-        </table>
-      </div>
-    <?php endif; ?>
-  </div>
 </section>
 
 <script>

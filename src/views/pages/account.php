@@ -1,7 +1,7 @@
 <?php /** @var Core\ViewContext $view */
   $u     = $view->user;
   $api   = $view->api ?? null;
-  $stats = $view->stats ?? ['specs' => 0, 'files' => 0, 'builds' => 0];
+  $stats = $view->stats ?? ['files' => 0];
 ?>
 <section style="border-bottom: 1px solid var(--gold-line);">
   <div class="container mx-auto px-6 py-12">
@@ -29,12 +29,12 @@
       <div class="label-gold mb-3">Activity</div>
       <div class="grid grid-cols-3 gap-3 text-center">
         <?php foreach ([
-          ['Specs', $stats['specs']],
           ['Files', $stats['files']],
-          ['Builds',$stats['builds']],
+          ['Quota', '150 MB'],
+          ['Repo', '1'],
         ] as $s): ?>
           <div>
-            <div style="font-family: var(--font-heading); font-size: 24px; color: var(--gold-bright);"><?= (int) $s[1] ?></div>
+            <div style="font-family: var(--font-heading); font-size: 24px; color: var(--gold-bright);"><?= e($s[1]) ?></div>
             <div class="text-xs" style="color: var(--gold-muted);"><?= e($s[0]) ?></div>
           </div>
         <?php endforeach; ?>

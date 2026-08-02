@@ -14,8 +14,8 @@ const agentSrc = fs.readFileSync(path.join(__dirname, '..', '..', 'public', 'js'
 
 // Expose the private extractJson + buildUserMsg for testing
 const patched = agentSrc.replace(
-  'chat, chatStream, runBuild, runBuildStream,',
-  'chat, chatStream, runBuild, runBuildStream, __extractJson: extractJson, __buildUserMsg: buildUserMsg,'
+  'chatStream, runBuildStream,',
+  'chatStream, runBuildStream, __extractJson: extractJson, __buildUserMsg: buildUserMsg,'
 );
 global.window = global;
 
@@ -124,25 +124,22 @@ console.log('\n── buildUserMsg (language pinning) ──\n');
 
 const spec = { title: 'T', content: 'Build a CLI tool.' };
 
-// 14. Build mode + explicit language → prompt demands that language
-eq('build mode pins language', buildUserMsg(spec, 'build', '', 'Python').includes('in Python'), true);
-eq('build mode pins language (full)', buildUserMsg(spec, 'build', '', 'Python').includes('target Python.'), true);
+// 14. Explicit language → prompt demands that language
+eq('build pins language', buildUserMsg(spec, '', 'Python').includes('in Python'), true);
+eq('build pins language (full)', buildUserMsg(spec, '', 'Python').includes('target Python.'), true);
 
-// 15. Plan mode + explicit language → plan note present
-eq('plan mode pins language', buildUserMsg(spec, 'plan', '', 'TypeScript').includes('in TypeScript'), true);
+// 15. No language → NO language note (Auto behavior)
+eq('no language = no note', buildUserMsg(spec, '', '').includes('IMPORTANT: Build this project in'), false);
+eq('whitespace language = no note', buildUserMsg(spec, '', '   ').includes('IMPORTANT: Build this project in'), false);
 
-// 16. No language → NO language note (Auto behavior)
-eq('no language = no note', buildUserMsg(spec, 'build', '', '').includes('IMPORTANT: Build this project in'), false);
-eq('whitespace language = no note', buildUserMsg(spec, 'build', '', '   ').includes('IMPORTANT: Build this project in'), false);
-
-// 17. Approved plan + language → both present
+// 16. Approved plan + language → both present
 eq('approved plan + language', (() => {
-  const msg = buildUserMsg(spec, 'build', 'approved plan text', 'Rust');
+  const msg = buildUserMsg(spec, 'approved plan text', 'Rust');
   return msg.includes('approved plan text') && msg.includes('in Rust');
 })(), true);
 
-// 18. Language whitespace-trimmed (not just exact-match)
-eq('trims language value', buildUserMsg(spec, 'build', '', '  Go  ').includes('in Go'), true);
+// 17. Language whitespace-trimmed (not just exact-match)
+eq('trims language value', buildUserMsg(spec, '', '  Go  ').includes('in Go'), true);
 
 console.log('\n' + pass + ' passed, ' + fail + ' failed');
 process.exit(fail ? 1 : 0);

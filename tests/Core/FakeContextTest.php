@@ -87,8 +87,8 @@ class FakeContextTest extends TestCase
 
     public function test_fake_with_server_override(): void
     {
-        $ctx = RequestContext::fake(['server' => ['REQUEST_URI' => '/api/specs', 'REQUEST_METHOD' => 'POST']]);
-        $this->assertSame('/api/specs', $ctx->server('REQUEST_URI'));
+        $ctx = RequestContext::fake(['server' => ['REQUEST_URI' => '/api/context', 'REQUEST_METHOD' => 'POST']]);
+        $this->assertSame('/api/context', $ctx->server('REQUEST_URI'));
         $this->assertSame('POST', $ctx->server('REQUEST_METHOD'));
     }
 

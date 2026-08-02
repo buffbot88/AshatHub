@@ -1,9 +1,8 @@
 /* ═══════════════════════════════════════════════════════════════════════
    ASHAT Hub — Coding Agent (browser-side, local-first)
    Loaded via <script src="/js/agent.js"> before assistant.js on the chat page.
-   Exposes window.ASHAT.agent = { runBuild, runBuildStream, chat,
-                                   chatStream, getLocalConfig,
-                                   getByoConfig, uuid }.
+   Exposes window.ASHAT.agent = { runBuildStream, chatStream,
+                                   getLocalConfig, getByoConfig }.
 
    Privacy-first design:
    - The user's API key NEVER reaches the server. It lives in
@@ -20,7 +19,7 @@
   const MAX_FILE_BYTES       = 250 * 1024;        // 250 KB per file
   const MAX_TOTAL_BYTES      = 5  * 1024 * 1024;  // 5 MB total per build
   const REQUEST_TIMEOUT      = 120_000;           // 120 s for slow models
-  const DEFAULT_MAX_TOKENS   = 8192;               // safe default (plan/chat)
+  const DEFAULT_MAX_TOKENS   = 8192;               // safe default for streaming chat
   const BUILD_MAX_TOKENS     = 16384;              // multi-file builds need more room
 
   // ── localStorage key (single source of truth) ───────────────────
@@ -53,39 +52,6 @@
     '- Do NOT include private keys, real credentials, or secrets.',
   ].join('\n');
 
-  // Plan-only prompt — used in Phase 1 of the Planner. The model returns
-  // just {"plan": "..."} so the user can approve BEFORE any code is
-  // generated. File generation only happens in Phase 2 (runBuild).
-  const PLAN_SYSTEM_PROMPT = [
-    'You are ASHAT, an AI software architect. Given a user spec, produce a concise build plan.',
-    'Return a single JSON object with EXACTLY this shape:',
-    '',
-    '{',
-    '  "plan": "A 2-6 sentence step-by-step build plan: what you will build, which files you will create, and in what order."',
-    '}',
-    '',
-    'Rules:',
-    '- Plan ONLY — do NOT generate file contents yet. The user must approve the plan first.',
-    '- List the key files/architecture you intend to create.',
-    '- No markdown, no code fences, no prose before or after the JSON.',
-  ].join('\n');
-
-  // HF Llama/Mistral tend to wrap JSON in ```fences```; be extra-explicit
-  // so we can reliably parse the result.
-  function buildSystemPrompt(provider, mode) {
-    const p = (provider || '').toLowerCase();
-    const jsonNote = '\n\nIMPORTANT: Your entire response must be a single JSON object. ' +
-      'No markdown code fences, no prose before or after. The first character of your ' +
-      'response must be "{" and the last must be "}".';
-    if (mode === 'plan') {
-      return PLAN_SYSTEM_PROMPT + ((p.includes('huggingface') || p.includes('hf ')) ? jsonNote : '');
-    }
-    if (p.includes('huggingface') || p.includes('hf ')) {
-      return BASE_SYSTEM_PROMPT + jsonNote;
-    }
-    return BASE_SYSTEM_PROMPT;
-  }
-
   // ── Path safety gate ─────────────────────────────────────────────
   function sanitizePath(p) {
     return (p || '')
@@ -110,17 +76,6 @@
       sh: 'shell', bash: 'shell', toml: 'toml', xml: 'xml',
     };
     return map[ext] || 'plaintext';
-  }
-
-  // ── v4 UUID (we generate buildId locally to avoid remap races) ───
-  function uuid() {
-    if (window.crypto && window.crypto.randomUUID) return window.crypto.randomUUID();
-    // Tiny fallback
-    const r = (n) => Math.floor(Math.random() * n).toString(16);
-    return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, c => {
-      const v = c === 'x' ? r(16) : (r(16) & 0x3 | 0x8);
-      return v.toString(16);
-    });
   }
 
   // ── Safety gates for LLM JSON output ────────────────────────────
@@ -181,17 +136,6 @@
       api_key:  cfg.api_key,
       model:    cfg.model || 'gpt-4o-mini',
     };
-  }
-
-  // escapeHtml — delegates to the shared utility in app.js when
-  // available, falls back to inline replacement.
-  function escapeHtml(s) {
-    if (typeof window.ASHAT !== 'undefined' && typeof window.ASHAT.escapeHtml === 'function') {
-      return window.ASHAT.escapeHtml(s);
-    }
-    return String(s).replace(/[&<>"']/g, function (c) {
-      return ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'})[c];
-    });
   }
 
   // ── JSON string cleaner ─────────────────────────────────────────
@@ -510,61 +454,11 @@
     }
   }
 
-  // ── Public API: chat (outbound to user's LLM) ───────────────────
-  async function chat(messages, opts) {
-    opts = opts || {};
-    const cfg = getLocalConfig();
-    if (!cfg) throw new Error('No API config — go to /account/ and save your provider + key first.');
-    if (!cfg.api_key) throw new Error('API config missing api_key.');
-    if (!cfg.endpoint) throw new Error('API config has no endpoint URL.');
-
-    const controller = (typeof AbortController !== 'undefined') ? new AbortController() : null;
-    const timer = controller ? setTimeout(() => controller.abort(), REQUEST_TIMEOUT) : null;
-    try {
-      const r = await fetchWithRetry(cfg.endpoint, {
-        method:  'POST',
-        signal:  controller ? controller.signal : undefined,
-        headers: {
-          'Content-Type':  'application/json',
-          'Authorization': 'Bearer ' + cfg.api_key,
-        },
-        body: JSON.stringify({
-          model:       cfg.model || 'gpt-4o-mini',
-          messages:    messages,
-          max_tokens:  opts.max_tokens  || DEFAULT_MAX_TOKENS,
-          temperature: opts.temperature || 0.7,
-          stream:      false,
-        }),
-      }, { onRetry: function (status, attempt) {
-        console.warn('AI provider transient error ' + status + ' — retrying (' + attempt + '/' + MAX_ATTEMPTS + ')...');
-      } });
-      if (!r.ok) {
-        const errBody = (await r.text().catch(() => '')).slice(0, 200);
-        if (r.status === 429)
-          throw new Error('AI provider rate limit hit. Switch providers in /account/ or wait an hour.');
-        if (r.status === 401)
-          throw new Error('AI provider rejected the API key. Re-save it in /account/.');
-        if (r.status === 503 || /loading model/i.test(errBody))
-          throw new Error('The AI model is still loading. Give it a moment and try again.');
-        // Token-cap fallback: some providers reject a max_tokens above
-        // their ceiling with a 400/413. Retry once at the safe default.
-        if ((r.status === 400 || r.status === 413) && (opts.max_tokens || 0) > DEFAULT_MAX_TOKENS && !opts._tokenRetried) {
-          return chat(messages, Object.assign({}, opts, { max_tokens: DEFAULT_MAX_TOKENS, _tokenRetried: true }));
-        }
-        throw new Error('AI provider error ' + r.status + ': ' + errBody);
-      }
-      const data = await r.json();
-      return extractContent(data);
-    } finally {
-      if (timer) clearTimeout(timer);
-    }
-  }
-
   // ── Shared user-message builder ────────────────────────────────
-  // Builds the user prompt for plan (Phase 1) and build (Phase 2)
-  // modes. opts.language ('', 'Python', 'TypeScript', …) pins the
-  // project language so the model doesn't free-pick the stack.
-  function buildUserMsg(spec, mode, approvedPlan, language) {
+  // Builds the user prompt for the coding agent. opts.language
+  // ('', 'Python', 'TypeScript', …) pins the project language so the
+  // model doesn't free-pick the stack.
+  function buildUserMsg(spec, approvedPlan, language) {
     const specText = (spec && (spec.content || spec.title)) ||
       '(no specification provided)';
     const lang = (language || '').trim();
@@ -572,9 +466,6 @@
       ? '\n\nIMPORTANT: Build this project in ' + lang + '. ' +
         'All source files, configuration, and README instructions must target ' + lang + '.'
       : '';
-    if (mode === 'plan') {
-      return 'Create a build plan for the following specification:\n\n' + specText + langNote;
-    }
     const approved = (approvedPlan || '').trim();
     return approved
       ? 'Build the following specification:\n\n' + specText +
@@ -582,32 +473,6 @@
         '\n\nGenerate all necessary files with complete, working code.' + langNote
       : 'Build the following specification:\n\n' + specText +
         '\n\nGenerate all necessary files with complete, working code.' + langNote;
-  }
-
-  // ── Driver: spec → LLM → validated {plan, files[]} ──────────────
-  // opts.mode === 'plan' returns {plan} only (Phase 1, pre-approval).
-  // Default mode returns the full validated {plan, files[]} payload.
-  // opts.plan (approved plan text) is injected into the build prompt so
-  // the coding agent follows the plan the user actually approved.
-  async function runBuild(spec, opts) {
-    opts = opts || {};
-    const cfg = getLocalConfig();
-    const mode = opts.mode === 'plan' ? 'plan' : 'build';
-    const userMsg = buildUserMsg(spec, mode, opts.plan, opts.language);
-    const messages = [
-      { role: 'system', content: buildSystemPrompt(cfg && cfg.provider, mode) },
-      { role: 'user',   content: userMsg },
-    ];
-    const callOpts = Object.assign({}, opts);
-    if (mode === 'build' && !callOpts.max_tokens) callOpts.max_tokens = BUILD_MAX_TOKENS;
-    const raw = await chat(messages, callOpts);
-    const parsed = extractJson(raw);
-    if (mode === 'plan') {
-      const plan = (parsed && typeof parsed.plan === 'string') ? parsed.plan.trim() : '';
-      if (!plan) throw new Error('AI returned no plan text. Try a different model or provider.');
-      return { plan: plan };
-    }
-    return runSafetyGates(parsed);
   }
 
   // ── Streaming chat (SSE from OpenAI-compatible endpoints) ────────
@@ -713,7 +578,7 @@
               if (opts.onProgress && fullText.length < 100) {
                 opts.onProgress('Thinking…');
               } else if (opts.onProgress && fullText.length < 500) {
-                opts.onProgress('Generating plan…');
+                opts.onProgress('Generating files…');
               }
             }
           } catch (e) {
@@ -742,28 +607,19 @@
   }
 
   // ── Streaming build: spec → LLM (streaming) → validated result ──
-  // opts.mode === 'plan' returns {plan} only (Phase 1, pre-approval).
-  // Default mode returns the full validated {plan, files[]} payload.
-  // opts.plan (approved plan text) is injected into the build prompt so
-  // the coding agent follows the plan the user actually approved.
+  // Returns the full validated {plan, files[]} payload for the consent
+  // card flow (Chat-only — no separate plan-approval phase anymore).
   async function runBuildStream(spec, opts) {
     opts = opts || {};
-    const cfg = getLocalConfig();
-    const mode = opts.mode === 'plan' ? 'plan' : 'build';
-    const userMsg = buildUserMsg(spec, mode, opts.plan, opts.language);
+    const userMsg = buildUserMsg(spec, opts.plan, opts.language);
     const messages = [
-      { role: 'system', content: buildSystemPrompt(cfg && cfg.provider, mode) },
+      { role: 'system', content: BASE_SYSTEM_PROMPT },
       { role: 'user',   content: userMsg },
     ];
     const callOpts = Object.assign({}, opts);
-    if (mode === 'build' && !callOpts.max_tokens) callOpts.max_tokens = BUILD_MAX_TOKENS;
+    if (!callOpts.max_tokens) callOpts.max_tokens = BUILD_MAX_TOKENS;
     const fullText = await chatStream(messages, callOpts);
     const parsed = extractJson(fullText);
-    if (mode === 'plan') {
-      const plan = (parsed && typeof parsed.plan === 'string') ? parsed.plan.trim() : '';
-      if (!plan) throw new Error('AI returned no plan text. Try a different model or provider.');
-      return { plan: plan };
-    }
     return runSafetyGates(parsed);
   }
 
@@ -772,10 +628,8 @@
     // Config (localStorage)
     getLocalConfig,
     getByoConfig,
-    uuid,
-    escapeHtml,
     // LLM driver
-    chat, chatStream, runBuild, runBuildStream,
+    chatStream, runBuildStream,
   };
 
 })();

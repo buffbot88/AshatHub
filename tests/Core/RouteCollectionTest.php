@@ -43,7 +43,7 @@ final class RouteCollectionTest extends TestCase
     public function test_delete_adds_route(): void
     {
         $c = new RouteCollection();
-        $c->delete('/specs/{id}', ['SpecsController', 'delete']);
+        $c->delete('/files/{id}', ['FilesController', 'delete']);
         $this->assertCount(1, $c->getRoutes());
     }
 
@@ -404,19 +404,19 @@ final class RouteCollectionTest extends TestCase
         $c = new RouteCollection();
         $c->group('/api', ['middleware' => ['auth']], function () use ($c): void {
             $c->group('/v2', ['middleware' => ['pro-or-admin']], function () use ($c): void {
-                $c->get('/specs/{id}', ['SpecsController', 'show']);
+                $c->get('/files/{id}', ['FilesController', 'show']);
             });
         });
 
         $routes = $c->getRoutes();
         $this->assertCount(1, $routes);
-        $this->assertSame('/api/v2/specs/{id}', $routes[0]['pattern']);
+        $this->assertSame('/api/v2/files/{id}', $routes[0]['pattern']);
         $this->assertSame(['auth', 'pro-or-admin'], $routes[0]['middleware']);
 
         // Verify regex compiles and matches
         $regex = $c->patternToRegex($routes[0]['pattern']);
-        $this->assertMatchesRegularExpression($regex, '/api/v2/specs/abc-123');
-        preg_match($regex, '/api/v2/specs/abc-123', $m);
+        $this->assertMatchesRegularExpression($regex, '/api/v2/files/abc-123');
+        preg_match($regex, '/api/v2/files/abc-123', $m);
         $this->assertSame('abc-123', $m['id']);
     }
 }

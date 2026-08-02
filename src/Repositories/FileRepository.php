@@ -30,9 +30,7 @@ interface FileRepository
         string $path,
         ?string $content,
         string $language,
-        bool $generated,
-        ?string $buildId,
-        ?string $buildPhase
+        bool $generated = false
     ): string;
 
     /** Delete a file by id (auth-scoped to user). */
@@ -56,9 +54,9 @@ interface FileRepository
 
     /**
      * Duplicate a single file: copies the row (content, language,
-     * generated/build metadata) to a new auto-named path ('main.ts' →
-     * 'main (copy).ts', then 'main (copy 2).ts' on collision). Auth-scoped
-     * to user. Returns:
+     * generated) to a new auto-named path ('main.ts' → 'main (copy).ts',
+     * then 'main (copy 2).ts' on collision). Auth-scoped to user.
+     * Returns:
      *   ['duplicated' => 1, 'path' => newPath]      on success
      *   ['duplicated' => 0, 'error' => 'not_found'] nothing matched
      *   ['duplicated' => 0, 'error' => 'invalid']   empty path

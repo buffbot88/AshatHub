@@ -125,7 +125,7 @@ class MiddlewareTest extends TestCase
 
     public function test_pro_or_admin_blocks_member(): void
     {
-        $ctx = RequestContext::fake(['user' => self::memberUser(), 'server' => ['REQUEST_URI' => '/api/specs']]);
+        $ctx = RequestContext::fake(['user' => self::memberUser(), 'server' => ['REQUEST_URI' => '/api/asset']]);
         $result = $this->runMiddleware($this->proOrAdminMiddleware(...), $ctx);
 
         $this->assertFalse($result['passed'], 'Member should not pass pro-or-admin');

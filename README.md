@@ -30,10 +30,10 @@ No build step. No bundler. Drop the folder on a PHP-capable host and run.
 │   └── assets/            ← logo, favicon
 ├── src/
 │   ├── Core/              ← Router, Database, Auth, View, Session, ZipHelper (+ routes/*.php)
-│   ├── Models/            ← BuildPayload, ChatBackend
-│   ├── Controllers/       ← 14 controllers (Home, Auth, Community, Docs, Account, Admin, Api, Chat, ChatPage, Builds, Files, Specs, Support, Error)
-│   ├── Repositories/      ← PDO + InMemory data access (User, Session, Spec, Build, File, …)
-│   ├── Data/              ← CategoryLabels, LanguageOptions
+│   ├── Models/            ← ChatBackend
+│   ├── Controllers/       ← 12 controllers (Home, Auth, Community, Docs, Account, Admin, Api, Chat, ChatPage, Files, Support, Error)
+│   ├── Repositories/      ← PDO + InMemory data access (User, Session, File, …)
+│   ├── Data/              ← CategoryLabels
 │   └── views/             ← Layouts (header.php, footer.php) + page views
 ├── config/
 │   ├── bootstrap.php      ← Boot sequence + all APP_*/DB_*/SESSION_* constants
@@ -41,7 +41,7 @@ No build step. No bundler. Drop the folder on a PHP-capable host and run.
 ├── db/
 │   ├── schema.sql           ← MySQL schema + seed data (full-access setup)
 │   ├── schema-tables-only.sql ← tables + seeds only (shared-hosting setup)
-│   ├── spec-language.sql    ← Migration: adds specs.language (project language picker)
+│   ├── drop-specs-builds.sql ← Migration: drops dormant specs/builds tables + files.build_id/build_phase
 │   └── sve-rename.sql       ← Migration: System Update Engine → System Validation Engine
 ├── router.php             ← Built-in PHP server fallback
 ├── .htaccess              ← Apache rules for shared-hosting / flat deploy

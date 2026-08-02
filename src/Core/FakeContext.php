@@ -13,7 +13,7 @@ namespace Core;
  *   $ctx = RequestContext::fake([
  *       'user'   => ['id' => '1', 'username' => 'admin', 'role' => 'admin'],
  *       'post'   => ['title' => 'Hello'],
- *       'server' => ['REQUEST_URI' => '/api/specs'],
+ *       'server' => ['REQUEST_URI' => '/api/context'],
  *       'flash'  => ['success' => 'Saved'],
  *   ]);
  *

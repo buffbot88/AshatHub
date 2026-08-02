@@ -68,50 +68,8 @@
       </div>
     </div>
 
-    <!-- ── Right: Quick prompts + Spec preview ──────────────────────── -->
+    <!-- ── Right: Spec preview ──────────────────────────────────────── -->
     <div class="flex flex-col gap-5 p-5 overflow-y-auto" style="background: rgba(15, 15, 23, 0.3);">
-      <!-- Templates -->
-      <div style="background: rgba(15,15,23,0.4); border: 1px solid var(--gold-line); border-radius: var(--gold-radius-xl); padding: 18px;">
-        <div class="label-gold mb-4">Templates</div>
-        <div class="template-grid" id="template-grid">
-          <button class="template-btn" data-template="crud">
-            <span class="tmpl-name">CRUD App</span>
-            <span class="tmpl-desc">Create, Read, Update, Delete</span>
-          </button>
-          <button class="template-btn" data-template="api">
-            <span class="tmpl-name">REST API</span>
-            <span class="tmpl-desc">Endpoints, auth, validation</span>
-          </button>
-          <button class="template-btn" data-template="cli">
-            <span class="tmpl-name">CLI Tool</span>
-            <span class="tmpl-desc">Args, output, config</span>
-          </button>
-          <button class="template-btn" data-template="discord">
-            <span class="tmpl-name">Discord Bot</span>
-            <span class="tmpl-desc">Commands, events, embeds</span>
-          </button>
-          <button class="template-btn" data-template="webapp">
-            <span class="tmpl-name">Web App</span>
-            <span class="tmpl-desc">Full-stack, auth, DB</span>
-          </button>
-          <button class="template-btn" data-template="static">
-            <span class="tmpl-name">Static Site</span>
-            <span class="tmpl-desc">Pages, SEO, deploy</span>
-          </button>
-        </div>
-      </div>
-
-      <!-- Quick prompts -->
-      <div style="background: rgba(15,15,23,0.4); border: 1px solid var(--gold-line); border-radius: var(--gold-radius-xl); padding: 18px;">
-        <div class="label-gold mb-4">Quick Start</div>
-        <div class="quick-prompt-grid">
-          <button class="quick-prompt-btn" data-prompt="Build a Markdown note-taking app with local storage">Note-taking app</button>
-          <button class="quick-prompt-btn" data-prompt="Multiplayer rock-paper-scissors with WebSocket">Multiplayer game</button>
-          <button class="quick-prompt-btn" data-prompt="A CLI tool for batch resizing images">CLI image tool</button>
-          <button class="quick-prompt-btn" data-prompt="A URL shortener with analytics dashboard">URL shortener</button>
-        </div>
-      </div>
-
       <!-- Generated spec preview -->
       <div style="flex: 1; background: rgba(15,15,23,0.4); border: 1px solid var(--gold-line); border-radius: var(--gold-radius-xl); padding: 18px; display: flex; flex-direction: column; min-height: 220px;">
         <div class="flex items-center justify-between mb-4">

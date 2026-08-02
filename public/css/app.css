@@ -856,33 +856,6 @@ a, button {
   color: var(--text);
 }
 
-/* ── Quick prompt grid ────────────────────────────────────────────── */
-.quick-prompt-grid {
-  display: grid;
-  gap: 6px;
-}
-.quick-prompt-btn {
-  text-align: left;
-  padding: 10px 14px;
-  border-radius: var(--gold-radius-lg);
-  background: var(--surface);
-  border: 1px solid var(--line);
-  color: var(--text-mute);
-  font-size: 12px;
-  cursor: pointer;
-  transition: all .15s ease;
-  line-height: 1.4;
-}
-.quick-prompt-btn:hover {
-  border-color: var(--text-dim);
-  color: var(--text);
-  background: var(--surface-2);
-}
-.quick-prompt-btn:disabled {
-  opacity: 0.4;
-  cursor: not-allowed;
-}
-
 /* ── Thinking frame (collapsible reasoning panel) ────────────────── */
 .thinking-frame {
   border: 1px solid var(--line-soft);
@@ -1053,59 +1026,6 @@ a, button {
 }
 .version-item .v-actions .v-delete-version:hover {
   background: rgba(255, 107, 107, 0.1);
-}
-
-/* ── Template cards ──────────────────────────────────────────────── */
-.template-grid {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 6px;
-}
-.template-btn {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 4px;
-  padding: 10px 8px;
-  border-radius: var(--gold-radius-lg);
-  background: var(--surface);
-  border: 1px solid var(--line);
-  color: var(--text-mute);
-  cursor: pointer;
-  transition: all .15s ease;
-  text-align: center;
-  font-family: var(--font-body);
-}
-.template-btn:hover {
-  border-color: var(--text-dim);
-  background: var(--surface-2);
-  color: var(--text);
-  transform: translateY(-1px);
-}
-.template-btn:active {
-  transform: translateY(0);
-}
-.template-btn:disabled {
-  opacity: 0.4;
-  cursor: not-allowed;
-  transform: none;
-}
-.template-btn .tmpl-name {
-  font-size: 10px;
-  font-weight: 600;
-  line-height: 1.2;
-  font-family: var(--font-mono);
-  letter-spacing: 0.04em;
-  text-transform: uppercase;
-}
-.template-btn .tmpl-desc {
-  font-size: 9px;
-  color: var(--text-dim);
-  line-height: 1.3;
-  display: none;
-}
-.template-btn:hover .tmpl-desc {
-  display: block;
 }
 
 /* ── Live preview container (inline in chat bubbles) ──────────── */

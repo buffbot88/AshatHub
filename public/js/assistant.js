@@ -126,159 +126,6 @@
     '- *"A REST API for a todo list with user auth"*',
   ].join('\n');
 
-  // ── Guided Templates ─────────────────────────────────────────────
-  var TEMPLATES = {
-    'crud': {
-      name: 'CRUD App',
-      icon: '📋',
-      desc: 'Create-Read-Update-Delete application',
-      systemExtra: [
-        'The user wants to build a **CRUD application**.',
-        'Guide them through:',
-        '- Defining the data model and schema',
-        '- Designing API endpoints for Create, Read, Update, Delete',
-        '- Choosing a tech stack (language, framework, database)',
-        '- Planning the UI layer (forms, lists, detail views)',
-        '- Setting up validation, error handling, and pagination',
-      ].join('\n'),
-      starter: 'I want to build a CRUD application for managing [items like users, tasks, products]. The core features are listing records, viewing details, creating new entries, editing existing ones, and deleting records. Can you help me plan this out?',
-    },
-    'api': {
-      name: 'REST API',
-      icon: '🔌',
-      desc: 'RESTful API with endpoints & auth',
-      systemExtra: [
-        'The user wants to build a **RESTful API**.',
-        'Guide them through:',
-        '- Defining API endpoints and resource structure',
-        '- Designing request/response schemas',
-        '- Setting up authentication and authorization',
-        '- Planning error handling and validation',
-        '- Choosing a framework and database',
-      ].join('\n'),
-      starter: 'I want to build a RESTful API for [purpose]. It needs endpoints for CRUD operations, user authentication, request validation, and proper error responses. Can you help me design the API structure?',
-    },
-    'cli': {
-      name: 'CLI Tool',
-      icon: '🖥️',
-      desc: 'Command-line interface tool',
-      systemExtra: [
-        'The user wants to build a **CLI tool**.',
-        'Guide them through:',
-        '- Defining commands, flags, and arguments',
-        '- Planning input/output formatting',
-        '- Handling errors and edge cases',
-        '- Supporting configuration files',
-        '- Choosing a language and CLI framework',
-      ].join('\n'),
-      starter: 'I want to build a CLI tool that [purpose]. It should accept command-line arguments and flags, process input data, and output formatted results to the terminal. Can you help me design the command structure?',
-    },
-    'discord': {
-      name: 'Discord Bot',
-      icon: '🤖',
-      desc: 'Discord bot with commands & events',
-      systemExtra: [
-        'The user wants to build a **Discord bot**.',
-        'Guide them through:',
-        '- Defining slash commands and their parameters',
-        '- Planning event handlers and listeners',
-        '- Designing message embeds and formatting',
-        '- Setting up permission handling',
-        '- Choosing a Discord library and hosting',
-      ].join('\n'),
-      starter: 'I want to build a Discord bot that [purpose]. It should have slash commands, event listeners for messages and interactions, and nicely formatted embedded responses. Can you help me plan the bot features?',
-    },
-    'webapp': {
-      name: 'Web App',
-      icon: '🌐',
-      desc: 'Full-stack web application',
-      systemExtra: [
-        'The user wants to build a **full-stack web application**.',
-        'Guide them through:',
-        '- Choosing the frontend framework and UI design',
-        '- Designing the backend API and database schema',
-        '- Planning user authentication and sessions',
-        '- Defining routes, pages, and navigation',
-        '- Setting up deployment and hosting',
-      ].join('\n'),
-      starter: 'I want to build a web application for [purpose]. It needs a user-friendly frontend, a backend API with a database, user accounts and authentication, and it should be deployable. Can you help me design the full stack?',
-    },
-    'static': {
-      name: 'Static Site',
-      icon: '📄',
-      desc: 'Static site / landing page',
-      systemExtra: [
-        'The user wants to build a **static site**.',
-        'Guide them through:',
-        '- Defining page structure and content sections',
-        '- Planning responsive design and layout',
-        '- Setting up SEO and meta tags',
-        '- Choosing a static site generator or vanilla approach',
-        '- Planning deployment to static hosting',
-      ].join('\n'),
-      starter: 'I want to build a static website for [purpose]. It should have multiple pages, a responsive design that works on mobile and desktop, good SEO, and be easy to deploy. Can you help me plan the site structure?',
-    },
-  };
-
-  /**
-   * Create a new conversation initialized with a guided template.
-   * Auto-sends the template's starter message to kick off the conversation
-   * so the AI immediately responds with template-specific guidance.
-   */
-  function startWithTemplate(templateKey) {
-    var tmpl = TEMPLATES[templateKey];
-    if (!tmpl) return;
-
-    var id = uuid();
-    var now = new Date().toISOString();
-
-    // Build a template-specific system prompt by extending the base one
-    var templateSysContent = SYSTEM_PROMPT.content + '\n\n---\n\n' +
-      '## Template Guidance\n' +
-      tmpl.systemExtra + '\n\n' +
-      'When the spec is ready, output it between <!--SPEC--> and <!--/SPEC--> markers ' +
-      'using the same Markdown template described above.';
-
-    // Build a greeting that introduces the template focus
-    var greeting = [
-      'I\'ve set up a **' + tmpl.name + '** template for you. ' + tmpl.desc + '.',
-      '',
-      'Tell me what you want to build, and I\'ll help you design a complete specification step by step.',
-      '',
-      'To get started, could you describe:',
-      '- **What** exactly you want to build?',
-      '- **Who** will use it?',
-      '- **What tech stack** do you have in mind (if any)?',
-    ].join('\n');
-
-    var conv = {
-      id: id,
-      title: tmpl.name,
-      messages: [
-        { role: 'system', content: templateSysContent },
-        { role: 'assistant', content: greeting },
-      ],
-      created_at: now,
-      updated_at: now,
-    };
-
-    conversations.unshift(conv);
-    activeId = id;
-    saveConversations();
-    switchToConversation(id, true);
-    fetchProjectContext();
-
-    // Auto-send the starter message to kick off the conversation
-    // setTimeout ensures the conversation is fully rendered first
-    setTimeout(function () {
-      sendMessage(tmpl.starter);
-    }, 100);
-
-    ashatToast('Started ' + tmpl.name + ' template!', 'ok');
-
-    return id;
-  }
-
   // ── State ────────────────────────────────────────────────────────
   var conversations = [];
   var activeId = null;
@@ -1763,7 +1610,7 @@
       if (isStreaming) sendSpinner.classList.remove('hidden');
       else sendSpinner.classList.add('hidden');
     }
-    document.querySelectorAll('.quick-prompt-btn, .quick-empty, .template-btn').forEach(function (b) {
+    document.querySelectorAll('.quick-empty').forEach(function (b) {
       b.disabled = isStreaming;
     });
   }
@@ -1923,18 +1770,8 @@
     }
   });
 
-  // Template selection — start a guided conversation
-  document.querySelectorAll('.template-btn').forEach(function (btn) {
-    btn.addEventListener('click', function () {
-      var tmpl = this.dataset.template;
-      if (tmpl && TEMPLATES[tmpl]) {
-        startWithTemplate(tmpl);
-      }
-    });
-  });
-
-  // Quick prompts (in sidebar + empty state)
-  document.querySelectorAll('.quick-prompt-btn, .quick-empty').forEach(function (btn) {
+  // Quick prompts (in the empty state)
+  document.querySelectorAll('.quick-empty').forEach(function (btn) {
     btn.addEventListener('click', function () {
       var prompt = btn.getAttribute('data-prompt') || btn.textContent.trim();
       sendMessage(prompt);

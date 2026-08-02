@@ -429,13 +429,15 @@
       '',
       '📁 **Files** (' + ctx.stats.files + ' total):',
     ];
-    var files = (ctx.files || []).slice(0, 6);
+    // Include the complete path inventory (metadata only) so iteration
+    // responses can target any existing file, not just the first six.
+    var files = (ctx.files || []).slice(0, 120);
     for (var k = 0; k < files.length; k++) {
       var f = files[k];
       lines.push('  - ' + f.path + (f.generated ? ' (generated)' : ''));
     }
-    if (ctx.stats.files > 6) {
-      lines.push('  ... and ' + (ctx.stats.files - 6) + ' more files');
+    if (ctx.stats.files > files.length) {
+      lines.push('  ... and ' + (ctx.stats.files - files.length) + ' more files');
     }
     lines.push('');
 
@@ -1022,8 +1024,8 @@
     messagesEl.appendChild(div);
 
     // Re-attach the consent card for stored writes and explicit removals.
-    if (role === 'assistant' && msg && ((msg.files && msg.files.length) || (msg.fileDeletes && msg.fileDeletes.length))) {
-      appendFileActionsCard({ writes: msg.files || [], deletes: msg.fileDeletes || [] }, div);
+    if (role === 'assistant' && msg && !msg.fileActionsStatus && ((msg.files && msg.files.length) || (msg.fileDeletes && msg.fileDeletes.length))) {
+      appendFileActionsCard({ writes: msg.files || [], deletes: msg.fileDeletes || [] }, div, false, msg);
     }
   }
 
@@ -1071,7 +1073,8 @@
    * Extract fenced code blocks, resolving iteration blocks against known
    * project paths so edits do not fall back to file.html/file.css.
    */
-  function captureFilesFromContent(content, knownFiles) {
+  function captureFilesFromContent(content, knownFiles, inventoryReady) {
+    if (typeof inventoryReady === 'undefined') inventoryReady = true;
     var files = [];
     var blocks = content.match(/```([^\n]*)\n([\s\S]*?)```/g) || [];
     var structure = extractStructurePaths(content);
@@ -1094,22 +1097,43 @@
       if (/[├└┌┐]/.test(code)) continue;
       code = code.replace(/\n$/, '');
       var path = inferFilePath(content, blocks[b]);
-      // If the only label is a structure item directly above the block,
-      // positional assignment below is more reliable.
+      var blockIndex = content.indexOf(blocks[b]);
+      var blockBefore = content.slice(0, blockIndex).slice(-500);
+      var exampleCue = /\b(?:example|sample|snippet|illustrative|for reference|pseudo[- ]?code)\b/i.test(blockBefore);
+      // If the inferred label is only the last item in the planned structure,
+      // discard it and use the structure list position below.
+      var structureLabel = false;
       if (path && structure.end >= 0) {
-        var between = content.slice(structure.end, content.indexOf(blocks[b]));
-        if (between.trim() === '') path = null;
+        var between = content.slice(structure.end, blockIndex);
+        structureLabel = between.trim() === '';
+        if (structureLabel) path = null;
       }
+      // Explicit code blocks in the planned structure consume one path so
+      // later unlabeled blocks stay aligned. Explanatory examples do not.
+      if (path && !structureLabel && structureIdx < structurePaths.length && blockIndex >= structure.end && !exampleCue) {
+        structureIdx++;
+      }
+      var positionalPath = structureIdx < structurePaths.length ? structurePaths[structureIdx] : null;
       if (!path) {
         var infoPath = info.match(/(?:^|\s)([A-Za-z0-9_./-]+\.[A-Za-z0-9]+)\s*$/);
         if (infoPath) path = infoPath[1];
       }
-      if (!path && structureIdx < structurePaths.length) {
-        path = structurePaths[structureIdx];
+      if (!path && positionalPath && !exampleCue) {
+        path = positionalPath;
         structureIdx++;
+      }
+      if (!path && !inventoryReady) {
+        // When the authoritative inventory failed to load, do not turn an
+        // unlabeled iteration block into a fake file.ext action.
+        var recent = content.slice(0, content.indexOf(blocks[b])).slice(-600);
+        var iterationCue = /\b(?:update|updated|edit|edited|modify|modified|enhance|enhanced|improve|改善|iteration|existing|replace|refactor)\b/i.test(recent);
+        if (iterationCue) continue;
       }
       if (!path) path = 'file.' + (LANG_EXT[lang] || 'txt');
       path = resolveKnownCapturePath(content, blocks[b], path, lang, known, LANG_EXT);
+      // An ambiguous unlabeled iteration is intentionally not captured.
+      // Guessing would risk overwriting the wrong existing project file.
+      if (!path) continue;
       path = uniquePath(path, used);
       var file = { path: path, content: code, language: lang || null };
       if (known.indexOf(path) >= 0) file.action = 'update';
@@ -1143,8 +1167,12 @@
     // Only infer a sole same-language target when the response clearly
     // describes an iteration; never silently replace a file in a fresh build.
     var before = content.slice(0, blockIndex);
-    var iterationCue = /\b(?:update|updated|edit|edited|modify|modified|enhance|enhanced|improve|改善|iteration|existing|replace|refactor)\b/i.test(before);
-    return candidates.length === 1 && iterationCue ? candidates[0] : path;
+    var recent = before.slice(-600);
+    var iterationCue = /\b(?:update|updated|edit|edited|modify|modified|enhance|enhanced|improve|改善|iteration|existing|replace|refactor)\b[^\n.!?]{0,120}\b(?:this|the|existing|current|page|screen|component|file|project|design|style|character|html|css|javascript|typescript|python|php|json|sql)\b/i.test(recent)
+      || /\b(?:this|the|existing|current|page|screen|component|file|project|design|style|character|html|css|javascript|typescript|python|php|json|sql)\b[^\n.!?]{0,120}\b(?:update|updated|edit|edited|modify|modified|enhance|enhanced|improve|改善|iteration|replace|refactor)\b/i.test(recent);
+    var createCue = /\b(?:new|create|creating|add|adding|initial|scaffold|skeleton)\b/i.test(recent);
+    if (candidates.length > 1 && iterationCue && !createCue) return null;
+    return candidates.length === 1 && iterationCue && !createCue ? candidates[0] : path;
   }
 
   /** Find explicit delete/remove directives, limited to known project paths. */
@@ -1186,10 +1214,10 @@
   }
 
   /** Capture both file writes/edits and explicit removals for one response. */
-  function captureFileActions(content, knownFiles) {
+  function captureFileActions(content, knownFiles, inventoryReady) {
     return {
-      writes: captureFilesFromContent(content, knownFiles),
-      deletes: extractDeletePaths(content, knownFiles),
+      writes: captureFilesFromContent(content, knownFiles, inventoryReady),
+      deletes: inventoryReady === false ? [] : extractDeletePaths(content, knownFiles),
     };
   }
 
@@ -1342,7 +1370,7 @@
   }
 
   /** Create or update one consent card for writes, edits, and removals. */
-  function appendFileActionsCard(actions, bubbleEl, streamingNow) {
+  function appendFileActionsCard(actions, bubbleEl, streamingNow, message) {
     actions = actions || { writes: [], deletes: [] };
     if ((!actions.writes || !actions.writes.length) && (!actions.deletes || !actions.deletes.length)) return;
     if (!messagesEl || !bubbleEl || bubbleEl.dataset.filesCardDismissed === '1') return;
@@ -1371,6 +1399,10 @@
       });
       noBtn.addEventListener('click', function () {
         bubbleEl.dataset.filesCardDismissed = '1';
+        if (card._message) {
+          card._message.fileActionsStatus = 'dismissed';
+          saveConversations();
+        }
         if (card.parentNode) card.parentNode.removeChild(card);
         if (window.ashatToast) ashatToast('No changes applied.', 'ok');
       });
@@ -1378,6 +1410,7 @@
     }
 
     card._fileActions = actions;
+    card._message = message || card._message || null;
     var writes = actions.writes || [];
     var deletes = actions.deletes || [];
     var total = writes.length + deletes.length;
@@ -1408,8 +1441,15 @@
   }
 
   function refreshLiveFilesCard(content, bubbleEl, state, streamingNow) {
+    // Do not guess against an empty inventory while the initial file-tree
+    // request is still in flight. The final response waits for that request.
+    if (!hasLoadedProjectFiles()) {
+      state.inventoryPending = true;
+      return { writes: [], deletes: [] };
+    }
     var known = getKnownProjectFiles();
-    var actions = captureFileActions(content, known);
+    var actions = captureFileActions(content, known, true);
+
     var signature = actionSignature(actions);
     if (signature !== state.signature || (!streamingNow && state.streaming)) {
       state.signature = signature;
@@ -1430,22 +1470,28 @@
   }
 
   function hasLoadedProjectFiles() {
-    return Array.isArray(fmFiles) && fmFiles.length > 0;
+    return fmFilesLoaded;
   }
 
   /** Apply approved writes/updates and exact known-file removals. */
   async function applyFileActions(actions, yesBtn) {
-    var writes = (actions && actions.writes) || [];
-    var deletes = (actions && actions.deletes) || [];
-    if (!writes.length && !deletes.length) return;
+    var writes = ((actions && actions.writes) || []).slice();
+    var deletes = ((actions && actions.deletes) || []).slice();
+    var total = writes.length + deletes.length;
+    if (!total) return;
     var status = appendGenStatusBubble('Applying project file changes…');
     var applied = 0;
     var failed = 0;
     var quotaHit = false;
     try {
+      // Refresh the authoritative inventory before resolving delete IDs.
+      // Project context contains paths, but only the file API inventory has
+      // the current authenticated row IDs needed by DELETE.
+      await loadFileTree();
       for (var i = 0; i < writes.length; i++) {
         try {
           await ashatFetch('/api/files/', { method: 'POST', body: { path: writes[i].path, content: writes[i].content } });
+          markFileActionApplied(yesBtn, 'write', writes[i].path);
           applied++;
         } catch (e) {
           failed++;
@@ -1457,16 +1503,27 @@
         if (!match) { failed++; continue; }
         try {
           await ashatFetch('/api/files/' + encodeURIComponent(match.id), { method: 'DELETE' });
+          markFileActionApplied(yesBtn, 'delete', deletes[d]);
           applied++;
         } catch (_) { failed++; }
       }
       await loadFileTree();
-      var total = writes.length + deletes.length;
+      var card = yesBtn && yesBtn.closest ? yesBtn.closest('.files-consent-card') : null;
+      if (failed && card && card._fileActions) {
+        appendFileActionsCard(card._fileActions, card.parentElement.parentElement, false, card._message);
+      }
       status.className = 'gen-status-bubble ' + (failed ? 'err' : 'ok');
       status.textContent = failed
         ? '⚠ ' + applied + ' of ' + total + ' change(s) applied' + (quotaHit ? ' — storage quota reached.' : ' — review the Project Files panel.')
         : '✅ ' + applied + ' project file change(s) applied.';
       if (!failed) {
+        if (yesBtn) {
+          var appliedCard = yesBtn.closest ? yesBtn.closest('.files-consent-card') : null;
+          if (appliedCard && appliedCard._message) {
+            appliedCard._message.fileActionsStatus = 'applied';
+            saveConversations();
+          }
+        }
         finishFilesCard(yesBtn, '✓ Changes applied');
         if (window.ashatToast) ashatToast('Project file changes applied.', 'ok');
       } else if (yesBtn) {
@@ -1480,6 +1537,28 @@
     }
   }
 
+  /** Persist one successful action so a reload cannot repeat it. */
+  function markFileActionApplied(yesBtn, kind, path) {
+    var card = yesBtn && yesBtn.closest ? yesBtn.closest('.files-consent-card') : null;
+    if (!card || !card._fileActions) return;
+    var key = kind === 'delete' ? 'deletes' : 'writes';
+    card._fileActions[key] = (card._fileActions[key] || []).filter(function (item) {
+      return kind === 'delete' ? item !== path : item.path !== path;
+    });
+    if (card._message) {
+      if (kind === 'delete') {
+        card._message.fileDeletes = (card._message.fileDeletes || []).filter(function (item) { return item !== path; });
+      } else {
+        card._message.files = (card._message.files || []).filter(function (item) { return item.path !== path; });
+      }
+      saveConversations();
+    }
+    var bubble = card.parentElement && card.parentElement.parentElement;
+    if (bubble && card._fileActions.writes.length + card._fileActions.deletes.length) {
+      appendFileActionsCard(card._fileActions, bubble, false, card._message);
+    }
+  }
+
   /** Flip a files consent card into a terminal "done" state. */
   function finishFilesCard(yesBtn, message) {
     if (!yesBtn) return;
@@ -1487,7 +1566,7 @@
     if (card) {
       var title = card.querySelector('.spec-consent-title');
       var noBtn = card.querySelector('.files-consent-no');
-      if (title) title.textContent = 'Files written';
+      if (title) title.textContent = 'Changes applied';
       if (noBtn) noBtn.disabled = true;
     }
     yesBtn.disabled = true;
@@ -2081,11 +2160,17 @@
 
     // Process result
     if (content && content.trim()) {
+      // Refresh the client-side inventory before final action extraction.
+      // This prevents a slow initial file-tree request from turning an
+      // iteration into generic file.html/file.css/file.js actions.
+      if (!hasLoadedProjectFiles()) await loadFileTree();
+      if (!projectContext && !contextLoading) await fetchProjectContext();
+
       // Capture raw code blocks before they reach the chat so HTML/JS
-      // never renders inline — they become "write (file)" actions the
-      // user approves via a consent card.
-      var knownProjectFiles = getKnownProjectFiles();
-      var fileActions = captureFileActions(content, knownProjectFiles);
+      // never renders inline — they become consent-gated project actions.
+      var inventoryReady = hasLoadedProjectFiles();
+      var knownProjectFiles = inventoryReady ? getKnownProjectFiles() : [];
+      var fileActions = captureFileActions(content, knownProjectFiles, inventoryReady);
       var storedContent = content;
       if (fileActions.writes.length || fileActions.deletes.length) {
         storedContent = stripCodeBlocks(content, fileActions.writes, fileActions.deletes);
@@ -2256,6 +2341,8 @@
   var chatInputArea    = document.querySelector('.chat-input-area');
 
   var fmFiles = [];
+  var fmFilesLoaded = false;
+  var fmFilesLoading = null;
   var fmSelected = {};
   var fmAllSelected = false;
   var chatMonacoEd = null;
@@ -2270,16 +2357,26 @@
   }
 
   async function loadFileTree() {
-    try {
-      var resp = await ashatFetch('/api/files/');
-      fmFiles = (resp && resp.files) || [];
-      if (fileUsageEl && resp) {
-        fileUsageEl.textContent = fmFormatBytes(resp.usage_bytes || 0) + ' / ' + fmFormatBytes(resp.quota_bytes || 0);
+    if (fmFilesLoading) return fmFilesLoading;
+
+    fmFilesLoading = (async function () {
+      try {
+        var resp = await ashatFetch('/api/files/');
+        fmFiles = (resp && resp.files) || [];
+        fmFilesLoaded = true;
+        if (fileUsageEl && resp) {
+          fileUsageEl.textContent = fmFormatBytes(resp.usage_bytes || 0) + ' / ' + fmFormatBytes(resp.quota_bytes || 0);
+        }
+        renderFileTree();
+      } catch (e) {
+        fmFilesLoaded = false;
+        if (fileUsageEl) fileUsageEl.textContent = '';
+      } finally {
+        fmFilesLoading = null;
       }
-      renderFileTree();
-    } catch (e) {
-      if (fileUsageEl) fileUsageEl.textContent = '';
-    }
+    })();
+
+    return fmFilesLoading;
   }
 
   /** Render the nested file tree (folders-first, natural sort). */

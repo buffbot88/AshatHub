@@ -81,6 +81,13 @@ eq('labeled blocks win over structure',
   captureFilesFromContent(
     '## File Structure\n- src/a.html\n\n**custom.html**\n\n```html\n<A>\n```'),
   [{ path: 'custom.html', content: '<A>', language: 'html' }]);
+eq('explicit label still advances structure position for later block',
+  captureFilesFromContent(
+    '## File Structure\n- src/a.html\n- src/b.html\n\n**custom.html**\n\n```html\n<A>\n```\n\n```html\n<B>\n```'),
+  [
+    { path: 'custom.html', content: '<A>', language: 'html' },
+    { path: 'src/b.html', content: '<B>', language: 'html' },
+  ]);
 eq('language fallback for unlabeled block -> file.<ext>',
   captureFilesFromContent('```python\nprint(1)\n```'),
   [{ path: 'file.py', content: 'print(1)', language: 'python' }]);
@@ -90,6 +97,15 @@ eq('iteration resolves generic HTML capture to the only known HTML file',
 eq('iteration uses a named existing path mentioned near the block',
   captureFilesFromContent('Update `src/main.js` with this change.\n\n```javascript\nconsole.log(2);\n```', [{ path: 'src/main.js' }, { path: 'src/other.js' }]),
   [{ path: 'src/main.js', content: 'console.log(2);', language: 'javascript', action: 'update' }]);
+eq('ambiguous generic iteration is not mapped to the wrong same-extension file',
+  captureFilesFromContent('The design needs work.\n\n```html\n<section>New page</section>\n```', [{ path: 'src/index.html' }, { path: 'src/about.html' }]),
+  [{ path: 'file.html', content: '<section>New page</section>', language: 'html' }]);
+eq('generic block remains a new file when prose says create',
+  captureFilesFromContent('Create a new page for the character screen.\n\n```html\n<section>New page</section>\n```', [{ path: 'src/index.html' }]),
+  [{ path: 'file.html', content: '<section>New page</section>', language: 'html' }]);
+eq('failed inventory does not guess an unlabeled iteration file',
+  captureFilesFromContent('Update the existing character page.\n\n```html\n<section>Updated</section>\n```', [], false),
+  []);
 eq('duplicate fallbacks get unique names (file.html, file-2.html)',
   captureFilesFromContent('```html\nA\n```\n\n```html\nB\n```'),
   [
@@ -152,6 +168,9 @@ eq('ignores removal of an unknown file',
 eq('captures writes and removals as separate actions',
   captureFileActions('Update `src/main.js`.\n```javascript\nconsole.log(3);\n```\n\nRemove `src/old.js`.', [{ path: 'src/main.js' }, { path: 'src/old.js' }]),
   { writes: [{ path: 'src/main.js', content: 'console.log(3);', language: 'javascript', action: 'update' }], deletes: ['src/old.js'] });
+eq('removal section stops before ordinary prose',
+  extractDeletePaths('## Files to Remove\n- `src/old.js`\n\nThe existing `src/keep.js` remains in use.', [{ path: 'src/old.js' }, { path: 'src/keep.js' }]),
+  ['src/old.js']);
 eq('skips directory-tree diagram blocks',
   captureFilesFromContent(
     'Initial File Structure\n- index.html\n- styles.css\n\n' +

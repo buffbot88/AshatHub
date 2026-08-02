@@ -112,9 +112,9 @@ final class ChatBackend
         $payload = [
             'model'       => $this->defaultModel,
             'messages'    => $messages,
-            'max_tokens'  => (int) ($opts['max_tokens'] ?? ($stream ? 8192 : 4096)),
-            'temperature' => (float) ($opts['temperature'] ?? 0.7),
-            'top_p'       => (float) ($opts['top_p'] ?? 0.9),
+            'max_tokens'  => (int) ($opts['max_tokens'] ?? ($stream ? 12288 : 8192)),
+            'temperature' => (float) ($opts['temperature'] ?? 0.82),
+            'top_p'       => (float) ($opts['top_p'] ?? 0.95),
         ];
 
         // Only set stream flag if the backend actually supports it

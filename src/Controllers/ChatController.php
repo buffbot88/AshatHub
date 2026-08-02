@@ -21,6 +21,8 @@ final class ChatController
     private const MAX_ATTEMPTS = 3;
     /** Seconds to sleep between attempts (attempt # → delay). */
     private const BACKOFF = [1 => 1, 2 => 3];
+    /** Compatibility fallback for providers with smaller output limits. */
+    private const SAFE_MAX_TOKENS = 8192;
 
     // ── Chat (non-streaming) ─────────────────────────────────────────
 
@@ -150,6 +152,7 @@ final class ChatController
     private function postJson(string $endpoint, array $headers, array $payload): array
     {
         $attempt = 0;
+        $tokenRetried = false;
 
         while (true) {
             $attempt++;
@@ -176,6 +179,15 @@ final class ChatController
 
             if ($status === 0 || ($status >= 200 && $status < 300)) {
                 return ['status' => $status, 'body' => (string) $raw];
+            }
+
+            if (($status === 400 || $status === 413)
+                && !$tokenRetried
+                && (int) ($payload['max_tokens'] ?? 0) > self::SAFE_MAX_TOKENS
+            ) {
+                $payload['max_tokens'] = self::SAFE_MAX_TOKENS;
+                $tokenRetried = true;
+                continue;
             }
 
             if ($attempt < self::MAX_ATTEMPTS && self::isTransient($status)) {

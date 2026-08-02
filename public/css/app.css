@@ -1035,11 +1035,22 @@ a, button {
 .fc-file + .fc-file {
   border-top: 1px solid var(--line);
 }
+.fc-action {
+  color: var(--accent);
+  flex-shrink: 0;
+  font-size: 9px;
+  text-transform: uppercase;
+  letter-spacing: .04em;
+}
+.fc-file-delete .fc-action {
+  color: var(--gold-err, #f87171);
+}
 .fc-path {
   color: var(--text);
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+  flex: 1;
 }
 .fc-size {
   color: var(--text-dim);

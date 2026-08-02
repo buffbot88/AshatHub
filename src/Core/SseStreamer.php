@@ -80,10 +80,13 @@ final class SseStreamer
 
     /** Seconds to sleep between attempts (attempt # → delay). */
     private const BACKOFF = [1 => 1, 2 => 3];
+    /** Compatibility fallback for providers with smaller output limits. */
+    private const SAFE_MAX_TOKENS = 8192;
 
     public static function proxy(string $endpoint, array $headers, array $payload): ?string
     {
         $attempt = 0;
+        $tokenRetried = false;
 
         while (true) {
             $attempt++;
@@ -114,6 +117,17 @@ final class SseStreamer
             if ($status !== 0 && ($status < 200 || $status >= 300)) {
                 $body = (string) stream_get_contents($stream);
                 fclose($stream);
+
+                // Some providers reject a larger output budget with 400/413.
+                // Retry once at the compatibility ceiling before surfacing it.
+                if (($status === 400 || $status === 413)
+                    && !$tokenRetried
+                    && (int) ($payload['max_tokens'] ?? 0) > self::SAFE_MAX_TOKENS
+                ) {
+                    $payload['max_tokens'] = self::SAFE_MAX_TOKENS;
+                    $tokenRetried = true;
+                    continue;
+                }
 
                 // Transient upstream failures (429 / 5xx) — e.g. OpenAI-style
                 // "Loading model" 503s that clear once the provider has

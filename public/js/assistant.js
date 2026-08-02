@@ -42,9 +42,12 @@
   var STORAGE_KEY    = 'ashat.chats';
   var ACTIVE_KEY     = 'ashat.active_chat';
   var VERSIONS_KEY     = 'ashat.spec_versions';
-  var MAX_VERSIONS     = 50;          // Cap total version entries to prevent localStorage bloat
-  var SUMMARY_AFTER    = 40;          // Summarize after this many messages
-  var MAX_TOKENS_EST   = 12000;       // Rough max token estimate before summarization
+  var MAX_VERSIONS          = 50;          // Cap total version entries to prevent localStorage bloat
+  var MAX_CONTEXT_TOKENS    = 14000;       // Larger working context with 32K-model compatibility
+  var SUMMARY_RESERVE_TOKENS = 2200;       // Reserve room for the structured older-history digest
+  var SUMMARY_MAX_CHARS     = 8800;        // Keep the digest bounded as the thread grows
+  var PRIOR_SUMMARY_MAX_CHARS = 5000;      // Keep other-chat context from crowding out this thread
+  var CHAT_MAX_TOKENS       = 12288;       // Larger answer budget than the former 4096 cap
 
   // ── Session ──────────────────────────────────────────────────────
   var SESSION_DURATION = 3600000;     // 1 hour in ms — session auto-expiry
@@ -68,7 +71,12 @@
       '6. **Set acceptance criteria** — Define how to verify the build is complete.',
       '',
       'Be conversational but keep moving toward a concrete specification.',
-      'Ask one or two questions at a time — don\'t overwhelm the user.',
+      'Ask one or two focused questions when clarification is needed, but do not force a shallow funnel.',
+      'Use the full available conversation context. Remember earlier goals, decisions, constraints,',
+      'rejected ideas, file paths, and unresolved questions instead of restarting from generic advice.',
+      'Prefer specific, imaginative product thinking over boilerplate starter templates.',
+      'When useful, offer two or three distinct approaches with tradeoffs, then recommend one.',
+      'Challenge weak assumptions respectfully and propose ambitious but feasible next steps.',
       '',
       'When you have enough detail to assemble a complete spec, output a Markdown',
       'spec document between <!--SPEC--> and <!--/SPEC--> markers. Use this template:',
@@ -122,6 +130,11 @@
       '  filename in prose, never use a numbered "1." list for filenames, and never',
       '  leave a code block unlabeled. The app reads those labels to offer',
       '  "write (file)" actions.',
+      '- For an iteration, treat the Project Files list as authoritative. Say whether',
+      '  each change is an UPDATE to an existing path, a new file, or a REMOVE action.',
+      '  Use the exact existing path for updates, even when only a small section changes.',
+      '- Put removals in a clear "## Files to Remove" section using exact paths, and',
+      '  never suggest deleting a file merely because it was not included in the reply.',
     ].join('\n'),
   };
 
@@ -225,10 +238,42 @@
   //  PRIOR CONVERSATION HISTORY INJECTION
   // ══════════════════════════════════════════════════════════════════
 
+  function clipHistoryText(text, maxChars) {
+    text = String(text || '').replace(/\s+/g, ' ').trim();
+    return text.length > maxChars ? text.slice(0, maxChars - 1) + '…' : text;
+  }
+
+  function conversationDigest(conv) {
+    var lines = [];
+    var messages = Array.isArray(conv.messages) ? conv.messages : [];
+    var userCount = 0;
+    var assistantCount = 0;
+    var filePaths = [];
+
+    for (var i = 0; i < messages.length; i++) {
+      var message = messages[i];
+      if (message.role === 'user' && message.content && userCount < 5) {
+        lines.push('  - User: ' + clipHistoryText(message.content, 500));
+        userCount++;
+      } else if (message.role === 'assistant' && message.content && assistantCount < 3) {
+        lines.push('  - Ashat: ' + clipHistoryText(stripMarkers(message.content), 500));
+        assistantCount++;
+      }
+      if (message.files && Array.isArray(message.files)) {
+        for (var f = 0; f < message.files.length; f++) {
+          if (message.files[f].path && filePaths.indexOf(message.files[f].path) < 0) {
+            filePaths.push(message.files[f].path);
+          }
+        }
+      }
+    }
+    if (filePaths.length) lines.push('  - Files discussed/generated: ' + filePaths.slice(0, 20).join(', '));
+    return lines;
+  }
+
   /**
-   * Build a system message summarizing ALL previous conversations
-   * (from past sessions) so the AI can reference what was discussed
-   * before. Only conversations NOT in the current session are included.
+   * Build a compact digest of older conversations for continuity.
+   * Only bounded excerpts are sent so prior history cannot crowd out the active thread.
    */
   function buildPriorConversationsSummary() {
     var now = Date.now();
@@ -254,35 +299,21 @@
       '',
     ];
 
-    // Show up to 5 past conversations (newest first)
+    // Show up to 8 past conversations (newest first)
     pastConvs.sort(function (a, b) {
       return new Date(b.updated_at || b.created_at) - new Date(a.updated_at || a.created_at);
     });
-    var shown = pastConvs.slice(0, 5);
+    var shown = pastConvs.slice(0, 8);
 
     for (var j = 0; j < shown.length; j++) {
       var conv = shown[j];
       var title = conv.title || 'Untitled';
       lines.push('### ' + (j + 1) + '. ' + title);
 
-      // Extract key user asks from this conversation (up to 3)
-      var userAsks = [];
-      if (Array.isArray(conv.messages)) {
-        for (var k = 0; k < conv.messages.length; k++) {
-          var m = conv.messages[k];
-          if (m.role === 'user' && m.content) {
-            userAsks.push(m.content.slice(0, 200));
-            if (userAsks.length >= 3) break;
-          }
-        }
-      }
-      if (userAsks.length > 0) {
-        for (var u = 0; u < userAsks.length; u++) {
-          lines.push('  - User: ' + userAsks[u]);
-        }
-      }
+      var digest = conversationDigest(conv);
+      for (var d = 0; d < digest.length; d++) lines.push(digest[d]);
 
-      // If there's a spec, note it
+      // If there's a spec, note its title and a bounded excerpt
       var specContent = null;
       if (Array.isArray(conv.messages)) {
         for (var s = 0; s < conv.messages.length; s++) {
@@ -298,22 +329,27 @@
         var titleMatch = specContent.match(/^#\s+Project:\s+(.+)$/m);
         if (titleMatch) specTitle = titleMatch[1].trim();
         lines.push('  ✅ **Spec generated:** ' + specTitle);
+        lines.push('  - Spec excerpt: ' + clipHistoryText(specContent, 700));
       }
 
       lines.push('');
     }
 
-    if (pastConvs.length > 5) {
-      lines.push('... and ' + (pastConvs.length - 5) + ' more past conversations.');
+    if (pastConvs.length > 8) {
+      lines.push('... and ' + (pastConvs.length - 8) + ' more past conversations.');
       lines.push('');
     }
 
     lines.push('[End of Prior Conversations]');
     lines.push('Build on what was already discussed. Avoid asking for information the user already provided in past conversations.');
+    var priorContent = lines.join('\n');
+    if (priorContent.length > PRIOR_SUMMARY_MAX_CHARS) {
+      priorContent = priorContent.slice(0, PRIOR_SUMMARY_MAX_CHARS - 42) + '\n[…older chats clipped]\n[End of Prior Conversations]';
+    }
 
     return {
       role: 'system',
-      content: lines.join('\n'),
+      content: priorContent,
     };
   }
 
@@ -776,38 +812,48 @@
       return !m.content.startsWith('[Project Context') && !m.content.startsWith('[Earlier conversation summary') && !m.content.startsWith(PAST_CONV_PREFIX);
     });
 
-    // If few messages, return all
-    if (msgs.length <= SUMMARY_AFTER) {
-      return result.concat(msgs);
+    // Keep the newest messages that fit the larger working-context budget.
+    // This is token-based rather than count-based so long design turns remain useful.
+    // Reserve space for the system prompt, project context, prior-chat digest,
+    // and the structured summary so the total input stays provider-friendly.
+    var keep = [];
+    var recentTokens = 0;
+    var fixedTokens = 0;
+    for (var fixed = 0; fixed < result.length; fixed++) {
+      fixedTokens += approxTokens(result[fixed].content);
+    }
+    var recentBudget = Math.max(4000, MAX_CONTEXT_TOKENS - SUMMARY_RESERVE_TOKENS - fixedTokens);
+    for (var r = msgs.length - 1; r >= 0; r--) {
+      var messageTokens = approxTokens(msgs[r].content);
+      if (keep.length > 0 && recentTokens + messageTokens > recentBudget) break;
+      keep.unshift(msgs[r]);
+      recentTokens += messageTokens;
     }
 
-    // Summarize older messages
-    var keep = msgs.slice(-SUMMARY_AFTER);
-    var old = msgs.slice(0, msgs.length - SUMMARY_AFTER);
-
-    var summaryParts = [];
-    for (var j = 0; j < old.length; j++) {
-      if (old[j].role === 'user') {
-        summaryParts.push('User asked: ' + old[j].content.slice(0, 120));
-      } else if (old[j].role === 'assistant') {
-        summaryParts.push('Assistant replied: ' + old[j].content.slice(0, 120));
+    var old = msgs.slice(0, msgs.length - keep.length);
+    if (old.length > 0) {
+      var summaryParts = [
+        '[Earlier conversation summary]',
+        'Treat these as established context. Preserve decisions and do not restart discovery.',
+      ];
+      for (var j = 0; j < old.length; j++) {
+        var oldMsg = old[j];
+        if (oldMsg.role !== 'user' && oldMsg.role !== 'assistant') continue;
+        var label = oldMsg.role === 'user' ? 'User goal/decision' : 'Ashat recommendation';
+        var excerpt = clipHistoryText(stripMarkers(oldMsg.content), 900);
+        if (excerpt) summaryParts.push('- ' + label + ': ' + excerpt);
+        if (oldMsg.files && Array.isArray(oldMsg.files) && oldMsg.files.length) {
+          summaryParts.push('- Files: ' + oldMsg.files.map(function (file) { return file.path; }).join(', '));
+        }
       }
-    }
-    if (summaryParts.length > 0) {
+      summaryParts.push('[End of summary — continuing current conversation]');
+      var summary = summaryParts.join('\n');
       result.push({
         role: 'system',
-        content: '[Earlier conversation summary]\n' + summaryParts.join('\n') +
-          '\n[End of summary — continuing current conversation]',
+        content: summary.length > SUMMARY_MAX_CHARS
+          ? summary.slice(0, SUMMARY_MAX_CHARS - 40) + '\n[…older context clipped]\n[End of summary — continuing current conversation]'
+          : summary,
       });
-    }
-
-    // Check total tokens
-    var total = 0;
-    for (var k = 0; k < keep.length; k++) {
-      total += approxTokens(keep[k].content);
-    }
-    if (total > MAX_TOKENS_EST && keep.length > 20) {
-      keep = keep.slice(-20);
     }
 
     return result.concat(keep);
@@ -975,44 +1021,66 @@
 
     messagesEl.appendChild(div);
 
-    // Re-attach the captured-files consent card for assistant messages
-    // that were stored with file metadata (from a code-capture response).
-    if (role === 'assistant' && msg && msg.files && msg.files.length) {
-      appendFilesConsentCard(msg.files, div);
+    // Re-attach the consent card for stored writes and explicit removals.
+    if (role === 'assistant' && msg && ((msg.files && msg.files.length) || (msg.fileDeletes && msg.fileDeletes.length))) {
+      appendFileActionsCard({ writes: msg.files || [], deletes: msg.fileDeletes || [] }, div);
     }
   }
 
-  /**
-   * Extract fenced code blocks from assistant content, inferring a
-   * filename for each so raw code dumps become "write (file)" actions
-   * instead of rendered HTML/JS in the chat.
-   */
-  /** Pull file paths out of a `## File Structure` (or bold) section so
+  /** Pull file paths out of a File Structure (or bold) section so
    *  unlabeled code blocks can inherit names positionally. */
   function extractStructurePaths(content) {
-    var m = content.match(/##+\s*(?:File Structure|Project Structure|Files)[^\n]*\n/i)
-      || content.match(/\*\*(?:File Structure|Project Structure|Files)\*\*[^\n]*\n/i);
-    if (!m) return { paths: [], end: -1 };
-    var start = m.index + m[0].length;
-    var paths = [];
-    var lineRe = /^\s*(?:[-*•]|\d+[.)])\s+`?([A-Za-z0-9_./-]+\.[A-Za-z0-9]+)`?\s*$/;
-    var lines = content.slice(start).split('\n');
-    var end = start;
+    var lines = content.split('\n');
+    var headRe = /^(?:#{1,6}\s*|\*\*\s*)?(?:initial|project|full|complete)?\s*(?:file|project)?\s*(?:structure|files?)\b[^\n]*$/i;
+    var start = -1;
     for (var i = 0; i < lines.length; i++) {
-      var lm = lines[i].match(lineRe);
-      if (!lm) break;
-      if (paths.indexOf(lm[1]) === -1) paths.push(lm[1]);
-      end += lines[i].length + 1;
+      if (headRe.test(lines[i])) { start = i; break; }
+    }
+    if (start < 0) return { paths: [], end: -1 };
+
+    var paths = [];
+    var end = 0;
+    for (var j = 0; j <= start; j++) end += lines[j].length + 1;
+
+    for (var k = start + 1; k < lines.length; k++) {
+      var line = lines[k].trim();
+      if (line === '') { end += lines[k].length + 1; continue; }
+      var path = null;
+      var m;
+      // Parenthetical label like "HTML Skeleton (index.html)"
+      m = line.match(/^[^(]*\(([A-Za-z0-9_./-]+\.[A-Za-z0-9]+)\)[^()]*$/);
+      if (m) path = m[1];
+      // Bullet or numbered item like "- index.html" / "1. index.html"
+      if (!path) {
+        m = line.match(/^(?:[-*•]|\d+[.)])\s+`?([A-Za-z0-9_./-]+\.[A-Za-z0-9]+)`?\s*$/);
+        if (m) path = m[1];
+      }
+      // Bare or backticked "index.html"
+      if (!path) {
+        m = line.match(/^`?([A-Za-z0-9_./-]+\.[A-Za-z0-9]+)`?\s*$/);
+        if (m) path = m[1];
+      }
+      if (!path) break;
+      if (paths.indexOf(path) === -1) paths.push(path);
+      end += lines[k].length + 1;
     }
     return { paths: paths, end: end };
   }
 
-  function captureFilesFromContent(content) {
+  /**
+   * Extract fenced code blocks, resolving iteration blocks against known
+   * project paths so edits do not fall back to file.html/file.css.
+   */
+  function captureFilesFromContent(content, knownFiles) {
     var files = [];
     var blocks = content.match(/```([^\n]*)\n([\s\S]*?)```/g) || [];
     var structure = extractStructurePaths(content);
     var structurePaths = structure.paths;
+    var structureIdx = 0;
     var used = {};
+    var known = (knownFiles || []).map(function (f) {
+      return typeof f === 'string' ? f : f.path;
+    }).filter(function (p) { return !!p; });
     var LANG_EXT = { html: 'html', css: 'css', js: 'js', javascript: 'js', ts: 'ts', typescript: 'ts', php: 'php', py: 'py', python: 'py', json: 'json', md: 'md', markdown: 'md', sql: 'sql', java: 'java', go: 'go', rb: 'rb', ruby: 'rb', sh: 'sh', bash: 'sh', yaml: 'yml', yml: 'yml', xml: 'xml', txt: 'txt' };
     for (var b = 0; b < blocks.length; b++) {
       var m = blocks[b].match(/^```([^\n]*)\n([\s\S]*?)```$/);
@@ -1021,31 +1089,108 @@
       var lang = info.split(/\s+/)[0].toLowerCase();
       var code = m[2];
       if (!code.trim()) continue;
-      // Strip trailing newline so saved files don't carry an extra \n
+      // Directory-tree diagrams (box-drawing chars) are structure previews,
+      // not files — skip them so they don't become fake file.txt entries.
+      if (/[├└┌┐]/.test(code)) continue;
       code = code.replace(/\n$/, '');
       var path = inferFilePath(content, blocks[b]);
-      // If the only "label" is the structure section's own bullet sitting
-      // directly above the block, ignore it so positional assignment wins.
+      // If the only label is a structure item directly above the block,
+      // positional assignment below is more reliable.
       if (path && structure.end >= 0) {
         var between = content.slice(structure.end, content.indexOf(blocks[b]));
         if (between.trim() === '') path = null;
       }
-      // Fence info may carry an explicit path: ```python src/lib/util.py
       if (!path) {
         var infoPath = info.match(/(?:^|\s)([A-Za-z0-9_./-]+\.[A-Za-z0-9]+)\s*$/);
         if (infoPath) path = infoPath[1];
       }
-      // Positional fallback: unlabeled block inherits the structure path
-      if (!path && structurePaths.length) {
-        path = structurePaths[b] || null;
+      if (!path && structureIdx < structurePaths.length) {
+        path = structurePaths[structureIdx];
+        structureIdx++;
       }
-      if (!path) {
-        path = 'file.' + (LANG_EXT[lang] || 'txt');
-      }
+      if (!path) path = 'file.' + (LANG_EXT[lang] || 'txt');
+      path = resolveKnownCapturePath(content, blocks[b], path, lang, known, LANG_EXT);
       path = uniquePath(path, used);
-      files.push({ path: path, content: code, language: lang || null });
+      var file = { path: path, content: code, language: lang || null };
+      if (known.indexOf(path) >= 0) file.action = 'update';
+      files.push(file);
     }
     return files;
+  }
+
+  /** Resolve a generic capture name to an existing project file when possible. */
+  function resolveKnownCapturePath(content, block, path, lang, known, langExt) {
+    if (!known.length || !/^file(?:-\d+)?\./i.test(path)) return path;
+    var ext = langExt[lang] || path.split('.').pop().toLowerCase();
+    var candidates = known.filter(function (candidate) {
+      return candidate.split('.').pop().toLowerCase() === ext;
+    });
+    if (!candidates.length) return path;
+    var blockIndex = content.indexOf(block);
+    var nearest = null;
+    var nearestIndex = -1;
+    for (var i = 0; i < candidates.length; i++) {
+      var index = content.lastIndexOf(candidates[i], blockIndex);
+      if (index > nearestIndex) {
+        nearest = candidates[i];
+        nearestIndex = index;
+      }
+    }
+    // An explicit existing path mentioned before this block wins, even
+    // when the model placed the label several prose lines above it.
+    if (nearestIndex >= 0) return nearest;
+
+    // Only infer a sole same-language target when the response clearly
+    // describes an iteration; never silently replace a file in a fresh build.
+    var before = content.slice(0, blockIndex);
+    var iterationCue = /\b(?:update|updated|edit|edited|modify|modified|enhance|enhanced|improve|改善|iteration|existing|replace|refactor)\b/i.test(before);
+    return candidates.length === 1 && iterationCue ? candidates[0] : path;
+  }
+
+  /** Find explicit delete/remove directives, limited to known project paths. */
+  function extractDeletePaths(content, knownFiles) {
+    var known = (knownFiles || []).map(function (f) {
+      return typeof f === 'string' ? f : f.path;
+    }).filter(function (p) { return !!p; });
+    if (!known.length) return [];
+    var source = content.replace(/```[^\n]*\n[\s\S]*?```/g, '\n');
+    var found = [];
+    var deleteWords = /\b(?:delete|remove|removed|deprecated|obsolete|drop|no longer needed)\b/i;
+    var headingRe = /^\s{0,3}#{1,6}\s*(?:files?\s+to\s+)?(?:remove|delete)|^\s*\*\*[^*]*(?:remove|delete)[^*]*\*\*/i;
+    var inRemoveSection = false;
+    var pathRe = /(?:^|[`'"\s(])([A-Za-z0-9_./-]+\.[A-Za-z0-9]+)(?=[`'"\s),:.]|$)/g;
+    source.split('\n').forEach(function (line) {
+      var trimmed = line.trim();
+      if (headingRe.test(line)) {
+        inRemoveSection = true;
+        return;
+      }
+      if (/^\s{0,3}#{1,6}\s+/.test(line) || /^\s*\*\*[^*]+\*\*\s*$/.test(line)) {
+        inRemoveSection = false;
+      }
+      // A removal section accepts only its list items or a standalone path.
+      // Stop at ordinary prose so later mentions cannot become deletions.
+      var sectionItem = inRemoveSection && (trimmed === '' || /^(?:[-*•]|\d+[.)])\s+/.test(trimmed) || /^`[^`]+`$/.test(trimmed));
+      if (inRemoveSection && trimmed !== '' && !sectionItem) {
+        inRemoveSection = false;
+      }
+      if (!inRemoveSection && !deleteWords.test(line)) return;
+      var match;
+      while ((match = pathRe.exec(line)) !== null) {
+        var candidate = match[1];
+        if (known.indexOf(candidate) >= 0 && found.indexOf(candidate) < 0) found.push(candidate);
+      }
+      pathRe.lastIndex = 0;
+    });
+    return found;
+  }
+
+  /** Capture both file writes/edits and explicit removals for one response. */
+  function captureFileActions(content, knownFiles) {
+    return {
+      writes: captureFilesFromContent(content, knownFiles),
+      deletes: extractDeletePaths(content, knownFiles),
+    };
   }
 
   /** Ensure captured paths are unique (file.html, file-2.html, ...). */
@@ -1101,12 +1246,15 @@
 
   /** Remove fenced code blocks from content but leave a short note so
    *  the chat stays readable and the AI context never carries code dumps. */
-  function stripCodeBlocks(content, files) {
+  function stripCodeBlocks(content, files, deletes) {
     var stripped = content.replace(/```[^\n]*\n[\s\S]*?```/g, '');
     stripped = stripped.replace(/\n{3,}/g, '\n\n').trim();
-    if (files.length) {
-      var list = files.map(function (f) { return '`' + f.path + '`'; }).join(', ');
-      stripped += (stripped ? '\n\n' : '') + '📎 Captured ' + files.length + ' file' + (files.length > 1 ? 's' : '') + ': ' + list + ' — open the card below to write them into your Project Files.';
+    files = files || [];
+    deletes = deletes || [];
+    if (files.length || deletes.length) {
+      var changes = files.map(function (f) { return '`' + f.path + '`'; });
+      deletes.forEach(function (path) { changes.push('remove `' + path + '`'); });
+      stripped += (stripped ? '\n\n' : '') + '📎 Captured ' + changes.length + ' project change' + (changes.length > 1 ? 's' : '') + ': ' + changes.join(', ') + ' — open the card below to review and apply them.';
     }
     return stripped;
   }
@@ -1173,96 +1321,162 @@
     }
   }
 
-  /**
-   * Append a consent card to the latest assistant bubble when raw code
-   * was captured from the response. Instead of dumping HTML/JS into the
-   * chat, the code becomes "write (file)" actions the user approves.
-   */
-  function appendFilesConsentCard(files, bubbleEl) {
-    if (!files || !files.length || !messagesEl) return;
-    var body = bubbleEl ? bubbleEl.querySelector('.chat-bubble-body') : null;
-    if (!body) return;
-    if (body.querySelector('.files-consent-card')) return;
+  function actionSignature(actions) {
+    var writes = (actions && actions.writes) || [];
+    var deletes = (actions && actions.deletes) || [];
+    return writes.map(function (f) { return 'w:' + f.path + '\u0000' + f.content; }).join('\u0001') +
+      '\u0002' + deletes.map(function (p) { return 'd:' + p; }).join('\u0001');
+  }
 
-    var card = document.createElement('div');
-    card.className = 'files-consent-card';
-    var rows = files.map(function (f) {
+  function renderFileActionRows(actions) {
+    var rows = [];
+    (actions.writes || []).forEach(function (f) {
       var kb = Math.max(1, Math.round((f.content || '').length / 1024));
-      return '<div class="fc-file"><span class="fc-path">' + esc(f.path) + '</span><span class="fc-size">' + kb + ' KB</span></div>';
-    }).join('');
-    card.innerHTML =
-      '<div class="spec-consent-title">Files ready to write</div>' +
-      '<div class="spec-consent-text">The AI generated code for ' + files.length + ' file' + (files.length > 1 ? 's' : '') + '. ' +
-      'Nothing is saved until you say yes — then they land in your Project Files, where you can open and edit them anytime.</div>' +
-      '<div class="fc-list">' + rows + '</div>' +
-      '<div class="spec-consent-actions">' +
-        '<button type="button" class="btn-gold files-consent-yes" style="font-size:10px;padding:5px 12px;">Yes — write these files</button>' +
-        '<button type="button" class="btn-outline files-consent-no" style="font-size:10px;padding:5px 12px;">Not yet</button>' +
-      '</div>';
-
-    var yesBtn = card.querySelector('.files-consent-yes');
-    var noBtn = card.querySelector('.files-consent-no');
-
-    yesBtn.addEventListener('click', function () {
-      yesBtn.disabled = true;
-      yesBtn.textContent = 'Writing...';
-      writeCapturedFiles(files, yesBtn);
+      var label = f.action === 'update' ? 'Update' : 'Write';
+      rows.push('<div class="fc-file"><span class="fc-action">' + label + '</span><span class="fc-path">' + esc(f.path) + '</span><span class="fc-size">' + kb + ' KB</span></div>');
     });
-    noBtn.addEventListener('click', function () {
-      if (card.parentNode) card.parentNode.removeChild(card);
-      if (window.ashatToast) ashatToast('No problem — just say the word when you want them saved.', 'ok');
+    (actions.deletes || []).forEach(function (path) {
+      rows.push('<div class="fc-file fc-file-delete"><span class="fc-action">Remove</span><span class="fc-path">' + esc(path) + '</span></div>');
     });
+    return rows.join('');
+  }
 
-    body.appendChild(card);
+  /** Create or update one consent card for writes, edits, and removals. */
+  function appendFileActionsCard(actions, bubbleEl, streamingNow) {
+    actions = actions || { writes: [], deletes: [] };
+    if ((!actions.writes || !actions.writes.length) && (!actions.deletes || !actions.deletes.length)) return;
+    if (!messagesEl || !bubbleEl || bubbleEl.dataset.filesCardDismissed === '1') return;
+    var body = bubbleEl.querySelector('.chat-bubble-body');
+    if (!body) return;
+
+    var card = body.querySelector('.files-consent-card');
+    if (!card) {
+      card = document.createElement('div');
+      card.className = 'files-consent-card';
+      card.innerHTML =
+        '<div class="spec-consent-title"></div>' +
+        '<div class="spec-consent-text"></div>' +
+        '<div class="fc-list"></div>' +
+        '<div class="spec-consent-actions">' +
+          '<button type="button" class="btn-gold files-consent-yes" style="font-size:10px;padding:5px 12px;">Yes — apply changes</button>' +
+          '<button type="button" class="btn-outline files-consent-no" style="font-size:10px;padding:5px 12px;">Not yet</button>' +
+        '</div>';
+      var yesBtn = card.querySelector('.files-consent-yes');
+      var noBtn = card.querySelector('.files-consent-no');
+      yesBtn.addEventListener('click', function () {
+        if (yesBtn.disabled || !card._fileActions) return;
+        yesBtn.disabled = true;
+        yesBtn.textContent = 'Applying...';
+        applyFileActions(card._fileActions, yesBtn);
+      });
+      noBtn.addEventListener('click', function () {
+        bubbleEl.dataset.filesCardDismissed = '1';
+        if (card.parentNode) card.parentNode.removeChild(card);
+        if (window.ashatToast) ashatToast('No changes applied.', 'ok');
+      });
+      body.appendChild(card);
+    }
+
+    card._fileActions = actions;
+    var writes = actions.writes || [];
+    var deletes = actions.deletes || [];
+    var total = writes.length + deletes.length;
+    var title = card.querySelector('.spec-consent-title');
+    var text = card.querySelector('.spec-consent-text');
+    var list = card.querySelector('.fc-list');
+    var yes = card.querySelector('.files-consent-yes');
+    var no = card.querySelector('.files-consent-no');
+    if (title) title.textContent = streamingNow ? 'Changes detected' : 'Changes ready to apply';
+    if (text) text.textContent = streamingNow
+      ? 'The AI is still responding. ' + total + ' change' + (total === 1 ? ' has' : 's have') + ' been detected; more may appear before applying is enabled.'
+      : 'The AI proposed ' + writes.length + ' write/update' + (writes.length === 1 ? '' : 's') + ' and ' + deletes.length + ' removal' + (deletes.length === 1 ? '' : 's') + '. Nothing changes until you approve.';
+    if (list) list.innerHTML = renderFileActionRows(actions);
+    if (yes) {
+      yes.disabled = !!streamingNow;
+      yes.textContent = streamingNow ? 'Waiting for response…' : 'Yes — apply changes';
+    }
+    if (no) {
+      no.disabled = !!streamingNow;
+      no.textContent = streamingNow ? 'Please wait…' : 'Not yet';
+    }
     messagesEl.scrollTop = messagesEl.scrollHeight;
   }
 
-  /**
-   * Write captured files straight into Project Files via /api/files/.
-   * Unlike generateFilesInChat this does NOT re-run the coding agent —
-   * the code is already in the chat response, we just persist it.
-   */
-  async function writeCapturedFiles(files, yesBtn) {
-    if (!files || !files.length) return;
-    var status = appendGenStatusBubble('Writing ' + files.length + ' file(s) into your Project Files…');
+  /** Backward-compatible wrapper for stored write-only cards. */
+  function appendFilesConsentCard(files, bubbleEl) {
+    appendFileActionsCard({ writes: files || [], deletes: [] }, bubbleEl, false);
+  }
+
+  function refreshLiveFilesCard(content, bubbleEl, state, streamingNow) {
+    var known = getKnownProjectFiles();
+    var actions = captureFileActions(content, known);
+    var signature = actionSignature(actions);
+    if (signature !== state.signature || (!streamingNow && state.streaming)) {
+      state.signature = signature;
+      state.streaming = streamingNow;
+      if (actions.writes.length || actions.deletes.length) appendFileActionsCard(actions, bubbleEl, streamingNow);
+    }
+    return actions;
+  }
+
+  function getKnownProjectFiles() {
+    var files = (fmFiles || []).slice();
+    if (projectContext && Array.isArray(projectContext.files)) {
+      projectContext.files.forEach(function (file) {
+        if (!files.some(function (existing) { return existing.path === file.path; })) files.push(file);
+      });
+    }
+    return files;
+  }
+
+  function hasLoadedProjectFiles() {
+    return Array.isArray(fmFiles) && fmFiles.length > 0;
+  }
+
+  /** Apply approved writes/updates and exact known-file removals. */
+  async function applyFileActions(actions, yesBtn) {
+    var writes = (actions && actions.writes) || [];
+    var deletes = (actions && actions.deletes) || [];
+    if (!writes.length && !deletes.length) return;
+    var status = appendGenStatusBubble('Applying project file changes…');
+    var applied = 0;
+    var failed = 0;
+    var quotaHit = false;
     try {
-      var agent = window.ASHAT && window.ASHAT.agent;
-      if (!agent || !agent.getLocalConfig || !agent.getLocalConfig()) {
-        status.className = 'gen-status-bubble err';
-        status.textContent = '⚠ File writing runs in your browser — add a provider + API key in Account → API Settings (keys stay on your device).';
-        if (yesBtn) { yesBtn.disabled = false; yesBtn.textContent = 'Yes — write these files'; }
-        return;
-      }
-      var saved = 0;
-      var quotaHit = false;
-      for (var i = 0; i < files.length; i++) {
+      for (var i = 0; i < writes.length; i++) {
         try {
-          await ashatFetch('/api/files/', {
-            method: 'POST',
-            body: { path: files[i].path, content: files[i].content },
-          });
-          saved++;
+          await ashatFetch('/api/files/', { method: 'POST', body: { path: writes[i].path, content: writes[i].content } });
+          applied++;
         } catch (e) {
+          failed++;
           if (e && e.payload && e.payload.error === 'quota_exceeded') quotaHit = true;
         }
       }
-      loadFileTree();
-      status.className = 'gen-status-bubble ' + (saved === files.length ? 'ok' : 'err');
-      status.textContent = saved === files.length
-        ? '✅ ' + saved + ' file(s) written into your Project Files.'
-        : '⚠ ' + saved + ' of ' + files.length + ' file(s) saved' +
-          (quotaHit ? ' — the 150 MB storage quota was reached. Delete files to free space, then try again.' : ' — some files failed to save. Try again.');
-      if (saved === files.length) {
-        finishFilesCard(yesBtn, '✓ ' + saved + ' file(s) written');
-        if (window.ashatToast) ashatToast('Generated ' + saved + ' file(s) into your Project Files.', 'ok');
+      for (var d = 0; d < deletes.length; d++) {
+        var match = getKnownProjectFiles().find(function (file) { return file.path === deletes[d] && file.id; });
+        if (!match) { failed++; continue; }
+        try {
+          await ashatFetch('/api/files/' + encodeURIComponent(match.id), { method: 'DELETE' });
+          applied++;
+        } catch (_) { failed++; }
+      }
+      await loadFileTree();
+      var total = writes.length + deletes.length;
+      status.className = 'gen-status-bubble ' + (failed ? 'err' : 'ok');
+      status.textContent = failed
+        ? '⚠ ' + applied + ' of ' + total + ' change(s) applied' + (quotaHit ? ' — storage quota reached.' : ' — review the Project Files panel.')
+        : '✅ ' + applied + ' project file change(s) applied.';
+      if (!failed) {
+        finishFilesCard(yesBtn, '✓ Changes applied');
+        if (window.ashatToast) ashatToast('Project file changes applied.', 'ok');
       } else if (yesBtn) {
         yesBtn.disabled = false;
-        yesBtn.textContent = 'Yes — write these files';
+        yesBtn.textContent = 'Yes — apply changes';
       }
     } catch (err) {
       status.className = 'gen-status-bubble err';
-      status.textContent = '⚠ ' + (err && err.message ? err.message : 'Write failed.');
-      if (yesBtn) { yesBtn.disabled = false; yesBtn.textContent = 'Yes — write these files'; }
+      status.textContent = '⚠ ' + (err && err.message ? err.message : 'Changes failed.');
+      if (yesBtn) { yesBtn.disabled = false; yesBtn.textContent = 'Yes — apply changes'; }
     }
   }
 
@@ -1585,6 +1799,7 @@
 
     var bubble = createAssistantBubble();
     var fullContent = '';
+    var liveFilesState = { signature: '', streaming: false };
 
     // Wire toggle on thinking header
     bubble.thinkingHeader.addEventListener('click', function () {
@@ -1655,7 +1870,10 @@
                 fullContent = doneObj.full_content;
               }
             } catch (_) {}
-            // Auto-collapse thinking frame + show final answer
+            // Auto-collapse thinking frame + show final answer. Re-run the
+            // capture with the authoritative full response and enable the
+            // consent button only after the stream is complete.
+            refreshLiveFilesCard(fullContent, bubble, liveFilesState, false);
             completeThinking(bubble, fullContent);
             break;
           }
@@ -1680,6 +1898,16 @@
                 // Non-thinking models only stream content — the label
                 // stays "Awaiting response..." for them.
                 fullContent += delta.content;
+                // Capture complete fenced blocks as soon as their closing
+                // fence arrives. Partial blocks remain invisible, while one
+                // consent card grows as additional files are completed.
+                // A closing fence can be split across SSE chunks (for
+                // example, '`', then '``'), so trigger on any backtick and
+                // let the complete-block parser decide whether the card
+                // actually changed.
+                if (delta.content.indexOf('`') !== -1) {
+                  refreshLiveFilesCard(fullContent, bubble, liveFilesState, true);
+                }
                 // Show raw tokens in the thinking content area
                 bubble.thinkingContent.textContent = fullContent;
                 // Ensure cursor is at the end
@@ -1695,9 +1923,13 @@
         if (eventType === 'done') break;
       }
 
-      // If stream ended naturally (no 'done' event) but we got content
-      if (fullContent && !bubble.finalAnswer.innerHTML) {
-        completeThinking(bubble, fullContent);
+      // If stream ended naturally (no 'done' event) but we got content,
+      // finalize the live card before returning to sendMessage().
+      if (fullContent) {
+        refreshLiveFilesCard(fullContent, bubble, liveFilesState, false);
+        if (!bubble.finalAnswer.innerHTML) {
+          completeThinking(bubble, fullContent);
+        }
       }
 
       return fullContent || null;
@@ -1823,7 +2055,12 @@
 
     // Build request
     var optimizedMsgs = getOptimizedMessages();
-    var body = { messages: optimizedMsgs, max_tokens: 4096 };
+    var body = {
+      messages: optimizedMsgs,
+      max_tokens: CHAT_MAX_TOKENS,
+      temperature: 0.82,
+      top_p: 0.95,
+    };
     var byoCfg = getByoConfig();
     if (byoCfg) body.byo_config = byoCfg;
 
@@ -1847,13 +2084,15 @@
       // Capture raw code blocks before they reach the chat so HTML/JS
       // never renders inline — they become "write (file)" actions the
       // user approves via a consent card.
-      var capturedFiles = captureFilesFromContent(content);
+      var knownProjectFiles = getKnownProjectFiles();
+      var fileActions = captureFileActions(content, knownProjectFiles);
       var storedContent = content;
-      if (capturedFiles.length) {
-        storedContent = stripCodeBlocks(content, capturedFiles);
+      if (fileActions.writes.length || fileActions.deletes.length) {
+        storedContent = stripCodeBlocks(content, fileActions.writes, fileActions.deletes);
       }
       var assistantMsg = { role: 'assistant', content: storedContent };
-      if (capturedFiles.length) assistantMsg.files = capturedFiles;
+      if (fileActions.writes.length) assistantMsg.files = fileActions.writes;
+      if (fileActions.deletes.length) assistantMsg.fileDeletes = fileActions.deletes;
       conv.messages.push(assistantMsg);
       touchConversation();
 

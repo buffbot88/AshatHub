@@ -19,7 +19,8 @@
   const MAX_FILE_BYTES       = 250 * 1024;        // 250 KB per file
   const MAX_TOTAL_BYTES      = 5  * 1024 * 1024;  // 5 MB total per build
   const REQUEST_TIMEOUT      = 120_000;           // 120 s for slow models
-  const DEFAULT_MAX_TOKENS   = 8192;               // safe default for streaming chat
+  const DEFAULT_MAX_TOKENS   = 12288;              // larger default for richer BYO chat
+  const SAFE_MAX_TOKENS      = 8192;               // compatibility fallback for smaller providers
   const BUILD_MAX_TOKENS     = 16384;              // multi-file builds need more room
 
   // ── localStorage key (single source of truth) ───────────────────
@@ -503,7 +504,7 @@
           model:       cfg.model || 'gpt-4o-mini',
           messages:    messages,
           max_tokens:  opts.max_tokens  || DEFAULT_MAX_TOKENS,
-          temperature: opts.temperature || 0.7,
+          temperature: opts.temperature || 0.82,
           stream:      true,
         }),
       }, {
@@ -526,9 +527,9 @@
           throw new Error('The AI model is still loading. Give it a moment and try again.');
         // Token-cap fallback: some providers reject a max_tokens above
         // their ceiling with a 400/413. Retry once at the safe default.
-        if ((r.status === 400 || r.status === 413) && (opts.max_tokens || 0) > DEFAULT_MAX_TOKENS && !opts._tokenRetried) {
-          if (opts.onProgress) opts.onProgress('Token cap hit — retrying with a smaller limit…');
-          return chatStream(messages, Object.assign({}, opts, { max_tokens: DEFAULT_MAX_TOKENS, _tokenRetried: true }));
+        if ((r.status === 400 || r.status === 413) && (opts.max_tokens || 0) > SAFE_MAX_TOKENS && !opts._tokenRetried) {
+          if (opts.onProgress) opts.onProgress('Token cap hit — retrying with a compatible limit…');
+          return chatStream(messages, Object.assign({}, opts, { max_tokens: SAFE_MAX_TOKENS, _tokenRetried: true }));
         }
         throw new Error('AI provider error ' + r.status + ': ' + errBody);
       }

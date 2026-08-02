@@ -22,14 +22,16 @@ function extractFn(name) {
 
 const sandbox = eval(
   '(function () {' +
-    ['extractStructurePaths', 'captureFilesFromContent', 'uniquePath', 'inferFilePath']
+    ['extractStructurePaths', 'captureFilesFromContent', 'resolveKnownCapturePath', 'extractDeletePaths', 'captureFileActions', 'uniquePath', 'inferFilePath']
       .map(extractFn)
       .join('\n') +
-    '\nreturn { extractStructurePaths, captureFilesFromContent, uniquePath, inferFilePath };' +
+    '\nreturn { extractStructurePaths, captureFilesFromContent, resolveKnownCapturePath, extractDeletePaths, captureFileActions, uniquePath, inferFilePath };' +
     '})()'
 );
 const extractStructurePaths = sandbox.extractStructurePaths;
 const captureFilesFromContent = sandbox.captureFilesFromContent;
+const extractDeletePaths = sandbox.extractDeletePaths;
+const captureFileActions = sandbox.captureFileActions;
 
 let pass = 0;
 let fail = 0;
@@ -82,6 +84,12 @@ eq('labeled blocks win over structure',
 eq('language fallback for unlabeled block -> file.<ext>',
   captureFilesFromContent('```python\nprint(1)\n```'),
   [{ path: 'file.py', content: 'print(1)', language: 'python' }]);
+eq('iteration resolves generic HTML capture to the only known HTML file',
+  captureFilesFromContent('Here is the updated character screen.\n\n```html\n<h1>Updated</h1>\n```', [{ path: 'src/character-creation/index.html' }]),
+  [{ path: 'src/character-creation/index.html', content: '<h1>Updated</h1>', language: 'html', action: 'update' }]);
+eq('iteration uses a named existing path mentioned near the block',
+  captureFilesFromContent('Update `src/main.js` with this change.\n\n```javascript\nconsole.log(2);\n```', [{ path: 'src/main.js' }, { path: 'src/other.js' }]),
+  [{ path: 'src/main.js', content: 'console.log(2);', language: 'javascript', action: 'update' }]);
 eq('duplicate fallbacks get unique names (file.html, file-2.html)',
   captureFilesFromContent('```html\nA\n```\n\n```html\nB\n```'),
   [
@@ -110,6 +118,50 @@ eq('no structure section -> empty', extractStructurePaths('no structure here').p
 eq('structure stops at first non-path line', extractStructurePaths(
   '## File Structure\n- a.ts\n\nHere is the code\n- b.ts').paths,
   ['a.ts']);
+eq('plain-text "Initial File Structure" heading', extractStructurePaths(
+  'Initial File Structure\nHTML Skeleton (index.html)\nCSS Styling (style.css)\nJavaScript Logic (script.js)\nNext Steps\n...').paths,
+  ['index.html', 'style.css', 'script.js']);
+eq('structure heading without markdown markers', extractStructurePaths(
+  'File Structure:\n- index.html\n- script.js').paths,
+  ['index.html', 'script.js']);
+
+// ── captureFilesFromContent: realistic AI reply (the reported failure) ─
+eq('plain structure list + unlabeled blocks (no generic file.txt/html/css/js)',
+  captureFilesFromContent(
+    'Absolutely! Let\'s create a character page.\n\n' +
+    'Initial File Structure\n' +
+    'HTML Skeleton (index.html)\n' +
+    'CSS Styling (style.css)\n' +
+    'JavaScript Logic (script.js)\n' +
+    'Next Steps\n' +
+    'We\'ll add a data store later.\n\n' +
+    '```html\n<h1>Hi</h1>\n```\n\n' +
+    '```css\nbody {}\n```\n\n' +
+    '```javascript\nvar x = 1;\n```'),
+  [
+    { path: 'index.html', content: '<h1>Hi</h1>', language: 'html' },
+    { path: 'style.css', content: 'body {}', language: 'css' },
+    { path: 'script.js', content: 'var x = 1;', language: 'javascript' },
+  ]);
+eq('captures explicit removal of a known file',
+  extractDeletePaths('## Files to Remove\n- `src/old.css`\n\nKeep the other files.', [{ path: 'src/old.css' }, { path: 'src/keep.css' }]),
+  ['src/old.css']);
+eq('ignores removal of an unknown file',
+  extractDeletePaths('Remove `src/missing.css`.', [{ path: 'src/keep.css' }]),
+  []);
+eq('captures writes and removals as separate actions',
+  captureFileActions('Update `src/main.js`.\n```javascript\nconsole.log(3);\n```\n\nRemove `src/old.js`.', [{ path: 'src/main.js' }, { path: 'src/old.js' }]),
+  { writes: [{ path: 'src/main.js', content: 'console.log(3);', language: 'javascript', action: 'update' }], deletes: ['src/old.js'] });
+eq('skips directory-tree diagram blocks',
+  captureFilesFromContent(
+    'Initial File Structure\n- index.html\n- styles.css\n\n' +
+    '```text\nsrc/\n└── character-creation/\n    ├── index.html\n    └── styles.css\n```\n\n' +
+    '```html\n<A>\n```\n\n' +
+    '```css\nbody{}\n```'),
+  [
+    { path: 'index.html', content: '<A>', language: 'html' },
+    { path: 'styles.css', content: 'body{}', language: 'css' },
+  ]);
 
 console.log('\n' + pass + ' passed, ' + fail + ' failed');
 process.exit(fail ? 1 : 0);

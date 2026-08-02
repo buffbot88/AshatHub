@@ -35,6 +35,9 @@
           <a href="/support/" class="block px-4 py-2.5 text-sm" style="color: var(--text-soft);" onmouseover="this.style.background='var(--surface-2)'" onmouseout="this.style.background=''">Support</a>
           <div style="border-top: 1px solid var(--line); margin: 4px 0;"></div>
           <a href="/account/" class="block px-4 py-2.5 text-sm" style="color: var(--text-soft);" onmouseover="this.style.background='var(--surface-2)'" onmouseout="this.style.background=''">Account</a>
+          <?php if (in_array($view->__user['role'], ['Pro', 'Admin'], true)): ?>
+            <a href="/account/active-users/" class="block px-4 py-2.5 text-sm" style="color: var(--text-soft);" onmouseover="this.style.background='var(--surface-2)'" onmouseout="this.style.background=''">Active users</a>
+          <?php endif; ?>
           <?php if ($view->__user['role'] === 'Admin'): ?>
             <a href="/admin/" class="block px-4 py-2.5 text-sm" style="color: var(--accent);" onmouseover="this.style.background='var(--surface-2)'" onmouseout="this.style.background=''">Admin</a>
           <?php endif; ?>

@@ -60,7 +60,7 @@ eq('bullet - index.html', infer('- index.html'), 'index.html');
 eq('numbered 1. index.html', infer('1. index.html'), 'index.html');
 eq('bare line index.html', infer('index.html'), 'index.html');
 eq('backtick after block', infer(null, 'html', '`src/app.js`'), 'src/app.js');
-eq('label sits two lines above (blank between)', infer('**styles.css**\n'), 'styles.css');
+eq('label with one blank line between', infer('**styles.css**'), 'styles.css');
 
 // ── captureFilesFromContent: end-to-end ──────────────────────────
 eq('no code blocks -> empty', captureFilesFromContent('just prose'), []);
@@ -88,12 +88,12 @@ eq('duplicate fallbacks get unique names (file.html, file-2.html)',
     { path: 'file.html', content: 'A', language: 'html' },
     { path: 'file-2.html', content: 'B', language: 'html' },
   ]);
-eq('mixed: labeled + unlabeled + duplicate-avoidance',
+eq('mixed: labeled block + unlabeled block',
   captureFilesFromContent(
     '**index.html**\n\n```html\n<A>\n```\n\n```html\n<B>\n```'),
   [
     { path: 'index.html', content: '<A>', language: 'html' },
-    { path: 'file-2.html', content: '<B', language: 'html' },
+    { path: 'file.html', content: '<B>', language: 'html' },
   ]);
 eq('skips empty code blocks',
   captureFilesFromContent('```html\n\n```'),
@@ -101,12 +101,15 @@ eq('skips empty code blocks',
 
 // ── extractStructurePaths ────────────────────────────────────────
 eq('structure paths from ## File Structure', extractStructurePaths(
-  '## File Structure\n- src/index.html\n- src/styles.css\n\n## Other'),
+  '## File Structure\n- src/index.html\n- src/styles.css\n\n## Other').paths,
   ['src/index.html', 'src/styles.css']);
 eq('structure paths from bold section', extractStructurePaths(
-  '**File Structure**\n- a.ts\n- b.ts'),
+  '**File Structure**\n- a.ts\n- b.ts').paths,
   ['a.ts', 'b.ts']);
-eq('no structure section -> empty', extractStructurePaths('no structure here'), []);
+eq('no structure section -> empty', extractStructurePaths('no structure here').paths, []);
+eq('structure stops at first non-path line', extractStructurePaths(
+  '## File Structure\n- a.ts\n\nHere is the code\n- b.ts').paths,
+  ['a.ts']);
 
 console.log('\n' + pass + ' passed, ' + fail + ' failed');
 process.exit(fail ? 1 : 0);

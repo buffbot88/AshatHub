@@ -990,25 +990,28 @@
   /** Pull file paths out of a `## File Structure` (or bold) section so
    *  unlabeled code blocks can inherit names positionally. */
   function extractStructurePaths(content) {
-    var m = content.match(/##+\s*(?:File Structure|Project Structure|Files)[^\n]*\n([\s\S]*?)(?=\n##|\n<!--|$)/i);
-    var section = m ? m[1] : '';
-    if (!m) {
-      m = content.match(/\*\*(?:File Structure|Project Structure|Files)\*\*[^\n]*\n([\s\S]*?)(?=\n\*\*|\n##|\n<!--|$)/i);
-      section = m ? m[1] : '';
-    }
+    var m = content.match(/##+\s*(?:File Structure|Project Structure|Files)[^\n]*\n/i)
+      || content.match(/\*\*(?:File Structure|Project Structure|Files)\*\*[^\n]*\n/i);
+    if (!m) return { paths: [], end: -1 };
+    var start = m.index + m[0].length;
     var paths = [];
-    var re = /^\s*(?:[-*•]|\d+[.)])\s+`?([A-Za-z0-9_./-]+\.[A-Za-z0-9]+)`?\s*$/gm;
-    var mm;
-    while ((mm = re.exec(section)) !== null) {
-      if (paths.indexOf(mm[1]) === -1) paths.push(mm[1]);
+    var lineRe = /^\s*(?:[-*•]|\d+[.)])\s+`?([A-Za-z0-9_./-]+\.[A-Za-z0-9]+)`?\s*$/;
+    var lines = content.slice(start).split('\n');
+    var end = start;
+    for (var i = 0; i < lines.length; i++) {
+      var lm = lines[i].match(lineRe);
+      if (!lm) break;
+      if (paths.indexOf(lm[1]) === -1) paths.push(lm[1]);
+      end += lines[i].length + 1;
     }
-    return paths;
+    return { paths: paths, end: end };
   }
 
   function captureFilesFromContent(content) {
     var files = [];
     var blocks = content.match(/```([^\n]*)\n([\s\S]*?)```/g) || [];
     var structure = extractStructurePaths(content);
+    var structurePaths = structure.paths;
     var used = {};
     var LANG_EXT = { html: 'html', css: 'css', js: 'js', javascript: 'js', ts: 'ts', typescript: 'ts', php: 'php', py: 'py', python: 'py', json: 'json', md: 'md', markdown: 'md', sql: 'sql', java: 'java', go: 'go', rb: 'rb', ruby: 'rb', sh: 'sh', bash: 'sh', yaml: 'yml', yml: 'yml', xml: 'xml', txt: 'txt' };
     for (var b = 0; b < blocks.length; b++) {
@@ -1021,14 +1024,20 @@
       // Strip trailing newline so saved files don't carry an extra \n
       code = code.replace(/\n$/, '');
       var path = inferFilePath(content, blocks[b]);
+      // If the only "label" is the structure section's own bullet sitting
+      // directly above the block, ignore it so positional assignment wins.
+      if (path && structure.end >= 0) {
+        var between = content.slice(structure.end, content.indexOf(blocks[b]));
+        if (between.trim() === '') path = null;
+      }
       // Fence info may carry an explicit path: ```python src/lib/util.py
       if (!path) {
         var infoPath = info.match(/(?:^|\s)([A-Za-z0-9_./-]+\.[A-Za-z0-9]+)\s*$/);
         if (infoPath) path = infoPath[1];
       }
       // Positional fallback: unlabeled block inherits the structure path
-      if (!path && structure.length) {
-        path = structure[b] || null;
+      if (!path && structurePaths.length) {
+        path = structurePaths[b] || null;
       }
       if (!path) {
         path = 'file.' + (LANG_EXT[lang] || 'txt');

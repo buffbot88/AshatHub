@@ -37,7 +37,8 @@ No build step. No bundler. Drop the folder on a PHP-capable host and run.
 │   └── views/             ← Layouts (header.php, footer.php) + page views
 ├── config/
 │   ├── bootstrap.php      ← Boot sequence + all APP_*/DB_*/SESSION_* constants
-│   └── server_config.json ← Live config for shared hosts (not a dotfile, gitignored)
+│   ├── server_config.json ← Live config for shared hosts (not a dotfile, gitignored)
+│   └── server_config.example.json ← Template for new installs (safe to commit)
 ├── db/
 │   ├── schema.sql             ← MySQL schema + seed data (full-access setup)
 │   ├── schema-tables-only.sql ← tables + seeds only (shared-hosting setup)
@@ -80,7 +81,7 @@ mysql -u root -p < db/schema.sql
 
 **Configure the app:**
 
-All settings (`APP_*`, `DB_*`, `SESSION_*`) are centralized in `config/bootstrap.php` and overridden from **`config/server_config.json`** — a regular JSON file that works even on hosts that block dotfiles. Create/edit it and set your real credentials (see `config/bootstrap.php` for the expected keys):
+All settings (`APP_*`, `DB_*`, `SESSION_*`) are centralized in `config/bootstrap.php` and overridden from **`config/server_config.json`** — a regular JSON file that works even on hosts that block dotfiles. **Start from `config/server_config.example.json`** (a committed template with every supported key documented), copy it to `config/server_config.json`, and set your real credentials (see `config/bootstrap.php` for the expected keys):
 
 ```json
 {
@@ -149,7 +150,7 @@ This sets the admin password to `admin1234`. Or just visit `/register/`, create 
 
 ### 5. Free shared-hosting setup (ByetHost, VistaPanel, dotfile-hostile hosts)
 
-If your host blocks dotfile uploads or `.env` doesn't seem to load, use **`config/server_config.json`** — a regular JSON file, no dotfile issue. It covers ALL settings (`APP_*`, `DB_*`, `SESSION_*`), is loaded before `.env`, and skips `.env` entirely when present. Put your real database credentials there.
+If your host blocks dotfile uploads or `.env` doesn't seem to load, use **`config/server_config.json`** — a regular JSON file, no dotfile issue. It covers ALL settings (`APP_*`, `DB_*`, `SESSION_*`), is loaded before `.env`, and skips `.env` entirely when present. Copy `config/server_config.example.json` to `config/server_config.json` and put your real database credentials there.
 
 **ByetHost free-specific tips:**
 

@@ -29,7 +29,7 @@ Key code locations:
 - **`public/js/`** — Vanilla JS: `app.js` (ashatFetch, toasts), `agent.js` (Coding Agent — BYO-key LLM driver), `assistant.js` (Chat page — conversations, spec versions, Markdown export, chat File Manager + Monaco panel)
 - **`public/css/app.css`** — Custom "Plainspoken" design system (Newsreader serif + Inter + JetBrains Mono)
 - **`src/Data/`** — `CategoryLabels` (ErrorPages lives in `src/Core/`)
-- **`config/`** — `bootstrap.php` (boot sequence + all `APP_*`/`DB_*`/`SESSION_*` constants), `server_config.json` (your live config — gitignored)
+- **`config/`** — `bootstrap.php` (boot sequence + all `APP_*`/`DB_*`/`SESSION_*` constants), `server_config.json` (your live config — gitignored), `server_config.example.json` (committed template for new installs)
 - **`.htaccess`** — Root Apache rules for flat/shared-hosting deploy (uses ErrorDocument, no mod_rewrite required)
 - **`index.php`** — Root entry point for shared hosting (restores `REDIRECT_URL` → `REQUEST_URI`)
 
@@ -161,7 +161,7 @@ No package.json or composer.json — **zero dependencies**.
 - **File Manager folder markers**: an empty folder is a row whose path ends with `/`. Prefix semantics match it (`foo` ≡ `foo/`) for delete/rename — never render markers as files.
 - **Route order in `/api/files`**: `/export`, `/import`, `/rename`, `/duplicate`, `/tree` must precede `/{id}`, otherwise `tree` gets captured as an id.
 - **`ZipArchive` NOT guaranteed** — the `zip` PHP extension is often missing on shared hosts. Chat import/export uses `Core\ZipHelper` (pure PHP + zlib) instead; don't introduce `ZipArchive` dependencies.
-  - `config/server_config.json` — primary config file (not a dotfile). Covers ALL settings. Loaded before `.env`, skips `.env` if present.
+  - `config/server_config.json` — primary config file (not a dotfile). Covers ALL settings. Loaded before `.env`, skips `.env` if present. `server_config.example.json` is a committed template — copy it for new installs; the loader skips keys starting with `//` (documentation comments).
 - **No mod_rewrite needed** — `.htaccess` uses `ErrorDocument 404/403 /index.php` for shared hosts; `RedirectMatch 403` from mod_alias blocks private dirs
 - **`?__diag=1`** endpoint runs before bootstrap — use it to check PHP version and file existence on a fresh deploy
 - **`never` return type** on `RequestContext::redirect()` and `jsonResponse()` — method always exits/throws

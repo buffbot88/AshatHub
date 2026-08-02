@@ -1034,55 +1034,36 @@ a, button {
   background: rgba(255, 107, 107, 0.1);
 }
 
-/* ── Live preview container (inline in chat bubbles) ──────────── */
-.live-preview-container {
-  margin-top: 10px;
-  border-top: 1px solid var(--line-soft);
-  padding-top: 8px;
-}
-
-.preview-toggle {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  padding: 6px 10px;
-  border-radius: 6px;
-  background: var(--surface-2);
+/* ── Spec consent card (ask before generating files) ──────────── */
+.spec-consent-card {
+  margin-top: 12px;
+  padding: 12px 14px;
   border: 1px solid var(--line);
-  color: var(--text-mute);
-  font-size: 11px;
+  border-left: 2px solid var(--accent);
+  border-radius: 8px;
+  background: var(--surface-2);
+}
+.spec-consent-card .spec-consent-title {
   font-family: var(--font-mono);
-  cursor: pointer;
-  transition: all .15s ease;
-  width: 100%;
-  text-align: left;
+  font-size: 10px;
   text-transform: uppercase;
   letter-spacing: 0.08em;
+  color: var(--gold);
+  margin-bottom: 6px;
 }
-.preview-toggle:hover {
-  background: var(--surface-3);
-  border-color: var(--text-dim);
-  color: var(--text);
+.spec-consent-card .spec-consent-text {
+  font-size: 12px;
+  color: var(--text-soft);
+  line-height: 1.6;
+  margin-bottom: 10px;
 }
-.preview-toggle .preview-toggle-arrow {
-  display: inline-block;
-  transition: transform .2s ease;
-  font-size: 10px;
+.spec-consent-card .spec-consent-actions {
+  display: flex;
+  gap: 8px;
 }
-
-.preview-wrapper {
-  margin-top: 6px;
-  border-radius: 8px;
-  overflow: hidden;
-  border: 1px solid var(--line-soft);
-}
-
-.live-preview-iframe {
-  width: 100%;
-  height: 300px;
-  display: block;
-  background: var(--bg);
-  border: none;
+.spec-consent-card .spec-consent-actions button:disabled {
+  opacity: 0.6;
+  cursor: wait;
 }
 
 /* ── Chat project file manager (right-pane tree) ──────────────── */

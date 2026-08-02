@@ -102,18 +102,19 @@
       'When the spec is complete and in the markers, also summarize in a sentence',
       'that the spec is ready to copy or send to the Planner.',
       '',
-      'You may also include a **live HTML/CSS preview** of the project\'s main UI',
-      'between <!--PREVIEW--> and <!--/PREVIEW--> markers. This will render inline',
-      'in the chat as a sandboxed preview. Use this for visual projects like web apps,',
-      'landing pages, dashboards, or UI components. Keep the preview self-contained:',
-      'inline styles, no external dependencies. Example:',
-      '',
-      '<!--PREVIEW-->',
-      '<div style="background:#111;color:gold;padding:20px;border-radius:8px;">',
-      '  <h1>My App</h1>',
-      '  <p>Welcome to the preview!</p>',
-      '</div>',
-      '<!--/PREVIEW-->',
+      'IMPORTANT — CODE CONSENT POLICY:',
+      '- Never write code files directly in the chat. No code blocks that are meant to',
+      '  be saved as files, no file dumps, and no inline HTML/CSS/JS previews of the',
+      '  project.',
+      '- The chat is for brainstorming and spec-writing only. Actual file generation',
+      '  is done by the coding agent in the Planner, and ONLY after the user',
+      '  explicitly agrees to it.',
+      '- When the spec is complete, ASK the user whether they want you to generate the',
+      '  project files — for example: "Want me to generate these files into your',
+      '  project folder?" — then wait for their explicit approval.',
+      '- If they say yes, tell them the next step is to open the Planner, where the',
+      '  coding agent builds the files (they approve the plan there too). If they are',
+      '  not ready, wait — never generate files unprompted.',
     ].join('\n'),
   };
 
@@ -975,17 +976,6 @@
         '<div class="chat-bubble-content chat-md">' + renderMarkdown(cleanContent) + '</div>' +
       '</div>';
     messagesEl.appendChild(div);
-
-    // For assistant messages, check for preview markers and append iframe
-    if (role === 'assistant') {
-      var previewHtml = extractPreview(content);
-      if (previewHtml) {
-        var bubbleContentEl = div.querySelector('.chat-bubble-content');
-        if (bubbleContentEl) {
-          appendPreviewToBubble(bubbleContentEl, previewHtml);
-        }
-      }
-    }
   }
 
   // ══════════════════════════════════════════════════════════════════
@@ -1014,7 +1004,7 @@
   }
 
   // ══════════════════════════════════════════════════════════════════
-  //  SPEC & PREVIEW EXTRACTION
+  //  SPEC EXTRACTION
   // ══════════════════════════════════════════════════════════════════
 
   function extractSpec(text) {
@@ -1023,18 +1013,10 @@
   }
 
   /**
-   * Extract content between <!--PREVIEW--> and <!--/PREVIEW--> markers.
-   * Returns the HTML content, or null if no preview markers found.
-   */
-  function extractPreview(text) {
-    var match = text.match(/<!--PREVIEW-->([\s\S]*?)<!--\/PREVIEW-->/);
-    if (!match) return null;
-    var html = match[1].trim();
-    return html || null;
-  }
-
-  /**
-   * Strip all known marker tags from text so they don't appear in the markdown rendering.
+   * Strip all known marker tags from text so they don't appear in the markdown
+   * rendering. PREVIEW markers are still stripped for backward compatibility
+   * with conversations saved before the code-consent change (the AI no longer
+   * emits them, but old stored content must render cleanly).
    */
   function stripMarkers(text) {
     return text
@@ -1043,80 +1025,6 @@
       .replace(/<!--\/?SPEC-->/g, '')
       .replace(/<!--\/?PREVIEW-->/g, '')
       .trim();
-  }
-
-  /**
-   * Create a sandboxed iframe for a live preview and append it to the
-   * assistant bubble's chat-bubble-content area.
-   */
-  function appendPreviewToBubble(bubbleContentEl, previewHtml) {
-    if (!bubbleContentEl || !previewHtml) return;
-
-    // Don't add a preview if one already exists for this bubble
-    if (bubbleContentEl.querySelector('.live-preview-container')) return;
-
-    var container = document.createElement('div');
-    container.className = 'live-preview-container';
-
-    // Preview toggle header
-    var toggle = document.createElement('button');
-    toggle.className = 'preview-toggle';
-    toggle.innerHTML = '<span class="preview-toggle-arrow">▶</span> Live Preview';
-
-    // Wrapper for the iframe (hidden by default)
-    var wrapper = document.createElement('div');
-    wrapper.className = 'preview-wrapper';
-    wrapper.style.display = 'none';
-
-    var iframe = document.createElement('iframe');
-    iframe.className = 'live-preview-iframe';
-    iframe.setAttribute('sandbox', 'allow-scripts');
-    iframe.setAttribute('loading', 'lazy');
-    iframe.title = 'Live Preview';
-
-    // Write content into the iframe
-    wrapper.appendChild(iframe);
-    container.appendChild(toggle);
-    container.appendChild(wrapper);
-    bubbleContentEl.appendChild(container);
-
-    // Defer iframe write to ensure DOM is ready
-    requestAnimationFrame(function () {
-      try {
-        var doc = iframe.contentDocument || iframe.contentWindow.document;
-        doc.open();
-        doc.write(previewHtml);
-        doc.close();
-      } catch (e) {
-        wrapper.innerHTML = '<div style="color:var(--gold-err);font-size:11px;padding:8px;">⚠ Could not render preview</div>';
-      }
-
-      // After iframe loads, adjust height to content
-      iframe.addEventListener('load', function () {
-        try {
-          var h = iframe.contentDocument.documentElement.scrollHeight || 300;
-          iframe.style.height = Math.min(h, 400) + 'px';
-        } catch (_) {}
-      });
-    });
-
-    // Toggle click handler
-    toggle.addEventListener('click', function () {
-      var isVisible = wrapper.style.display !== 'none';
-      wrapper.style.display = isVisible ? 'none' : 'block';
-      var arrow = toggle.querySelector('.preview-toggle-arrow');
-      if (arrow) {
-        arrow.style.transform = isVisible ? 'rotate(0deg)' : 'rotate(90deg)';
-      }
-
-      // When shown for the first time, trigger iframe height adjustment
-      if (!isVisible) {
-        try {
-          var h = iframe.contentDocument.documentElement.scrollHeight || 300;
-          iframe.style.height = Math.min(h, 400) + 'px';
-        } catch (_) {}
-      }
-    });
   }
 
   function setSpec(spec, skipSave) {
@@ -1142,16 +1050,79 @@
     }
   }
 
+  /**
+   * Append a consent card to the latest assistant bubble when a spec is
+   * detected. The chat AI NEVER writes code itself — it asks first, and
+   * only when the user explicitly says yes does it hand off to the
+   * coding agent (Planner), which still requires approving the plan.
+   */
+  function appendSpecConsentCard(spec) {
+    if (!spec || !messagesEl) return;
+
+    var bubbles = messagesEl.querySelectorAll('.chat-bubble.assistant');
+    var bubble = bubbles.length ? bubbles[bubbles.length - 1] : null;
+    if (!bubble) return;
+
+    var body = bubble.querySelector('.chat-bubble-body');
+    if (!body) return;
+
+    // Don't stack a second card on the same bubble.
+    if (body.querySelector('.spec-consent-card')) return;
+
+    var role = window.ASHAT && window.ASHAT.role;
+    var canGenerate = (role === 'Pro' || role === 'Admin');
+
+    var card = document.createElement('div');
+    card.className = 'spec-consent-card';
+    card.innerHTML =
+      '<div class="spec-consent-title">Spec ready</div>' +
+      (canGenerate
+        ? '<div class="spec-consent-text">Want me to generate these files into your project folder? ' +
+          'The coding agent builds them in the Planner — you approve the plan before anything is written.</div>'
+        : '<div class="spec-consent-text">Your spec is saved locally. Generating project files in the ' +
+          'Planner requires a Pro account — <a href="' + (window.ASHAT && window.ASHAT.accountUrl ? window.ASHAT.accountUrl : '#') + '" ' +
+          'style="color:var(--accent);text-decoration:underline;">upgrade</a> when you\'re ready to build.</div>') +
+      '<div class="spec-consent-actions">' +
+        (canGenerate
+          ? '<button type="button" class="btn-gold spec-consent-yes" style="font-size:10px;padding:5px 12px;">Yes — generate files</button>'
+          : '') +
+        '<button type="button" class="btn-outline spec-consent-no" style="font-size:10px;padding:5px 12px;">Not yet</button>' +
+      '</div>';
+
+    var yesBtn = card.querySelector('.spec-consent-yes');
+    var noBtn  = card.querySelector('.spec-consent-no');
+
+    if (yesBtn) {
+      yesBtn.addEventListener('click', function () {
+        yesBtn.disabled = true;
+        yesBtn.textContent = 'Opening Planner...';
+        sendToPlanner(spec);
+      });
+    }
+
+    noBtn.addEventListener('click', function () {
+      if (card.parentNode) card.parentNode.removeChild(card);
+      ashatToast('No problem — just say the word when you want it built.', 'ok');
+    });
+
+    body.appendChild(card);
+    messagesEl.scrollTop = messagesEl.scrollHeight;
+  }
+
   // ══════════════════════════════════════════════════════════════════
   //  SEND TO PLANNER
   // ══════════════════════════════════════════════════════════════════
 
+  /**
+   * Send the finished spec to the Planner so the coding agent can build
+   * the files. This is the CONSENT-GATED handoff: files are only ever
+   * generated into the user's project folder after they explicitly ask
+   * for it (via the spec-consent card), and the Planner's two-phase
+   * flow still requires approving the plan before any file is written.
+   */
   async function sendToPlanner(spec) {
-    if (!spec || !plannerBtn) return;
+    if (!spec) return;
     try {
-      plannerBtn.disabled = true;
-      plannerBtn.textContent = 'Saving...';
-
       var title = 'Chat Spec';
       var titleMatch = spec.match(/^#\s+Project:\s+(.+)$/m);
       if (titleMatch) title = titleMatch[1].trim();
@@ -1173,13 +1144,9 @@
         }, 400);
       } else {
         ashatToast('Could not save spec.', 'err');
-        plannerBtn.disabled = false;
-        plannerBtn.textContent = '→ Planner';
       }
     } catch (err) {
       ashatToast('Failed to save spec: ' + (err.message || 'unknown'), 'err');
-      plannerBtn.disabled = false;
-      plannerBtn.textContent = '→ Planner';
     }
   }
 
@@ -1321,18 +1288,12 @@
     bubble.thinkingLabel.textContent = 'BrainStem finished reasoning';
 
     if (finalContent) {
-      // Strip marker tags for the rendered markdown so users don't see raw <!--SPEC/PREVIEW--> tags
+      // Strip marker tags for the rendered markdown so users don't see raw <!--SPEC--> tags
       var cleanContent = stripMarkers(finalContent);
 
       // Show final answer (with markers stripped)
       bubble.finalAnswer.style.display = '';
       bubble.finalAnswer.innerHTML = renderMarkdown(cleanContent);
-
-      // Check for live preview markers in the raw content and append iframe
-      var previewHtml = extractPreview(finalContent);
-      if (previewHtml) {
-        appendPreviewToBubble(bubble.finalAnswer, previewHtml);
-      }
     }
 
     messagesEl.scrollTop = messagesEl.scrollHeight;
@@ -1502,12 +1463,6 @@
         bubble.finalAnswer.style.display = '';
         bubble.finalAnswer.innerHTML = renderMarkdown(cleanReply);
 
-        // Check for live preview markers
-        var previewHtml = extractPreview(reply);
-        if (previewHtml) {
-          appendPreviewToBubble(bubble.finalAnswer, previewHtml);
-        }
-
         messagesEl.scrollTop = messagesEl.scrollHeight;
       }
 
@@ -1595,9 +1550,14 @@
       conv.messages.push({ role: 'assistant', content: content });
       touchConversation();
 
-      // Check for spec markers in the response
+      // Check for spec markers in the response. The chat AI never writes
+      // code itself — it shows a consent card so the user can choose to
+      // hand the spec to the coding agent (Planner) or wait.
       var spec = extractSpec(content);
-      if (spec) setSpec(spec);
+      if (spec) {
+        setSpec(spec);
+        appendSpecConsentCard(spec);
+      }
     } else    if (content === null) {
       // Both methods failed entirely — tryNonStream already created the bubble
       var accountLink = window.ASHAT && window.ASHAT.accountUrl
@@ -2174,14 +2134,9 @@
       return;
     }
 
-    // Escape — Close previews, blur input, close help
+    // Escape — blur input, close help
     if (key === 'Escape') {
       if (isInputFocused) { input.blur(); return; }
-      document.querySelectorAll('.preview-wrapper[style*="block"]').forEach(function (w) {
-        w.style.display = 'none';
-        var arrow = w.parentElement.querySelector('.preview-toggle-arrow');
-        if (arrow) arrow.style.transform = 'rotate(0deg)';
-      });
       var help = document.getElementById('shortcuts-help');
       if (help && help.style.display !== 'none') { help.style.display = 'none'; return; }
       return;

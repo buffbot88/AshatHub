@@ -57,6 +57,21 @@ The version displayed in the UI comes from `APP_VERSION` in `config/bootstrap.ph
   and the Copy/Planner bindings are null-guarded so nothing breaks
 - **Files API route list** grew: `GET /api/files/export` and
   `POST /api/files/import` (both registered before `/{id}`)
+- **Chat AI is consent-gated — it never writes code**
+  - The chat system prompt now enforces a **CODE CONSENT POLICY**: the AI
+    brainstorms + writes specs only, never emits code files or inline
+    HTML/CSS/JS previews in the chat, and **asks** whether to generate the
+    project files before anything happens
+  - When a spec (`<!--SPEC-->`) is detected, a **spec-consent card** appears
+    on the assistant bubble ("Spec ready — want me to generate these files
+    into your project folder?"). Files are only generated after the user
+    clicks **Yes — generate files**, which hands the spec to the coding
+    agent in the Planner (`/ide/planner/?spec=`); the Planner's two-phase
+    flow still requires approving the plan before any file is written
+  - The `<!--PREVIEW-->` live-preview mechanism was removed (`extractPreview`,
+    `appendPreviewToBubble`, call sites, PREVIEW strip lines, and the
+    `.live-preview*`/`.preview-*` CSS); `sendToPlanner()` no longer depends
+    on the removed planner button
 
 ### Removed
 

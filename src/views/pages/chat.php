@@ -183,4 +183,5 @@
 <script>
   window.ASHAT = window.ASHAT || {};
   window.ASHAT.accountUrl = '<?= e(asset('/account/')) ?>';
+  window.ASHAT.role = '<?= e($view->user['role'] ?? 'Member') ?>';
 </script>

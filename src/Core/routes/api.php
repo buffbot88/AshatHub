@@ -52,11 +52,5 @@ $router->group('/api', function () use ($router) {
         // Usage: GET /api/asset?path=js/assistant.js
         // Useful when mod_rewrite / .htaccess is unavailable.
         $router->get('/asset', [\Controllers\ApiController::class, 'serveAsset']);
-
-        // ─── BrainStem admin config (admin-gate on top of pro-or-admin) ─
-        $router->group('/admin', ['middleware' => ['admin-gate']], function () use ($router) {
-            $router->get('/brainstem-config',  [\Controllers\ChatController::class, 'getBrainstemConfig']);
-            $router->put('/brainstem-config',  [\Controllers\ChatController::class, 'updateBrainstemConfig']);
-        });
     });
 });

@@ -3,7 +3,6 @@ declare(strict_types=1);
 namespace Controllers;
 
 use Controllers\FormRequests\UpdateProfileRequest;
-use Core\ConfigBag;
 use Core\RequestContext;
 use Repositories\RepositoryRegistry;
 
@@ -34,9 +33,6 @@ final class AccountController
         $ctx->view('pages/account', [
             'title'           => 'Account · ' . APP_NAME,
             'user'            => $user,
-            'api'             => null,
-            'brainstem_config' => self::safeRepo(fn() => RepositoryRegistry::brainstemConfig()->get(), null),
-            'env_url'         => ConfigBag::getInstance()->brainstemUrl(),
             'stats' => [
                 'files' => count(self::safeRepo(fn() => RepositoryRegistry::file()->allForUser($user['id']))),
             ],

@@ -9,9 +9,9 @@ use Repositories\RepositoryRegistry;
 
 /**
  * ═══════════════════════════════════════════════════════════════════════
- * Controllers\ChatController — AI chat proxying and BrainStem admin
- * config management. Provides non-streaming chat() and SSE chatStream()
- * modes; both go through ChatBackend for unified request building.
+ * Controllers\ChatController — AI chat proxying. Provides non-streaming
+ * chat() and SSE chatStream() modes; both go through ChatBackend for
+ * unified request building.
  * ═══════════════════════════════════════════════════════════════════════
  */
 final class ChatController
@@ -36,7 +36,7 @@ final class ChatController
         if (!$backend->isAvailable()) {
             $ctx->jsonResponse([
                 'error'   => 'no_backend_configured',
-                'message' => 'No AI backend is available. Configure the BrainStem host in Account → BrainStem Settings, or add your own API key in Account → API Settings.',
+                'message' => 'No AI backend is available. Ask an admin to configure the BrainStem host, or add your own API key in Account → API Settings.',
             ], 502);
         }
 
@@ -44,7 +44,7 @@ final class ChatController
 
         $upstream = $this->postJson($req['endpoint'], $req['headers'], $req['payload']);
         if ($upstream['body'] === false) {
-            $ctx->jsonResponse(['error' => 'backend_unreachable', 'message' => 'Could not reach the AI backend. Check the BrainStem URL in Account settings.'], 502);
+            $ctx->jsonResponse(['error' => 'backend_unreachable', 'message' => 'Could not reach the AI backend. Check the server-side BrainStem URL in admin settings.'], 502);
         }
         $raw = $upstream['body'];
 
@@ -89,7 +89,7 @@ final class ChatController
 
         $backend = ChatBackend::select(RepositoryRegistry::brainstemConfig()->active(), $body['byo_config'] ?? null);
         if (!$backend->isAvailable()) {
-            SseStreamer::send('error', ['message' => 'No AI backend configured. Configure BrainStem in Account settings or add a BYO API key.']);
+            SseStreamer::send('error', ['message' => 'No AI backend configured. Ask an admin to configure BrainStem, or add a BYO API key in Account → API Settings.']);
             return;
         }
 
@@ -135,37 +135,6 @@ final class ChatController
         if ($fullContent !== null) {
             SseStreamer::send('done', ['full_content' => $fullContent]);
         }
-    }
-
-    // ── Admin: BrainStem config ──────────────────────────────────────
-
-    public function getBrainstemConfig(RequestContext $ctx): void
-    {
-        $cfg = RepositoryRegistry::brainstemConfig()->get();
-        if ($cfg) unset($cfg['api_key']);
-        $ctx->jsonResponse(['config' => $cfg ?: null]);
-    }
-
-    public function updateBrainstemConfig(RequestContext $ctx): void
-    {
-        $body = $ctx->jsonBody();
-        $url  = trim((string) ($body['url'] ?? ''));
-        $key  = trim((string) ($body['api_key'] ?? ''));
-        if ($url === '' || $key === '') {
-            $ctx->jsonResponse(['error' => 'url_and_key_required'], 400);
-        }
-        if (!str_starts_with($url, 'http://') && !str_starts_with($url, 'https://')) {
-            $ctx->jsonResponse(['error' => 'url_must_start_with_http_or_https'], 400);
-        }
-        $user = $ctx->user();
-        $saved = RepositoryRegistry::brainstemConfig()->upsert($url, $key, $user['username'] ?? 'admin');
-        if (!$saved) {
-            $ctx->jsonResponse([
-                'error'   => 'save_failed',
-                'message' => 'Could not save BrainStem config. The brainstem_config table may not exist yet — run the schema migration first.',
-            ], 500);
-        }
-        $ctx->jsonResponse(['config' => RepositoryRegistry::brainstemConfig()->get()]);
     }
 
     // ── Upstream request helpers (shared by chat + chatStream) ─────────

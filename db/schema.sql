@@ -204,9 +204,11 @@ That''s it. You don''t need to install anything.
 ASHAT is built around a single surface — **Chat** (`/chat`):
 
 - **Chat** — where you brainstorm, plan, and write your spec with the AI.
+- **Conversations** — saved locally in your browser; the sidebar lets you jump between them.
 - **Spec** — what you want built, written in Markdown. The AI drafts it with you, section by section.
 - **Consent card** — the AI never writes code on its own. When your spec is ready, you choose to generate the files.
 - **Project Files** — your personal project folder (150 MB per account). Generated files land here; click any file to open it in the editor.
+- **Spec Versions** — every spec the AI drafts is saved to a timeline in the right pane, so you can revisit earlier versions.
 - **Export** — download any conversation as a Markdown file.
 - **BYO API** — bring your own OpenAI-compatible endpoint and key; keys stay in your browser.
 
@@ -239,7 +241,7 @@ Think of your spec as a contract. Every ambiguity is an opportunity for the AI t
 
 ## Why spec quality matters
 
-The Coding Agent reads your spec and produces a build plan, then generates code file by file. It cannot read your mind. It cannot infer requirements you left out. It can only work with what you give it.
+The coding agent reads your spec and generates code file by file, straight into your Project Files. It cannot read your mind. It cannot infer requirements you left out. It can only work with what you give it.
 
 A vague spec produces vague code. A detailed, well-organized spec produces production-quality code that needs little to no manual editing.
 
@@ -468,10 +470,10 @@ The AI will still generate something — but you''ll likely get:
 **Investment in the spec always pays back in code quality.** Every 10 minutes spent refining a spec saves 30 minutes of manual code editing later.
 ', 4),
 ('byo-api','pro','Bring Your Own API',
- 'Pro members can plug in any OpenAI-compatible API.',
+ 'Pro and Admin members can plug in any OpenAI-compatible API.',
  '# BYO API
 
-Pro members can plug in their own API key for:
+Pro and Admin members can plug in their own API key for:
 
 - OpenAI
 - Anthropic
@@ -479,7 +481,7 @@ Pro members can plug in their own API key for:
 - DeepSeek
 - Any OpenAI-compatible endpoint
 
-Configure it once in **Account → API Settings**. ASHAT will route deep-reasoning calls through your supplied endpoint, while BrainStem handles routing and small inference for free.
+Configure it once in **Account → API Settings**. Chat and file generation use your supplied provider and model; keys stay in your browser.
 
 Your API key is stored ONLY in your browser (`localStorage["ashat.api"]`); the server never sees it or stores it.
 ', 5),
@@ -492,7 +494,7 @@ Your API key is stored ONLY in your browser (`localStorage["ashat.api"]`); the s
 - **CSRF** — token required on every state-changing POST.
 - **XSS** — all output escaped with `htmlspecialchars()`.
 - **SQLi** — every query uses PDO prepared statements.
-- **API keys** — stored encrypted; never echoed back unless the user confirms.
+- **API keys** — stored only in your browser''s localStorage; the server never sees them.
 - **Sessions in cookies** — `HttpOnly`, `SameSite=Lax`, `Secure` in production.
 ', 6),
 ('community','community','Community Showcase',
@@ -501,13 +503,13 @@ Your API key is stored ONLY in your browser (`localStorage["ashat.api"]`); the s
 
 Browse the `/community` page to see what others have shipped. Every project has:
 
-- A live demo link
 - A short description
 - Tags (so you can filter)
 - Likes and downloads
 - Stack info
+- A publisher page at `/community/user/{username}` listing everything they have shipped
 
-Want yours featured? Submit via the form on the project page.
+Want yours featured? Sign in and submit via the **+ Submit your project** form on the `/community` page. You can edit or delete your own projects from the project page or **Account → My Projects**, and **Open in Chat** resumes a conversation for that project.
 ', 7);
 
 -- ─── Demo admin account (password: admin1234) ───────────────────────

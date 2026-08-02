@@ -25,7 +25,7 @@
 
 		<!-- Divider + copyright -->
 		<div style="margin-top: 16px; border-top: 1px solid var(--line); padding-top: 16px; text-align: center; font-size: 12px; color: var(--gold-dim);">
-		  &copy; <?= date('Y') ?> <?= e(APP_NAME) ?> · <?= e(APP_VERSION_DISPLAY) ?>
+			AGP Studios, Inc. · &copy; <?= date('Y') ?> · <?= e(APP_NAME) ?> · <?= e(APP_VERSION_DISPLAY) ?> · All rights reserved.
 		</div>
 
 	  </div>

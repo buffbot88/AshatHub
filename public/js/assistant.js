@@ -114,19 +114,6 @@
     ].join('\n'),
   };
 
-  var GREETING = [
-    'Hi! I\'m **Ashat**, your AI software architect. I\'ll help you brainstorm, plan, and craft a detailed spec for your project.',
-    '',
-    'Tell me what you want to build — describe your idea in a sentence or two, and I\'ll guide you through creating a structured specification.',
-    '',
-    'I won\'t write any code on my own — when your spec is ready, I\'ll ask first. Say "Yes — generate files" and they land in your Project Files, where you can open and edit them anytime.',
-    '',
-    'For example:',
-    '- *"I want to build a real-time chat app with rooms"*',
-    '- *"A Discord bot that manages game servers"*',
-    '- *"A REST API for a todo list with user auth"*',
-  ].join('\n');
-
   // ── State ────────────────────────────────────────────────────────
   var conversations = [];
   var activeId = null;
@@ -649,7 +636,6 @@
       title: (seed && seed.title) ? seed.title : 'New Chat',
       messages: [
         { role: 'system', content: SYSTEM_PROMPT.content },
-        { role: 'assistant', content: GREETING },
       ],
       created_at: now,
       updated_at: now,
@@ -925,7 +911,7 @@
     var msgs = conv.messages;
     for (var i = 0; i < msgs.length; i++) {
       if (msgs[i].role === 'system') continue;
-      appendMessageBubble(msgs[i].role, msgs[i].content);
+      appendMessageBubble(msgs[i].role, msgs[i].content, msgs[i]);
     }
     updateTokenCount();
     messagesEl.scrollTop = messagesEl.scrollHeight;
@@ -940,7 +926,7 @@
     renderVersionTimeline();
   }
 
-  function appendMessageBubble(role, content) {
+  function appendMessageBubble(role, content, msg) {
     if (role === 'system') return;
     var div = document.createElement('div');
     div.className = 'chat-bubble ' + (role === 'user' ? 'user' : 'assistant');
@@ -958,8 +944,86 @@
       '<div class="chat-bubble-body">' +
         '<div class="bubble-name">' + name + '</div>' +
         '<div class="chat-bubble-content chat-md">' + renderMarkdown(cleanContent) + '</div>' +
+        '<div class="chat-bubble-actions">' +
+          (role === 'user'
+            ? '<button type="button" class="chat-msg-action" data-action="edit">✎ Edit</button>'
+            : '<button type="button" class="chat-msg-action" data-action="regenerate">↻ Regenerate</button>') +
+        '</div>' +
       '</div>';
+
+    // Wire the action button (edit on user bubbles, regenerate on assistant).
+    // The message object is passed for edit so truncation targets the exact
+    // message by reference — safe even if the user sent identical text twice.
+    var actionBtn = div.querySelector('.chat-msg-action');
+    if (actionBtn) {
+      actionBtn.addEventListener('click', function () {
+        if (actionBtn.dataset.action === 'edit') startEditMessage(div, msg);
+        else regenerateLastMessage();
+      });
+    }
+
     messagesEl.appendChild(div);
+
+    // Re-attach the captured-files consent card for assistant messages
+    // that were stored with file metadata (from a code-capture response).
+    if (role === 'assistant' && msg && msg.files && msg.files.length) {
+      appendFilesConsentCard(msg.files, div);
+    }
+  }
+
+  /**
+   * Extract fenced code blocks from assistant content, inferring a
+   * filename for each so raw code dumps become "write (file)" actions
+   * instead of rendered HTML/JS in the chat.
+   */
+  function captureFilesFromContent(content) {
+    var files = [];
+    var blocks = content.match(/```([^\n]*)\n([\s\S]*?)```/g) || [];
+    for (var b = 0; b < blocks.length; b++) {
+      var m = blocks[b].match(/^```([^\n]*)\n([\s\S]*?)```$/);
+      if (!m) continue;
+      var lang = (m[1] || '').trim().toLowerCase();
+      var code = m[2];
+      if (!code.trim()) continue;
+      // Strip trailing newline so saved files don't carry an extra \n
+      code = code.replace(/\n$/, '');
+      var path = inferFilePath(content, blocks[b], lang);
+      files.push({ path: path, content: code, language: lang || null });
+    }
+    return files;
+  }
+
+  /** Best-effort filename inference from surrounding text (backticks or
+   *  code-fence prefix), falling back to a language-based default. */
+  function inferFilePath(content, block, lang) {
+    var idx = content.indexOf(block);
+    var before = idx >= 0 ? content.slice(0, idx) : '';
+    var after = idx >= 0 ? content.slice(idx + block.length) : '';
+    // Bold filename header like **index.html** (most common in dumps)
+    var m = before.match(/\*\*([^\*\n]+\.[A-Za-z0-9]+)\*\*\s*$/);
+    if (m) return m[1];
+    // Backticked path like `src/index.html`
+    m = before.match(/`([^`\n]+\.[A-Za-z0-9]+)`\s*$/);
+    if (m) return m[1];
+    m = after.match(/^\s*`([^`\n]+\.[A-Za-z0-9]+)`/);
+    if (m) return m[1];
+    // Bare filename line like index.html
+    m = before.match(/^([A-Za-z0-9_./-]+\.[A-Za-z0-9]+)$/m);
+    if (m) return m[1];
+    var ext = ({ html: 'html', css: 'css', js: 'js', javascript: 'js', ts: 'ts', typescript: 'ts', php: 'php', py: 'py', python: 'py', json: 'json', md: 'md', markdown: 'md', sql: 'sql', java: 'java', go: 'go', rb: 'rb', ruby: 'rb', sh: 'sh', bash: 'sh', yaml: 'yml', yml: 'yml', xml: 'xml', txt: 'txt' })[lang] || 'txt';
+    return 'file.' + ext;
+  }
+
+  /** Remove fenced code blocks from content but leave a short note so
+   *  the chat stays readable and the AI context never carries code dumps. */
+  function stripCodeBlocks(content, files) {
+    var stripped = content.replace(/```[^\n]*\n[\s\S]*?```/g, '');
+    stripped = stripped.replace(/\n{3,}/g, '\n\n').trim();
+    if (files.length) {
+      var list = files.map(function (f) { return '`' + f.path + '`'; }).join(', ');
+      stripped += (stripped ? '\n\n' : '') + '📎 Captured ' + files.length + ' file' + (files.length > 1 ? 's' : '') + ': ' + list + ' — open the card below to write them into your Project Files.';
+    }
+    return stripped;
   }
 
   // ══════════════════════════════════════════════════════════════════
@@ -1022,6 +1086,113 @@
       var saved = saveSpecVersion(spec, title);
       renderVersionTimeline(saved ? saved.id : undefined);
     }
+  }
+
+  /**
+   * Append a consent card to the latest assistant bubble when raw code
+   * was captured from the response. Instead of dumping HTML/JS into the
+   * chat, the code becomes "write (file)" actions the user approves.
+   */
+  function appendFilesConsentCard(files, bubbleEl) {
+    if (!files || !files.length || !messagesEl) return;
+    var body = bubbleEl ? bubbleEl.querySelector('.chat-bubble-body') : null;
+    if (!body) return;
+    if (body.querySelector('.files-consent-card')) return;
+
+    var card = document.createElement('div');
+    card.className = 'files-consent-card';
+    var rows = files.map(function (f) {
+      var kb = Math.max(1, Math.round((f.content || '').length / 1024));
+      return '<div class="fc-file"><span class="fc-path">' + esc(f.path) + '</span><span class="fc-size">' + kb + ' KB</span></div>';
+    }).join('');
+    card.innerHTML =
+      '<div class="spec-consent-title">Files ready to write</div>' +
+      '<div class="spec-consent-text">The AI generated code for ' + files.length + ' file' + (files.length > 1 ? 's' : '') + '. ' +
+      'Nothing is saved until you say yes — then they land in your Project Files, where you can open and edit them anytime.</div>' +
+      '<div class="fc-list">' + rows + '</div>' +
+      '<div class="spec-consent-actions">' +
+        '<button type="button" class="btn-gold files-consent-yes" style="font-size:10px;padding:5px 12px;">Yes — write these files</button>' +
+        '<button type="button" class="btn-outline files-consent-no" style="font-size:10px;padding:5px 12px;">Not yet</button>' +
+      '</div>';
+
+    var yesBtn = card.querySelector('.files-consent-yes');
+    var noBtn = card.querySelector('.files-consent-no');
+
+    yesBtn.addEventListener('click', function () {
+      yesBtn.disabled = true;
+      yesBtn.textContent = 'Writing...';
+      writeCapturedFiles(files, yesBtn);
+    });
+    noBtn.addEventListener('click', function () {
+      if (card.parentNode) card.parentNode.removeChild(card);
+      if (window.ashatToast) ashatToast('No problem — just say the word when you want them saved.', 'ok');
+    });
+
+    body.appendChild(card);
+    messagesEl.scrollTop = messagesEl.scrollHeight;
+  }
+
+  /**
+   * Write captured files straight into Project Files via /api/files/.
+   * Unlike generateFilesInChat this does NOT re-run the coding agent —
+   * the code is already in the chat response, we just persist it.
+   */
+  async function writeCapturedFiles(files, yesBtn) {
+    if (!files || !files.length) return;
+    var status = appendGenStatusBubble('Writing ' + files.length + ' file(s) into your Project Files…');
+    try {
+      var agent = window.ASHAT && window.ASHAT.agent;
+      if (!agent || !agent.getLocalConfig || !agent.getLocalConfig()) {
+        status.className = 'gen-status-bubble err';
+        status.textContent = '⚠ File writing runs in your browser — add a provider + API key in Account → API Settings (keys stay on your device).';
+        if (yesBtn) { yesBtn.disabled = false; yesBtn.textContent = 'Yes — write these files'; }
+        return;
+      }
+      var saved = 0;
+      var quotaHit = false;
+      for (var i = 0; i < files.length; i++) {
+        try {
+          await ashatFetch('/api/files/', {
+            method: 'POST',
+            body: { path: files[i].path, content: files[i].content },
+          });
+          saved++;
+        } catch (e) {
+          if (e && e.payload && e.payload.error === 'quota_exceeded') quotaHit = true;
+        }
+      }
+      loadFileTree();
+      status.className = 'gen-status-bubble ' + (saved === files.length ? 'ok' : 'err');
+      status.textContent = saved === files.length
+        ? '✅ ' + saved + ' file(s) written into your Project Files.'
+        : '⚠ ' + saved + ' of ' + files.length + ' file(s) saved' +
+          (quotaHit ? ' — the 150 MB storage quota was reached. Delete files to free space, then try again.' : ' — some files failed to save. Try again.');
+      if (saved === files.length) {
+        finishFilesCard(yesBtn, '✓ ' + saved + ' file(s) written');
+        if (window.ashatToast) ashatToast('Generated ' + saved + ' file(s) into your Project Files.', 'ok');
+      } else if (yesBtn) {
+        yesBtn.disabled = false;
+        yesBtn.textContent = 'Yes — write these files';
+      }
+    } catch (err) {
+      status.className = 'gen-status-bubble err';
+      status.textContent = '⚠ ' + (err && err.message ? err.message : 'Write failed.');
+      if (yesBtn) { yesBtn.disabled = false; yesBtn.textContent = 'Yes — write these files'; }
+    }
+  }
+
+  /** Flip a files consent card into a terminal "done" state. */
+  function finishFilesCard(yesBtn, message) {
+    if (!yesBtn) return;
+    var card = yesBtn.closest ? yesBtn.closest('.files-consent-card') : null;
+    if (card) {
+      var title = card.querySelector('.spec-consent-title');
+      var noBtn = card.querySelector('.files-consent-no');
+      if (title) title.textContent = 'Files written';
+      if (noBtn) noBtn.disabled = true;
+    }
+    yesBtn.disabled = true;
+    yesBtn.textContent = message;
   }
 
   /**
@@ -1382,12 +1553,12 @@
               var errMsg = errObj.message || 'Unknown error';
               var diag = '';
               if (errMsg.indexOf('no_backend') !== -1 || errMsg.indexOf('No AI backend') !== -1) {
-                diag = '\n\n📋 **How to fix:** Configure BrainStem in Account → BrainStem Settings, or add your own API key in Account → API Settings.';
+                diag = '\n\n📋 **How to fix:** Ask an admin to configure the BrainStem host, or add your own API key in Account → API Settings.';
               }
               bubble.thinkingContent.textContent = '⚠ Error: ' + errMsg;
               return '⚠️ **Error:** ' + errMsg + diag;
             } catch (_) {
-              bubble.thinkingContent.textContent = '⚠ Error from AI backend. Check Account → BrainStem Settings.';
+              bubble.thinkingContent.textContent = '⚠ Error from AI backend. Check the server-side BrainStem config (admin settings).';
               return '⚠️ **Error from AI backend.**';
             }
           }
@@ -1504,7 +1675,7 @@
       if (bubble.streamingCursor && bubble.streamingCursor.parentNode) {
         bubble.streamingCursor.parentNode.removeChild(bubble.streamingCursor);
       }
-      bubble.thinkingContent.textContent = '⚠ Could not reach the AI backend.\n\nMake sure:\n1. BrainStem is configured in Account → BrainStem Settings, OR\n2. You have a valid API key in Account → API Settings\n\nThen try sending your message again.';
+      bubble.thinkingContent.textContent = '⚠ Could not reach the AI backend.\n\nMake sure:\n1. An admin has configured the BrainStem host (admin settings), OR\n2. You have a valid API key in Account → API Settings\n\nThen try sending your message again.';
 
       // Mark as failed in header
       bubble.thinkingLabel.textContent = 'Request failed';
@@ -1524,6 +1695,15 @@
   // ══════════════════════════════════════════════════════════════════
   //  SEND MESSAGE
   // ══════════════════════════════════════════════════════════════════
+
+  /** Send a user message after a conversation already exists (used by
+   *  the edit/regenerate flows so history is preserved). */
+  async function sendUserMessage(userText) {
+    if (!userText.trim() || streaming) return;
+    var conv = getActiveConversation();
+    if (!conv) { createConversation(); conv = getActiveConversation(); }
+    sendMessage(userText);
+  }
 
   async function sendMessage(userText) {
     if (!userText.trim() || streaming) return;
@@ -1579,8 +1759,23 @@
 
     // Process result
     if (content && content.trim()) {
-      conv.messages.push({ role: 'assistant', content: content });
+      // Capture raw code blocks before they reach the chat so HTML/JS
+      // never renders inline — they become "write (file)" actions the
+      // user approves via a consent card.
+      var capturedFiles = captureFilesFromContent(content);
+      var storedContent = content;
+      if (capturedFiles.length) {
+        storedContent = stripCodeBlocks(content, capturedFiles);
+      }
+      var assistantMsg = { role: 'assistant', content: storedContent };
+      if (capturedFiles.length) assistantMsg.files = capturedFiles;
+      conv.messages.push(assistantMsg);
       touchConversation();
+
+      // Re-render (content may have been cleaned of code dumps); the
+      // files consent card is re-attached by appendMessageBubble from the
+      // stored assistantMsg.files metadata, so no extra call is needed.
+      renderMessages();
 
       // Check for spec markers in the response. The chat AI never writes
       // code itself — it shows a consent card so the user can choose to
@@ -1593,9 +1788,9 @@
     } else    if (content === null) {
       // Both methods failed entirely — tryNonStream already created the bubble
       var accountLink = window.ASHAT && window.ASHAT.accountUrl
-        ? '[' + window.ASHAT.accountUrl + '?tab=brainstem](Account settings → BrainStem)'
+        ? '[' + window.ASHAT.accountUrl + '](Account settings → API Settings)'
         : 'Account settings';
-      conv.messages.push({ role: 'assistant', content: 'I couldn\'t reach the AI backend. To use Spec Chat:\n\n1. **Configure BrainStem** in ' + accountLink + ' (server-side)\n2. **Or add a BYO API key** in Account → API Settings (e.g. OpenAI, Groq, etc.)\n\nOnce configured, send your message again.' });
+      conv.messages.push({ role: 'assistant', content: 'I couldn\'t reach the AI backend. To use Spec Chat:\n\n1. **Ask an admin to configure the BrainStem host** (admin → settings, server-side)\n2. **Or add a BYO API key** in ' + accountLink + ' (e.g. OpenAI, Groq, etc.)\n\nOnce configured, send your message again.' });
       touchConversation();
       // Show a status message in the chat header too
       if (headerInfo) {
@@ -1608,6 +1803,95 @@
     renderSidebar();
     messagesEl.scrollTop = messagesEl.scrollHeight;
     setStreamingState(false);
+  }
+
+  // ══════════════════════════════════════════════════════════════════
+  //  EDIT + REGENERATE MESSAGES (keep chat progress, re-ask the AI)
+  // ══════════════════════════════════════════════════════════════════
+
+  /** Replace a user message's bubble with an inline edit form. */
+  function startEditMessage(bubbleEl, msg) {
+    if (!bubbleEl || streaming) return;
+    var original = (msg && msg.content) || '';
+    var body = bubbleEl.querySelector('.chat-bubble-body');
+    if (!body) return;
+    var contentEl = body.querySelector('.chat-bubble-content');
+    var actionsEl = body.querySelector('.chat-bubble-actions');
+    if (!contentEl) return;
+
+    var ta = document.createElement('textarea');
+    ta.className = 'chat-edit-input';
+    ta.value = original;
+    var actions = document.createElement('div');
+    actions.className = 'chat-edit-actions';
+    var saveBtn = document.createElement('button');
+    saveBtn.type = 'button';
+    saveBtn.className = 'btn-gold';
+    saveBtn.style.cssText = 'font-size:10px;padding:4px 12px;';
+    saveBtn.textContent = 'Save & regenerate';
+    var cancelBtn = document.createElement('button');
+    cancelBtn.type = 'button';
+    cancelBtn.className = 'btn-outline';
+    cancelBtn.style.cssText = 'font-size:10px;padding:4px 12px;';
+    cancelBtn.textContent = 'Cancel';
+    actions.appendChild(saveBtn);
+    actions.appendChild(cancelBtn);
+
+    contentEl.replaceWith(ta);
+    if (actionsEl) actionsEl.style.display = 'none';
+    body.appendChild(actions);
+    ta.focus();
+    ta.setSelectionRange(ta.value.length, ta.value.length);
+
+    cancelBtn.addEventListener('click', function () {
+      renderMessages();
+    });
+    saveBtn.addEventListener('click', function () {
+      var edited = ta.value;
+      if (!edited.trim()) { renderMessages(); return; }
+      editAndRegenerate(msg, edited);
+    });
+  }
+
+  /** Truncate the conversation to just before a user message, replace it
+   *  with the edited text, and re-ask the AI from that point. sendUserMessage
+   *  pushes the edited message once — so truncation must EXCLUDE the old one
+   *  (slice(0, idx)), otherwise the AI sees the same text twice. */
+  function editAndRegenerate(msg, edited) {
+    var conv = getActiveConversation();
+    if (!conv) return;
+    var idx = conv.messages.indexOf(msg);
+    if (idx < 0) { renderMessages(); return; }
+
+    conv.messages = conv.messages.slice(0, idx);
+    conv.updated_at = new Date().toISOString();
+    saveConversations();
+    setSpec(null);
+    renderMessages();
+    sendUserMessage(edited);
+  }
+
+  /** Regenerate the last assistant reply: roll back to the last user
+   *  message and re-ask, keeping all prior context. */
+  function regenerateLastMessage() {
+    if (streaming) return;
+    var conv = getActiveConversation();
+    if (!conv) return;
+    var idx = -1;
+    for (var i = conv.messages.length - 1; i >= 0; i--) {
+      if (conv.messages[i].role === 'user') { idx = i; break; }
+    }
+    if (idx < 0) return;
+    var userText = conv.messages[idx].content;
+
+    // slice(0, idx) drops the user message too — sendUserMessage re-pushes
+    // it below, so the AI receives it exactly once.
+    conv.messages = conv.messages.slice(0, idx);
+    conv.updated_at = new Date().toISOString();
+    saveConversations();
+    setSpec(null);
+    renderMessages();
+    sendUserMessage(userText);
   }
 
   // ══════════════════════════════════════════════════════════════════
@@ -2060,7 +2344,6 @@
 
     conv.messages = [
       { role: 'system', content: SYSTEM_PROMPT.content },
-      { role: 'assistant', content: GREETING },
     ];
     conv.updated_at = new Date().toISOString();
     saveConversations();

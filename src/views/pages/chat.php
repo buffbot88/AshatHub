@@ -6,39 +6,39 @@
   */ ?>
 
 <section class="container mx-auto px-6 py-6" style="min-height: calc(100vh - 12rem);">
-  <div class="grid" style="grid-template-columns: 220px 1fr 280px; gap: 0; height: calc(100vh - 12rem); border-radius: var(--gold-radius-xl); overflow: hidden; border: 1px solid var(--gold-line);">
+  <div class="chat-layout">
 
     <!-- ── Left: Conversation sidebar ──────────────────────────────── -->
     <div class="chat-sidebar" style="min-height: 0;">
       <div class="chat-sidebar-header flex items-center justify-between">
         <div>
-          <div style="font-family: var(--font-heading); font-weight: 600; font-size: 12px; color: var(--gold);">Chats</div>
-          <div class="text-[9px] font-mono" style="color: var(--gold-muted);">saved locally</div>
+          <div style="font-family: var(--font-heading); font-weight: 600; font-size: 13px; color: var(--gold);">Chats</div>
+          <div class="text-[10px] font-mono" style="color: var(--gold-muted);">saved locally</div>
         </div>
-        <button id="btn-new-chat" class="btn-gold" style="font-size: 10px; padding: 5px 10px; letter-spacing: 0.5px;">New Chat</button>
+        <button id="btn-new-chat" class="btn-gold" style="font-size: 11px; padding: 6px 12px; letter-spacing: 0.5px;">New Chat</button>
       </div>
       <div id="conversation-list" class="chat-sidebar-list">
         <!-- Populated by assistant.js -->
-        <div style="color: var(--gold-dim); font-size: 11px; text-align: center; padding: 24px 0;">Loading...</div>
+        <div style="color: var(--gold-muted); font-size: 12px; text-align: center; padding: 24px 0;">Loading...</div>
       </div>
     </div>
 
     <!-- ── Center: Chat messages + input ────────────────────────────── -->
-    <div class="flex flex-col" style="border-right: 1px solid var(--gold-line); background: rgba(10, 10, 10, 0.2); min-height: 0;">
+    <div class="chat-pane-center flex flex-col">
       <!-- Header -->
       <div class="px-6 py-4 flex items-center justify-between" style="border-bottom: 1px solid var(--gold-line);">
         <div id="chat-header-info">
-          <h2 style="font-family: var(--font-heading); font-weight: 600; font-size: 14px; color: var(--gold);">Chat</h2>
-          <p class="text-[10px] font-mono" style="color: var(--gold-muted);">Brainstorm · Plan · Craft specs with AI</p>
+          <h2 style="font-family: var(--font-heading); font-weight: 600; font-size: 16px; color: var(--gold);">Chat</h2>
+          <p class="text-[11px] font-mono" style="color: var(--gold-muted);">Brainstorm · Plan · Craft specs with AI</p>
         </div>
         <div class="flex items-center gap-2">
-          <button id="btn-export-chat" class="btn-outline" style="font-size: 10px; padding: 4px 10px;">Export</button>
-          <button id="btn-clear-chat" class="btn-outline" style="font-size: 10px; padding: 4px 10px; color: var(--gold-err);">Clear</button>
+          <button id="btn-export-chat" class="btn-outline" style="font-size: 11px; padding: 6px 12px;">Export</button>
+          <button id="btn-clear-chat" class="btn-outline" style="font-size: 11px; padding: 6px 12px; color: var(--gold-err);">Clear</button>
         </div>
       </div>
 
       <!-- Messages area -->
-      <div id="chat-messages" class="flex-1 overflow-y-auto p-6 space-y-4" style="min-height: 0;">
+      <div id="chat-messages" class="flex-1 overflow-y-auto" style="min-height: 0;">
         <!-- Empty state shown by JS when no conversation is active -->
         <div id="chat-empty-state" class="chat-empty-state">
           <div class="empty-icon" style="color: var(--text-mute);"><svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 11.5a8.5 8.5 0 0 1-12.6 7.4L3 21l2.1-5.4A8.5 8.5 0 1 1 21 11.5z"/></svg></div>
@@ -50,10 +50,10 @@
       <!-- File editor panel — replaces the chat when a project file is opened -->
       <div id="chat-file-editor" style="display: none; flex: 1; flex-direction: column; min-height: 0;">
         <div class="flex items-center justify-between px-4 py-2" style="border-bottom: 1px solid var(--gold-line); background: var(--bg-soft);">
-          <div id="chat-file-editor-title" class="text-[11px] font-mono truncate" style="color: var(--gold-muted);"></div>
+          <div id="chat-file-editor-title" class="text-xs font-mono truncate" style="color: var(--gold-muted);"></div>
           <div class="flex items-center gap-2">
-            <button id="btn-editor-save" class="btn-gold" style="font-size: 10px; padding: 4px 10px;">Save</button>
-            <button id="btn-editor-close" class="btn-outline" style="font-size: 10px; padding: 4px 10px;">← Chat</button>
+            <button id="btn-editor-save" class="btn-gold" style="font-size: 11px; padding: 6px 12px;">Save</button>
+            <button id="btn-editor-close" class="btn-outline" style="font-size: 11px; padding: 6px 12px;">← Chat</button>
           </div>
         </div>
         <div id="monaco-chat-shell" style="flex: 1; min-height: 0; background: rgba(15,15,23,0.5);"></div>
@@ -63,52 +63,52 @@
       <div class="chat-input-area">
         <form id="chat-form" class="chat-input-wrapper">
           <textarea id="chat-input" class="chat-input" rows="1" placeholder="Describe your project idea... (Enter to send, Shift+Enter for new line)"></textarea>
-          <button type="submit" id="btn-chat-send" class="btn-gold" style="font-size: 12px; padding: 10px 18px; white-space: nowrap; border-radius: 12px;">
+          <button type="submit" id="btn-chat-send" class="btn-gold" style="font-size: 13px; padding: 11px 20px; white-space: nowrap; border-radius: 12px;">
             <span id="send-label">Send</span>
             <span id="send-spinner" class="hidden" style="width: 12px; height: 12px; border: 2px solid var(--accent-ink); border-top-color: transparent; border-radius: 50%; animation: spin 0.7s linear infinite;"></span>
           </button>
         </form>
         <div class="flex items-center justify-between mt-2">
-          <span class="text-[10px] font-mono" style="color: var(--gold-dim);">AI Chat · OpenAI compatible</span>
-          <span id="chat-token-count" class="text-[10px] font-mono" style="color: var(--gold-dim);"></span>
+          <span class="text-[11px] font-mono" style="color: var(--gold-muted);">AI Chat · OpenAI compatible</span>
+          <span id="chat-token-count" class="text-[11px] font-mono" style="color: var(--gold-muted);"></span>
         </div>
       </div>
     </div>
 
     <!-- ── Right: Project files + spec versions + tips ─────────────── -->
-    <div class="flex flex-col gap-5 p-5 overflow-y-auto" style="background: rgba(15, 15, 23, 0.3);">
+    <div class="chat-right-pane flex flex-col gap-5 p-5 overflow-y-auto" style="background: rgba(15, 15, 23, 0.3);">
       <!-- Project Files -->
       <div style="background: rgba(15,15,23,0.4); border: 1px solid var(--gold-line); border-radius: var(--gold-radius-xl); padding: 16px;">
         <div class="flex items-center justify-between mb-3">
           <div class="label-gold">Project Files</div>
-          <span id="file-usage" class="text-[9px] font-mono" style="color: var(--gold-dim);"></span>
+          <span id="file-usage" class="text-[10px] font-mono" style="color: var(--gold-muted);"></span>
         </div>
-        <div class="text-[10px] font-mono mb-3" style="color: var(--gold-dim);">Click a file to open it in the editor</div>
+        <div class="text-[11px] font-mono mb-3" style="color: var(--gold-muted);">Click a file to open it in the editor</div>
         <div class="flex flex-wrap gap-1.5 mb-3">
-          <button id="btn-file-upload" class="btn-outline" style="font-size: 10px; padding: 4px 10px;">Upload</button>
-          <button id="btn-file-download" class="btn-outline" style="font-size: 10px; padding: 4px 10px;">Download</button>
-          <button id="btn-file-select-all" class="btn-outline" style="font-size: 10px; padding: 4px 10px;">Select all</button>
-          <button id="btn-file-delete" class="btn-outline" style="font-size: 10px; padding: 4px 10px; color: var(--gold-err);">Delete</button>
+          <button id="btn-file-upload" class="btn-outline" style="font-size: 11px; padding: 6px 12px;">Upload</button>
+          <button id="btn-file-download" class="btn-outline" style="font-size: 11px; padding: 6px 12px;">Download</button>
+          <button id="btn-file-select-all" class="btn-outline" style="font-size: 11px; padding: 6px 12px;">Select all</button>
+          <button id="btn-file-delete" class="btn-outline" style="font-size: 11px; padding: 6px 12px; color: var(--gold-err);">Delete</button>
         </div>
         <input type="file" id="file-zip-input" accept=".zip" style="display: none;">
-        <div id="chat-file-tree" style="max-height: 240px; overflow-y: auto; font-size: 11px; font-family: var(--font-mono);"></div>
+        <div id="chat-file-tree" style="max-height: 240px; overflow-y: auto; font-size: 12px; font-family: var(--font-mono);"></div>
       </div>
 
       <!-- Spec Versions Timeline -->
       <div id="spec-versions-panel" style="background: rgba(15,15,23,0.4); border: 1px solid var(--gold-line); border-radius: var(--gold-radius-xl); padding: 18px; display: none;">
         <div class="flex items-center justify-between mb-4">
           <div class="label-gold">Spec Versions</div>
-          <span id="version-count-badge" class="text-[10px] font-mono" style="color: var(--gold-dim);"></span>
+          <span id="version-count-badge" class="text-[11px] font-mono" style="color: var(--gold-muted);"></span>
         </div>
         <div id="version-timeline" class="version-timeline" style="max-height: 200px; overflow-y: auto;">
-          <div style="color: var(--gold-dim); font-size: 11px; padding: 8px 0;">No versions yet — specs will appear here.</div>
+          <div style="color: var(--gold-muted); font-size: 12px; padding: 8px 0;">No versions yet — specs will appear here.</div>
         </div>
       </div>
 
       <!-- Tips -->
       <div style="background: rgba(255,215,0,0.04); border: 1px solid var(--gold-line); border-radius: var(--gold-radius-xl); padding: 16px;">
         <div class="label-gold mb-3">Tips</div>
-        <ul class="text-[11px]" style="color: var(--gold-muted); line-height: 1.8;">
+        <ul class="text-xs" style="color: var(--gold-muted); line-height: 1.85;">
           <li>• Describe your idea — I'll help you refine it into a spec</li>
           <li>• I never write code on my own — you'll get a consent card first</li>
           <li>• Click "Yes — generate files" to write into your Project Files</li>

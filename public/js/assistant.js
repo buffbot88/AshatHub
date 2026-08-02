@@ -641,12 +641,12 @@
   //  CONVERSATION CRUD
   // ══════════════════════════════════════════════════════════════════
 
-  function createConversation() {
+  function createConversation(seed) {
     var id = uuid();
     var now = new Date().toISOString();
     var conv = {
       id: id,
-      title: 'New Chat',
+      title: (seed && seed.title) ? seed.title : 'New Chat',
       messages: [
         { role: 'system', content: SYSTEM_PROMPT.content },
         { role: 'assistant', content: GREETING },
@@ -654,6 +654,10 @@
       created_at: now,
       updated_at: now,
     };
+    // Deep-linked community projects tag the conversation so re-opening
+    // the same project link resumes the same conversation instead of
+    // stacking duplicates.
+    if (seed && seed.projectSlug) conv.projectSlug = seed.projectSlug;
     conversations.unshift(conv);
     activeId = id;
     saveConversations();
@@ -663,6 +667,23 @@
     fetchProjectContext();
 
     return id;
+  }
+
+  /**
+   * Open (or resume) the conversation tagged with a community project
+   * slug, creating a new one seeded with the project title if needed.
+   */
+  function openProjectConversation(slug, title) {
+    if (!slug) return;
+    for (var i = 0; i < conversations.length; i++) {
+      if (conversations[i].projectSlug === slug) {
+        switchToConversation(conversations[i].id, true /* skip save, already saved */);
+        ashatToast('Resumed project chat: ' + (conversations[i].title || title || slug), 'ok');
+        return;
+      }
+    }
+    createConversation({ title: title || slug, projectSlug: slug });
+    ashatToast('Started project chat: ' + (title || slug), 'ok');
   }
 
   function deleteConversation(id) {
@@ -2127,11 +2148,21 @@
     // Ensure a valid session exists (1-hour expiry)
     ensureSession();
 
-    // Show the chat home (empty state) on load — don't auto-start a new
-    // chat and don't auto-open a previous one. Users pick a conversation
-    // from the sidebar or hit "+ New" to begin.
-    activeId = null;
-    renderEmptyState();
+    // Deep-link support: /chat/?project=<slug>&title=<name> opens (or
+    // resumes) a conversation seeded with that community project.
+    var params = new URLSearchParams(window.location.search);
+    var projectSlug = params.get('project');
+    var projectTitle = params.get('title');
+
+    if (projectSlug) {
+      openProjectConversation(projectSlug, projectTitle);
+    } else {
+      // Show the chat home (empty state) on load — don't auto-start a
+      // new chat and don't auto-open a previous one. Users pick a
+      // conversation from the sidebar or hit "+ New" to begin.
+      activeId = null;
+      renderEmptyState();
+    }
 
     renderSidebar();
     if (messagesEl) messagesEl.scrollTop = messagesEl.scrollHeight;

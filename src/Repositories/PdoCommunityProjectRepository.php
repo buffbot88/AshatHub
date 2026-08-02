@@ -20,27 +20,74 @@ final class PdoCommunityProjectRepository implements CommunityProjectRepository
         $this->db = $db ?? new PdoDatabase();
     }
 
+    private const USER_JOIN = 'LEFT JOIN users u ON u.id = cp.user_id';
+
+    // Hide projects whose linked publisher was soft-banned/disabled.
+    // Rows without a publisher (official seed data) stay visible.
+    private const VISIBLE = 'u.id IS NULL OR u.is_active = 1';
+
     public function all(): array
     {
         return $this->db->fetchAll(
-            "SELECT id, slug, title, description, category, tags, status, likes, downloads, stack, created_at
-             FROM community_projects ORDER BY likes DESC, created_at DESC"
+            "SELECT cp.id, cp.slug, cp.title, cp.description, cp.category, cp.tags,
+                    cp.status, cp.likes, cp.downloads, cp.stack, cp.created_at,
+                    cp.user_id, u.username AS publisher_username,
+                    u.display_name AS publisher_display_name,
+                    u.is_active AS publisher_active
+             FROM community_projects cp " . self::USER_JOIN .
+            " WHERE " . self::VISIBLE .
+            " ORDER BY cp.likes DESC, cp.created_at DESC"
         ) ?: [];
     }
 
     public function byCategory(string $category): array
     {
         return $this->db->fetchAll(
-            "SELECT id, slug, title, description, category, tags, status, likes, downloads, stack
-             FROM community_projects WHERE category = ? ORDER BY likes DESC",
+            "SELECT cp.id, cp.slug, cp.title, cp.description, cp.category, cp.tags,
+                    cp.status, cp.likes, cp.downloads, cp.stack, cp.created_at,
+                    cp.user_id, u.username AS publisher_username,
+                    u.display_name AS publisher_display_name,
+                    u.is_active AS publisher_active
+             FROM community_projects cp " . self::USER_JOIN .
+            " WHERE cp.category = ? AND " . self::VISIBLE . " ORDER BY cp.likes DESC",
             [$category]
         );
+    }
+
+    public function find(string $id): ?array
+    {
+        return $this->db->fetchOne(
+            "SELECT cp.*, u.username AS publisher_username,
+                    u.display_name AS publisher_display_name,
+                    u.is_active AS publisher_active
+             FROM community_projects cp " . self::USER_JOIN .
+            " WHERE cp.id = ? AND " . self::VISIBLE,
+            [$id]
+        );
+    }
+
+    public function byUser(string $userId): array
+    {
+        return $this->db->fetchAll(
+            "SELECT cp.id, cp.slug, cp.title, cp.description, cp.category, cp.tags,
+                    cp.status, cp.likes, cp.downloads, cp.stack, cp.created_at,
+                    cp.user_id, u.username AS publisher_username,
+                    u.display_name AS publisher_display_name,
+                    u.is_active AS publisher_active
+             FROM community_projects cp " . self::USER_JOIN .
+            " WHERE cp.user_id = ? AND " . self::VISIBLE . " ORDER BY cp.created_at DESC",
+            [$userId]
+        ) ?: [];
     }
 
     public function bySlug(string $slug): ?array
     {
         return $this->db->fetchOne(
-            "SELECT * FROM community_projects WHERE slug = ?",
+            "SELECT cp.*, u.username AS publisher_username,
+                    u.display_name AS publisher_display_name,
+                    u.is_active AS publisher_active
+             FROM community_projects cp " . self::USER_JOIN .
+            " WHERE cp.slug = ? AND " . self::VISIBLE,
             [$slug]
         );
     }
@@ -48,7 +95,9 @@ final class PdoCommunityProjectRepository implements CommunityProjectRepository
     public function categories(): array
     {
         $rows = $this->db->fetchAll(
-            "SELECT category, COUNT(*) AS count FROM community_projects GROUP BY category ORDER BY count DESC"
+            "SELECT cp.category, COUNT(*) AS count
+             FROM community_projects cp " . self::USER_JOIN .
+            " WHERE " . self::VISIBLE . " GROUP BY cp.category ORDER BY count DESC"
         );
         $out = ['all' => 0];
         foreach ($rows as $r) {
@@ -90,6 +139,23 @@ final class PdoCommunityProjectRepository implements CommunityProjectRepository
             [$id, $userId, $title, $slug, $description, $category, $tags, $stack]
         );
         return $slug;
+    }
+
+    public function update(string $id, string $userId, string $title, string $description, string $category, string $tags, string $stack): void
+    {
+        $this->db->execute(
+            "UPDATE community_projects SET title = ?, description = ?, category = ?, tags = ?, stack = ?
+             WHERE id = ? AND user_id = ?",
+            [$title, $description, $category, $tags, $stack, $id, $userId]
+        );
+    }
+
+    public function delete(string $id, string $userId): void
+    {
+        $this->db->execute(
+            "DELETE FROM community_projects WHERE id = ? AND user_id = ?",
+            [$id, $userId]
+        );
     }
 
     /**

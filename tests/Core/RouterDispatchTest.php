@@ -296,6 +296,44 @@ final class RouterDispatchTest extends TestCase
         $this->assertSame('99', $spy->params['postId'] ?? null);
     }
 
+    public function test_community_user_route_captures_username(): void
+    {
+        $spy = $this->makeSpy();
+
+        $router = $this->routerWithRoutes(function (RouteCollection $c) use ($spy): void {
+            $c->get('/community/user/{username}', function (RequestContext $ctx, string $username) use ($spy): void {
+                $spy->called = true;
+                $spy->params = ['username' => $username];
+            });
+        });
+
+        $_SERVER['REQUEST_URI'] = '/community/user/alice';
+
+        $router->handleDispatch();
+
+        $this->assertTrue($spy->called);
+        $this->assertSame('alice', $spy->params['username'] ?? null);
+    }
+
+    public function test_community_user_route_does_not_match_project_slug(): void
+    {
+        $spy = $this->makeSpy();
+
+        $router = $this->routerWithRoutes(function (RouteCollection $c) use ($spy): void {
+            $c->get('/community/user/{username}', function (RequestContext $ctx, string $username) use ($spy): void {
+                $spy->called = true;
+            });
+        });
+
+        $_SERVER['REQUEST_URI'] = '/community/user/foo/edit';
+
+        ob_start();
+        $router->handleDispatch();
+        ob_get_clean();
+
+        $this->assertFalse($spy->called, 'user route should not match multi-segment paths');
+    }
+
     // ── Route ordering ────────────────────────────────────────────
 
     public function test_first_matching_route_wins(): void

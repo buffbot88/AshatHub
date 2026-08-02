@@ -40,6 +40,7 @@ final class AccountController
             'stats' => [
                 'files' => count(self::safeRepo(fn() => RepositoryRegistry::file()->allForUser($user['id']))),
             ],
+            'my_projects' => self::safeRepo(fn() => RepositoryRegistry::communityProject()->byUser($user['id'])),
         ]);
     }
 

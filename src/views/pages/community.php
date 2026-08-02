@@ -89,7 +89,7 @@
               </span>
             </div>
             <p class="text-sm leading-relaxed mb-3" style="color: var(--gold-muted);"><?= e($p['description']) ?></p>
-            <div class="flex flex-wrap gap-1.5 mb-4">
+            <div class="flex flex-wrap gap-1.5 mb-3">
               <?php foreach (explode(',', (string) $p['tags']) as $tag): ?>
                 <span class="chip-gold" style="font-size: 11px;"><?= e(trim($tag)) ?></span>
               <?php endforeach; ?>
@@ -98,6 +98,21 @@
               <span><?= e($p['stack'] ?: '—') ?></span>
               <span>♥ <?= (int) $p['likes'] ?> · ⬇ <?= (int) $p['downloads'] ?></span>
             </div>
+            <?php if (!empty($p['publisher_username'])): ?>
+              <div class="mt-3 pt-3 flex items-center gap-2" style="border-top: 1px solid var(--line);">
+                <div class="w-5 h-5 rounded-full flex items-center justify-center text-[9px] font-bold" style="background: var(--surface-2); color: var(--text-dim);"><?= strtoupper(mb_substr($p['publisher_display_name'] ?: $p['publisher_username'], 0, 1)) ?></div>
+                <?php if (($p['publisher_active'] ?? 1)): ?>
+                  <span role="link" tabindex="0"
+                        data-href="/community/user/<?= rawurlencode($p['publisher_username']) ?>"
+                        class="text-xs" style="color: var(--text-dim); cursor: pointer;"
+                        onclick="event.stopPropagation(); window.location.href=this.getAttribute('data-href');"
+                        onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();event.stopPropagation();window.location.href=this.getAttribute('data-href');}"
+                        onmouseover="this.style.color='var(--gold)'" onmouseout="this.style.color='var(--text-dim)'">by <?= e($p['publisher_display_name'] ?: $p['publisher_username']) ?></span>
+                <?php else: ?>
+                  <span class="text-xs" style="color: var(--text-dim);">by <?= e($p['publisher_display_name'] ?: $p['publisher_username']) ?></span>
+                <?php endif; ?>
+              </div>
+            <?php endif; ?>
           </a>
         <?php endforeach; ?>
       </div>

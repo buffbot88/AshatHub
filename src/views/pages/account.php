@@ -2,6 +2,7 @@
   $u     = $view->user;
   $api   = $view->api ?? null;
   $stats = $view->stats ?? ['files' => 0];
+  $myProjects = $view->my_projects ?? [];
 ?>
 <section style="border-bottom: 1px solid var(--gold-line);">
   <div class="container mx-auto px-6 py-12">
@@ -205,6 +206,48 @@
         BYO API configuration is available to <span style="color: var(--gold); font-weight: 500;">Pro</span> and <span style="color: var(--gold); font-weight: 500;">Admin</span> members. Ask an admin to upgrade your account.
       </div>
     <?php endif; ?>
+
+    <!-- My Projects -->
+    <div class="glass-card-solid p-6">
+      <div class="flex items-center justify-between mb-1">
+        <h2 style="font-family: var(--font-heading); font-weight: 600; font-size: 18px; color: var(--gold);">My Projects</h2>
+        <a href="/community/" class="text-xs link-accent">Browse community →</a>
+      </div>
+      <p class="text-sm mb-4" style="color: var(--gold-muted);">Projects you've published to the community showcase.</p>
+
+      <?php if (empty($myProjects)): ?>
+        <p class="text-sm py-3" style="color: var(--text-mute);">
+          You haven't published any projects yet. Build one in
+          <a href="/chat/" class="link-accent">Chat</a>, then submit it from the
+          <a href="/community/" class="link-accent">Community</a> page.
+        </p>
+      <?php else: ?>
+        <ul class="space-y-3">
+          <?php foreach ($myProjects as $p): ?>
+            <li class="flex items-center justify-between gap-3 p-3 rounded-lg" style="border: 1px solid var(--gold-line); background: rgba(15,15,23,0.4);">
+              <div class="min-w-0">
+                <a href="/community/project/<?= e($p['slug']) ?>" class="font-medium truncate" style="color: var(--gold-text);" onmouseover="this.style.color='var(--gold)'" onmouseout="this.style.color='var(--gold-text)'"><?= e($p['title']) ?></a>
+                <div class="text-xs mt-1 flex items-center gap-2 flex-wrap" style="color: var(--gold-muted);">
+                  <span class="chip-gold" style="font-size: 10px;"><?= e($p['status']) ?></span>
+                  <span><?= e($p['category']) ?></span>
+                  <span>·</span>
+                  <span><?= (int) $p['likes'] ?> likes</span>
+                </div>
+              </div>
+              <div class="flex items-center gap-2 shrink-0">
+                <a href="/chat/?project=<?= rawurlencode($p['slug']) ?>&title=<?= rawurlencode($p['title']) ?>" class="btn-outline text-xs" style="padding: 4px 10px;">Open in Chat</a>
+                <a href="/community/project/<?= e($p['slug']) ?>/edit" class="btn-outline text-xs" style="padding: 4px 10px;">Edit</a>
+                <form method="post" action="/community/project/<?= e($p['slug']) ?>/delete" class="inline" onsubmit="return confirm('Delete this published project?')">
+                  <?= csrf_field() ?>
+                  <input type="hidden" name="redirect" value="account">
+                  <button class="btn-outline text-xs" style="padding: 4px 10px; color: var(--err);">Delete</button>
+                </form>
+              </div>
+            </li>
+          <?php endforeach; ?>
+        </ul>
+      <?php endif; ?>
+    </div>
 
     <!-- BrainStem Host Config (admin only) -->        <?php if ($u['role'] === 'Admin'): ?>
       <form id="brainstem-form" onsubmit="return false" class="glass-card-solid p-6">

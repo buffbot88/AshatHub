@@ -36,6 +36,16 @@ final class InMemoryCommunityProjectRepository implements CommunityProjectReposi
     }
 
     /**
+     * Mirror the Pdo VISIBLE filter: rows whose publisher was soft-banned
+     * (publisher_active = 0) are hidden from all listing/detail methods.
+     * Absent key defaults to active, so plain seeds stay visible.
+     */
+    private function isVisible(array $row): bool
+    {
+        return (int) ($row['publisher_active'] ?? 1) !== 0;
+    }
+
+    /**
      * Return all rows for test assertions.
      */
     public function inspect(): array
@@ -47,8 +57,9 @@ final class InMemoryCommunityProjectRepository implements CommunityProjectReposi
 
     public function all(): array
     {
+        $rows = array_filter($this->rows, fn(array $r): bool => $this->isVisible($r));
         // Sort by likes DESC, created_at DESC (mirrors the SQL)
-        $sorted = array_values($this->rows);
+        $sorted = array_values($rows);
         usort($sorted, function (array $a, array $b): int {
             $likesCmp = ($b['likes'] ?? 0) <=> ($a['likes'] ?? 0);
             if ($likesCmp !== 0) return $likesCmp;
@@ -61,7 +72,7 @@ final class InMemoryCommunityProjectRepository implements CommunityProjectReposi
     {
         $results = [];
         foreach ($this->rows as $r) {
-            if (($r['category'] ?? '') === $category) {
+            if (($r['category'] ?? '') === $category && $this->isVisible($r)) {
                 $results[] = $r;
             }
         }
@@ -70,15 +81,38 @@ final class InMemoryCommunityProjectRepository implements CommunityProjectReposi
         return $results;
     }
 
+    public function find(string $id): ?array
+    {
+        foreach ($this->rows as $row) {
+            if (($row['id'] ?? '') === $id && $this->isVisible($row)) return $row;
+        }
+        return null;
+    }
+
+    public function byUser(string $userId): array
+    {
+        $results = [];
+        foreach ($this->rows as $r) {
+            if (($r['user_id'] ?? '') === $userId && $this->isVisible($r)) {
+                $results[] = $r;
+            }
+        }
+        // Sort by created_at DESC (mirrors the SQL)
+        usort($results, fn(array $a, array $b): int => ($b['created_at'] ?? '') <=> ($a['created_at'] ?? ''));
+        return $results;
+    }
+
     public function bySlug(string $slug): ?array
     {
-        return $this->rows[$slug] ?? null;
+        $row = $this->rows[$slug] ?? null;
+        return ($row && $this->isVisible($row)) ? $row : null;
     }
 
     public function categories(): array
     {
         $out = ['all' => 0];
         foreach ($this->rows as $r) {
+            if (!$this->isVisible($r)) continue;
             $cat = $r['category'] ?? 'general';
             $out[$cat] = ($out[$cat] ?? 0) + 1;
             $out['all']++;
@@ -123,6 +157,30 @@ final class InMemoryCommunityProjectRepository implements CommunityProjectReposi
             'created_at'  => date('Y-m-d H:i:s'),
         ];
         return $slug;
+    }
+
+    public function update(string $id, string $userId, string $title, string $description, string $category, string $tags, string $stack): void
+    {
+        foreach ($this->rows as $slug => &$row) {
+            if (($row['id'] ?? '') === $id && ($row['user_id'] ?? '') === $userId) {
+                $row['title'] = $title;
+                $row['description'] = $description;
+                $row['category'] = $category;
+                $row['tags'] = $tags;
+                $row['stack'] = $stack;
+                return;
+            }
+        }
+    }
+
+    public function delete(string $id, string $userId): void
+    {
+        foreach ($this->rows as $slug => $row) {
+            if (($row['id'] ?? '') === $id && ($row['user_id'] ?? '') === $userId) {
+                unset($this->rows[$slug]);
+                return;
+            }
+        }
     }
 
     private static function slugify(string $text): string

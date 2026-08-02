@@ -7,7 +7,11 @@ $router->get('/',                [\Controllers\HomeController::class,     'index
 // ─── Community ─────────────────────────────────────────────────────
 $router->get('/community',       [\Controllers\CommunityController::class, 'index']);
 $router->post('/community/submit',[\Controllers\CommunityController::class, 'submit']);
+$router->get('/community/user/{username}', [\Controllers\CommunityController::class, 'publisher']);
 $router->get('/community/project/{slug}', [\Controllers\CommunityController::class, 'show']);
+$router->get('/community/project/{slug}/edit', [\Controllers\CommunityController::class, 'edit']);
+$router->post('/community/project/{slug}/edit', [\Controllers\CommunityController::class, 'update']);
+$router->post('/community/project/{slug}/delete', [\Controllers\CommunityController::class, 'delete']);
 
 // ─── Chat (standalone, open to all authenticated users) ───────────
 $router->get('/chat',            [\Controllers\ChatPageController::class,  'index']);

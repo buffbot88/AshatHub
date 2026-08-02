@@ -24,6 +24,12 @@ interface CommunityProjectRepository
     /** Projects in a specific category. */
     public function byCategory(string $category): array;
 
+    /** Projects published by a specific user, newest first. */
+    public function byUser(string $userId): array;
+
+    /** Single project by ID. Returns null if not found. */
+    public function find(string $id): ?array;
+
     /** Single project by slug. Returns null if not found. */
     public function bySlug(string $slug): ?array;
 
@@ -41,4 +47,10 @@ interface CommunityProjectRepository
      * random suffix if it already exists). Returns the generated slug.
      */
     public function submit(string $userId, string $title, string $description, string $category, string $tags, string $stack): string;
+
+    /** Update project metadata. Auth-scoped to owner. */
+    public function update(string $id, string $userId, string $title, string $description, string $category, string $tags, string $stack): void;
+
+    /** Delete project. Auth-scoped to owner. */
+    public function delete(string $id, string $userId): void;
 }

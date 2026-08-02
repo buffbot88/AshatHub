@@ -1,5 +1,6 @@
 <?php /** @var Core\ViewContext $view */
   $p = $view->project;
+  $isOwner = $view->isOwner ?? false;
 ?>
 
 <section style="border-bottom: 1px solid var(--gold-line);">
@@ -8,12 +9,31 @@
     <div class="mt-6 flex items-start justify-between flex-wrap gap-4">
       <div class="max-w-3xl">
         <h1 class="section-title" style="font-size: clamp(30px, 5vw, 48px);"><?= e($p['title']) ?></h1>
+        <?php if (!empty($p['publisher_username'])): ?>
+          <div class="mt-2 flex items-center gap-2">
+            <div class="w-6 h-6 rounded-full flex items-center justify-center text-[10px] font-bold" style="background: var(--surface-2); color: var(--text-dim);"><?= strtoupper(mb_substr($p['publisher_display_name'] ?: $p['publisher_username'], 0, 1)) ?></div>
+            <?php if (($p['publisher_active'] ?? 1)): ?>
+              <a href="/community/user/<?= rawurlencode($p['publisher_username']) ?>" class="text-sm" style="color: var(--text-mute);" onmouseover="this.style.color='var(--gold)'" onmouseout="this.style.color='var(--text-mute)'">by <?= e($p['publisher_display_name'] ?: $p['publisher_username']) ?></a>
+            <?php else: ?>
+              <span class="text-sm" style="color: var(--text-mute);">by <?= e($p['publisher_display_name'] ?: $p['publisher_username']) ?></span>
+            <?php endif; ?>
+          </div>
+        <?php endif; ?>
         <p class="mt-3 text-lg leading-relaxed" style="color: var(--gold-text);"><?= e($p['description']) ?></p>
       </div>
-      <span class="chip-gold" style="text-transform: uppercase; letter-spacing: 1px;">
-        <span class="dot"></span>
-        <?= e($p['status']) ?>
-      </span>
+      <div class="flex items-center gap-3">
+        <span class="chip-gold" style="text-transform: uppercase; letter-spacing: 1px;">
+          <span class="dot"></span>
+          <?= e($p['status']) ?>
+        </span>
+        <?php if ($isOwner): ?>
+          <a href="/community/project/<?= e($p['slug']) ?>/edit" class="btn-outline text-sm">Edit</a>
+          <form method="post" action="/community/project/<?= e($p['slug']) ?>/delete" class="inline" onsubmit="return confirm('Are you sure you want to delete this project?')">
+            <?= csrf_field() ?>
+            <button class="btn-outline text-sm" style="color: var(--err);">Delete</button>
+          </form>
+        <?php endif; ?>
+      </div>
     </div>
   </div>
 </section>
@@ -61,9 +81,21 @@
     <div class="glass-card-solid p-5">
       <div class="label-gold mb-3">Links</div>
       <div class="space-y-2 text-sm">
-        <a href="/chat/" style="color: var(--gold); display: block;" onmouseover="this.style.color='var(--gold-light)'" onmouseout="this.style.color='var(--gold)'">Build in Chat →</a>
+        <?php if ($isOwner): ?>
+          <a href="/chat/?project=<?= rawurlencode($p['slug']) ?>&title=<?= rawurlencode($p['title']) ?>" style="color: var(--accent); display: block; font-weight: 600;" onmouseover="this.style.color='var(--accent-hover)'" onmouseout="this.style.color='var(--accent)'">Open in Chat →</a>
+        <?php else: ?>
+          <a href="/chat/?project=<?= rawurlencode($p['slug']) ?>&title=<?= rawurlencode($p['title']) ?>" style="color: var(--gold); display: block;" onmouseover="this.style.color='var(--gold-light)'" onmouseout="this.style.color='var(--gold)'">Build in Chat →</a>
+        <?php endif; ?>
         <a href="/community/" style="color: var(--gold-text); display: block;" onmouseover="this.style.color='var(--gold)'" onmouseout="this.style.color='var(--gold-text)'">More in Community →</a>
       </div>
     </div>
+
+    <?php if ($isOwner): ?>
+      <div class="glass-card-solid p-5">
+        <div class="label-gold mb-3">Your Project</div>
+        <p class="text-xs leading-relaxed" style="color: var(--text-mute);">This is your published project. Edit or delete it using the buttons above. Your project files are available in Chat.</p>
+        <a href="/chat/?project=<?= rawurlencode($p['slug']) ?>&title=<?= rawurlencode($p['title']) ?>" class="mt-3 inline-block btn-outline text-xs">Open project files →</a>
+      </div>
+    <?php endif; ?>
   </aside>
 </section>

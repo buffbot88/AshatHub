@@ -37,9 +37,8 @@ interface CommunityProjectRepository
     public function download(string $slug): void;
 
     /**
-     * Submit a new project. Generates a slug from the title with a
-     * random suffix if the slug already exists.
-     * Returns the generated slug.
+     * Submit a new project, generating a slug from the title (with a
+     * random suffix if it already exists). Returns the generated slug.
      */
     public function submit(string $userId, string $title, string $description, string $category, string $tags, string $stack): string;
 }

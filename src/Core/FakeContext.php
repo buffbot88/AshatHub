@@ -86,9 +86,8 @@ class FakeContext extends RequestContext
     // ── Override assertCsrf to never exit / skip in tests ─────────
 
     /**
-     * In tests, CSRF validation is opt-in. If no token was submitted,
-     * skip the check. If a token was submitted and doesn't match,
-     * call the parent (which will throw via jsonResponse).
+     * In tests, CSRF validation is opt-in: skip when no token was
+     * submitted, else call the parent (which throws via jsonResponse).
      */
     public function assertCsrf(): void
     {

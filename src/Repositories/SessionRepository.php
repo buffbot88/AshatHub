@@ -4,11 +4,9 @@ namespace Repositories;
 
 /**
  * ═══════════════════════════════════════════════════════════════════════
- * Repositories\SessionRepository — session row persistence.
- *
- * Extracted from the duplicated INSERT INTO sessions ... ON DUPLICATE KEY
- * UPDATE SQL that appeared in both AuthService::login() and
- * AuthService::register(). Now testable via InMemorySessionRepository.
+ * Repositories\SessionRepository — session row persistence, extracted
+ * from the INSERT-ON-DUPLICATE-KEY-UPDATE SQL duplicated across
+ * AuthService methods. Testable via InMemorySessionRepository.
  * ═══════════════════════════════════════════════════════════════════════
  */
 interface SessionRepository

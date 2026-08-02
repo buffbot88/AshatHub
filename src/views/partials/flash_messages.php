@@ -1,29 +1,10 @@
 <?php
 /**
  * ═══════════════════════════════════════════════════════════════════════
- * Flash messages partial — type-aware flash banner rendering.
- *
- * Supports two modes:
- *
- * 1. ViewContext-driven (called from header.php): pass the $view object
- *    as the first argument. Reads $view->__flash and $view->__flash_type.
- *
- * 2. Direct session reads (called from raw-layout pages like
- *    session_login.php): pass null and use $keys to read and clear
- *    specific keys from $_SESSION['_flash'].
- *
- * Usage in a layout (mode 1 — from $view):
- *   <?php partial_flash($view) ?>
- *
- * Usage on a raw page (mode 2 — explicit keys):
- *   <?php partial_flash(null, ['error', 'success'], true) ?>
- *
- * Styling per type:
- *   error   → red border/background/text
- *   success → green border/background/text
- *   info    → gold accent border/background/text (same as default)
- *   flash   → gold accent border/background/text (legacy)
- *
+ * Flash messages partial — type-aware flash banner rendering in two modes:
+ * ViewContext-driven (from layouts, reads $view->__flash) or direct
+ * session reads (raw layouts, pass $keys for $_SESSION['_flash']).
+ * Styling per type: error/success/info/flash.
  * ═══════════════════════════════════════════════════════════════════════
  */
 
@@ -31,12 +12,8 @@
  * Render type-aware flash message banners.
  *
  * @param object|null   $viewContext The ViewContext object (from layout pages).
- *                                   Pass null when using $keys on raw layouts.
- * @param string[]|null $keys        Optional session keys to read directly
- *                                   from $_SESSION['_flash'] (for raw layouts).
- *                                   Ignored when $viewContext is provided.
- * @param bool          $noContainer Set to true to skip the outer container div
- *                                   (for use inside card/panel layouts).
+ * @param string[]|null $keys        Session keys to read directly from $_SESSION['_flash'].
+ * @param bool          $noContainer Skip the outer container div (card/panel layouts).
  */
 function partial_flash(?object $viewContext = null, ?array $keys = null, bool $noContainer = false): void
 {

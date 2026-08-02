@@ -81,12 +81,10 @@ final class FilesController
     }
 
     /**
-     * Create an EMPTY folder. The files table only knows files, so an
-     * empty folder is represented by a "folder marker" row whose path
-     * ends with '/' (e.g. 'assets/') and whose content is ''. The tree
-     * UI renders markers as folder rows, never as files. If the marker
-     * already exists (or files already live under that prefix), the
-     * call is a harmless no-op returning exists=true.
+     * Create an EMPTY folder as a "folder marker" row (path ends with
+     * '/', content '') that the tree UI renders as a folder, never a file.
+     * A duplicate marker (or files already under the prefix) is a
+     * harmless no-op returning exists=true.
      */
     public function createFolder(RequestContext $ctx): void
     {
@@ -121,7 +119,7 @@ final class FilesController
 
     /**
      * Rename a file or a folder (path prefix, including descendants).
-     * Body: { path, newPath }. Errors map to HTTP statuses so the UI
+     * Body: { path, newPath }; errors map to HTTP statuses so the UI
      * can distinguish "local-only path" (404) from "target occupied" (409).
      */
     public function rename(RequestContext $ctx): void
@@ -142,7 +140,7 @@ final class FilesController
 
     /**
      * Import a .zip upload (multipart field "zip") into the user's
-     * project. Each entry is sanitized, quota-checked, and upserted by
+     * project; each entry is sanitized, quota-checked, and upserted by
      * path. Returns imported/skipped counts + new usage.
      */
     public function importZip(RequestContext $ctx): void

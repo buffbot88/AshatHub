@@ -1,8 +1,8 @@
 <?php /** @var Core\ViewContext $view
   *
-  * Standalone Chat page — adapted from the old IDE Spec Chat.
-  * Uses the main site layout (header.php + footer.php) via View::render().
-  * Same DOM structure and element IDs so assistant.js works without changes.
+  * Standalone Chat page — adapted from the old IDE Spec Chat, rendered
+  * with the main site layout. Same DOM structure and element IDs so
+  * assistant.js works without changes.
   */ ?>
 
 <section class="container mx-auto px-6 py-6" style="min-height: calc(100vh - 12rem);">
@@ -183,5 +183,4 @@
 <script>
   window.ASHAT = window.ASHAT || {};
   window.ASHAT.accountUrl = '<?= e(asset('/account/')) ?>';
-  window.ASHAT.role = '<?= e($view->user['role'] ?? 'Member') ?>';
 </script>

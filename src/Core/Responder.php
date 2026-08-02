@@ -4,24 +4,15 @@ namespace Core;
 
 /**
  * ═══════════════════════════════════════════════════════════════════════
- * Core\Responder — the single exit() seam for the framework.
+ * Core\Responder — the single exit() seam for the framework: production
+ * code that must terminate the request calls terminate() instead of
+ * `exit;` directly — a plain exit in production, but a THROWN
+ * RuntimeException under PHPUnit, so a stray exit() can never silently
+ * truncate the test run.
  *
- * Production code that must terminate the request (redirects, JSON
- * responses, JSON error pages, role-gate 403s) calls
- * Responder::terminate() instead of `exit;` directly. In production it
- * is a plain `exit;`. Under PHPUnit (test mode enabled by
- * tests/bootstrap.php) it THROWS instead, so a stray exit() can never
- * silently kill the PHPUnit process mid-run — the "false green"
- * truncation bug (exit code 0, no summary, empty JUnit log) that this
- * class was created to make impossible.
- *
- * Rule for tests: never let real RequestContext / ErrorController code
- * run to completion on state-changing requests — use FakeContext, which
- * overrides redirect()/jsonResponse()/requireRole()/assertCsrf() to
- * capture + throw. If a test DOES reach a real exit path (e.g. it
- * dispatches the real Router without a CSRF token), Responder::terminate()
- * throws a RuntimeException that PHPUnit reports as a loud failure
- * instead of truncating the run.
+ * Rule for tests: use FakeContext (which overrides redirect/jsonResponse/
+ * requireRole/assertCsrf to capture + throw) so real exit paths are never
+ * reached; if one IS reached, terminate() throws a loud RuntimeException.
  * ═══════════════════════════════════════════════════════════════════════
  */
 final class Responder

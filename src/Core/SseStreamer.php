@@ -67,13 +67,8 @@ final class SseStreamer
 
     /**
      * Open a streaming POST connection to an upstream SSE endpoint and
-     * relay every line to the client verbatim.
-     *
-     * On error (connection failure, non-200 status), sends an 'error'
-     * SSE event and returns null.
-     *
-     * On success, relays all lines and returns the accumulated message
-     * content so the caller can send a terminal 'done' event.
+     * relay every line verbatim, returning the accumulated message content
+     * (or null after sending an 'error' event on failure).
      *
      * @param string $endpoint  Upstream URL
      * @param array  $headers   HTTP headers (raw strings, e.g. ['Content-Type: application/json'])

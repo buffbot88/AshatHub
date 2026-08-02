@@ -7,18 +7,10 @@ use PDOStatement;
 
 /**
  * ═══════════════════════════════════════════════════════════════════════
- * Core\Database — static facade over a singleton PdoDatabase instance.
- *
- * Every repository calls Database::fetchOne / fetchAll / execute / insert
- * / transaction as static methods. The methods delegate to the singleton
- * PdoDatabase instance.
- *
- * Direct PDO access (connection/prepare) is kept on this class for
- * migration scripts and manual use.
- *
- * Note: Database::swap() and DatabaseInterface were removed in Phase 4
- * of the repository refactoring. Tests now swap at the repository level
- * via RepositoryRegistry::swap().
+ * Core\Database — static facade over a singleton PdoDatabase instance:
+ * repositories call the static fetch/execute/insert/transaction methods,
+ * which delegate to the singleton. Direct PDO access stays here for
+ * migrations; tests swap via RepositoryRegistry::swap() instead.
  * ═══════════════════════════════════════════════════════════════════════
  */
 final class Database

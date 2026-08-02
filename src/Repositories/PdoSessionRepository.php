@@ -7,11 +7,9 @@ use Core\PdoDatabase;
 
 /**
  * ═══════════════════════════════════════════════════════════════════════
- * Repositories\PdoSessionRepository — PDO-backed session row persistence.
- *
- * Encapsulates the INSERT ... ON DUPLICATE KEY UPDATE pattern that was
- * duplicated across AuthService methods. The method signature matches
- * the SessionRepository interface for testability.
+ * Repositories\PdoSessionRepository — PDO-backed session row persistence
+ * encapsulating the INSERT ... ON DUPLICATE KEY UPDATE pattern formerly
+ * duplicated across AuthService methods.
  * ═══════════════════════════════════════════════════════════════════════
  */
 final class PdoSessionRepository implements SessionRepository

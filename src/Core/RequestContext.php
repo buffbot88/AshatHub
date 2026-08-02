@@ -6,26 +6,13 @@ namespace Core;
 
 /**
  * ═══════════════════════════════════════════════════════════════════════
- * Core\RequestContext — injectable request-scoped context.
+ * Core\RequestContext — injectable request-scoped context wrapping auth,
+ * session, flash, response, CSRF, and view state, passed as the first
+ * parameter to every controller action; no static facade dependencies
+ * and fully overridable by FakeContext in tests.
  *
- * Wraps all request-scoped state (auth, session, flash, response, CSRF,
- * view) into a single object that the Router constructs from globals and
- * passes as the first parameter to every controller action.
- *
- * This class has NO static facade dependencies — Auth::, Session::,
- * Response::, View:: are never called from here. The context is fully
- * self-contained for real requests and fully overridable by FakeContext
- * for tests.
- *
- * Usage in a controller:
- *   public function index(RequestContext $ctx): void {
- *       $user = $ctx->user();            // reads $_SESSION + User::find()
- *       $ctx->view('pages/home', [...]); // renders a view
- *       $ctx->json(['ok' => true]);      // sends JSON + exit
- *       $ctx->flash('success', 'Saved'); // one-shot flash message
- *       $ctx->redirect('/login/');       // sends redirect + exit
- *       $ctx->assertCsrf();              // CSRF check on POST/PUT/DELETE
- *   }
+ * Usage: $ctx->user(), $ctx->view('pages/home', [...]), $ctx->json([...]),
+ * $ctx->flash('success', 'Saved'), $ctx->redirect('/login/'), $ctx->assertCsrf().
  * ═══════════════════════════════════════════════════════════════════════
  */
 class RequestContext
@@ -98,10 +85,9 @@ class RequestContext
     // ── User (replaces Auth::user() / Auth::check() / Auth::role()) ─
 
     /**
-     * Get the authenticated user array, or null if not logged in.
-     * Lazily resolved on first call — reads $_SESSION on real requests.
-     *
-     * Override in FakeContext to return a fake user without touching $_SESSION.
+     * Get the authenticated user array, or null if not logged in; lazily
+     * resolved on first call (reads $_SESSION in production, overridden
+     * in FakeContext).
      */
     public function user(): ?array
     {
@@ -146,9 +132,7 @@ class RequestContext
 
     /**
      * Require a role — redirects to /login/ if unauthenticated, or 403
-     * if the role doesn't match. Calls exit.
-     *
-     * Override in FakeContext to capture the redirect instead of exiting.
+     * if the role doesn't match (calls exit; overridden in FakeContext).
      */
     public function requireRole(string ...$roles): void
     {
@@ -219,13 +203,9 @@ class RequestContext
     }
 
     /**
-     * Validate the CSRF token submitted with a state-changing request.
-     * On failure:
-     *   - HTML form submissions (form-urlencoded + text/html Accept)
-     *     get a redirect back with a flash error.
-     *   - API/JSON requests get a JSON 419 response.
-     *
-     * Override in FakeContext to skip validation in tests.
+     * Validate the CSRF token on a state-changing request: HTML form
+     * submissions get a redirect with a flash error, API/JSON requests
+     * get a JSON 419 (overridden in FakeContext for tests).
      */
     public function assertCsrf(): void
     {
@@ -350,8 +330,7 @@ class RequestContext
     // ── Response (replaces Response::redirect() / Response::json()) ─
 
     /**
-     * Send a redirect response. Calls exit().
-     * Override in FakeContext to capture instead.
+     * Send a redirect response (calls exit; overridden in FakeContext).
      */
     public function redirect(string $url, int $status = 302): never
     {
@@ -365,8 +344,7 @@ class RequestContext
     }
 
     /**
-     * Send a JSON response. Calls exit().
-     * Override in FakeContext to capture instead.
+     * Send a JSON response (calls exit; overridden in FakeContext).
      */
     public function jsonResponse(mixed $data, int $status = 200): never
     {

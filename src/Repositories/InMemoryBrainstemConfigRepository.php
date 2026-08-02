@@ -4,12 +4,9 @@ namespace Repositories;
 
 /**
  * ═══════════════════════════════════════════════════════════════════════
- * Repositories\InMemoryBrainstemConfigRepository — fake BrainstemConfigRepository
- * backed by a single row array (id=1 singleton).
- *
- * The active() method merges DB-stored values with ConfigBag fallback
- * values — same logic as the PDO impl. Accepts an optional ConfigBag;
- * falls back to ConfigBag::getInstance() when none is provided.
+ * Repositories\InMemoryBrainstemConfigRepository — fake BrainstemConfig
+ * backed by a single row array (id=1 singleton); active() merges
+ * DB-stored values with a ConfigBag fallback (getInstance() by default).
  * ═══════════════════════════════════════════════════════════════════════
  */
 final class InMemoryBrainstemConfigRepository implements BrainstemConfigRepository

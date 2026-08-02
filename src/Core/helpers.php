@@ -97,11 +97,8 @@ function time_ago(?string $iso): string
 }
 
 /**
- * Tiny Markdown → HTML (headings, lists, paragraphs, code blocks, links).
- * Good enough for blog-style docs. Use Parsedown / league/commonmark for
- * production-grade conversion later.
- *
- * Delegates to \Core\MarkdownRenderer::render().
+ * Tiny Markdown → HTML (headings, lists, paragraphs, code blocks, links),
+ * good enough for blog-style docs. Delegates to \Core\MarkdownRenderer::render().
  */
 function md_to_html(string $md): string
 {

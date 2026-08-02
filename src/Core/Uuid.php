@@ -4,13 +4,9 @@ namespace Core;
 
 /**
  * ═══════════════════════════════════════════════════════════════════════
- * Core\Uuid — RFC 4122 v4 UUID generator.
- *
- * Single source of truth for UUID generation. Replaces 5 identical copies
- * of this 6-line method that were copy-pasted across Models and Data.
- *
- * Usage:
- *   $id = Uuid::v4();
+ * Core\Uuid — RFC 4122 v4 UUID generator, the single source of truth
+ * (replaces 5 identical copy-pasted copies across Models and Data).
+ * Usage: $id = Uuid::v4();
  * ═══════════════════════════════════════════════════════════════════════
  */
 final class Uuid

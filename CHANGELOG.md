@@ -65,13 +65,19 @@ The version displayed in the UI comes from `APP_VERSION` in `config/bootstrap.ph
   - When a spec (`<!--SPEC-->`) is detected, a **spec-consent card** appears
     on the assistant bubble ("Spec ready — want me to generate these files
     into your project folder?"). Files are only generated after the user
-    clicks **Yes — generate files**, which hands the spec to the coding
-    agent in the Planner (`/ide/planner/?spec=`); the Planner's two-phase
-    flow still requires approving the plan before any file is written
+    clicks **Yes — generate files**, which drives the coding agent
+    (`window.ASHAT.agent.runBuildStream`) and writes the files straight
+    into the user's project folder via `POST /api/files/` — nothing is ever
+    stored without the consent-card click, and a `gen-status-bubble` shows
+    progress without dumping code into the conversation
+  - **The chat is open to ALL roles** (Member, Pro, Admin) — the consent
+    card has no role gate, and generation goes through the auth-open files
+    API rather than the Pro-gated Planner. The IDE (`/ide/*`) remains
+    Pro/Admin-only: it is the single gated surface
   - The `<!--PREVIEW-->` live-preview mechanism was removed (`extractPreview`,
     `appendPreviewToBubble`, call sites, PREVIEW strip lines, and the
-    `.live-preview*`/`.preview-*` CSS); `sendToPlanner()` no longer depends
-    on the removed planner button
+    `.live-preview*`/`.preview-*` CSS); `sendToPlanner()` and its dead
+    Copy/Planner button bindings were removed
 
 ### Removed
 

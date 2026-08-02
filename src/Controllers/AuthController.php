@@ -95,15 +95,10 @@ final class AuthController
     }
 
     /**
-     * Session-auth endpoint for the desktop client (ephemeral popup).
-     * GET  — renders a minimal login form with a hidden callback field.
-     * POST — authenticates, redirects to callback URL with session_id,
-     *        username, role, and display_name as query params.
-     *
-     * Security note: the callback URL is provided by the desktop client
-     * and is intentionally an external URL (e.g. http://127.0.0.1:PORT/...
-     * or ashat://...). We validate it has a scheme (contains ://) to
-     * reject obviously malformed input.
+     * Session-auth endpoint for the desktop client (ephemeral popup): GET
+     * renders a minimal login form, POST authenticates and redirects to
+     * the callback URL with session params. The callback is an external
+     * URL validated to contain :// (rejects obviously malformed input).
      */
     public function sessionAuth(RequestContext $ctx): void
     {

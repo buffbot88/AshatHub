@@ -10,16 +10,9 @@ use Repositories\RepositoryRegistry;
  * ═══════════════════════════════════════════════════════════════════════
  * Controllers\BuildsController — build lifecycle + metadata validation.
  *
- * Local-first data flow:
- *   1. Browser (agent.js) writes the full {plan, files[]} payload
- *      to localStorage["ashat.generated.<id>"].
- *   2. Browser POSTs ONLY metadata here: { id, spec_id, plan,
- *      file_paths: [{path, language, size_bytes}, ...] }.
- *   3. Server creates a Build row using the browser-supplied id
- *      (so the localStorage key matches the DB row 1:1) and
- *      creates File rows with NULL content + generated=1 so the
- *      file list + build history still surface every generation.
- *   4. Server NEVER receives API keys or generated source code.
+ * Local-first: the browser keeps the full {plan, files[]} payload in
+ * localStorage and POSTs only metadata here — the server never receives
+ * API keys or generated source code.
  * ═══════════════════════════════════════════════════════════════════════
  */
 final class BuildsController

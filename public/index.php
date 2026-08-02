@@ -3,8 +3,8 @@
  * ═══════════════════════════════════════════════════════════════════════
  * ASHAT Hub — Front Controller
  * ═══════════════════════════════════════════════════════════════════════
- * All web requests land here. We bootstrap the core and dispatch via
- * Core\Router. API endpoints go through the same router but return JSON.
+ * All web requests land here — bootstrap the core and dispatch via
+ * Core\Router. API endpoints use the same router but return JSON.
  */
 
 declare(strict_types=1);

@@ -4,19 +4,9 @@ namespace Core;
 
 /**
  * ═══════════════════════════════════════════════════════════════════════
- * Core\ViewContext — typed wrapper for template variables.
- *
- * Replaces extract($vars) in View.php. Templates access variables as
- * $view->title, $view->user, $view->specs, etc. instead of bare $title.
- *
- * Usage in a template:
- *   <h1><?= e($view->title) ?></h1>
- *   <?php if ($view->user): ?>
- *     <p>Welcome, <?= e($view->user['display_name']) ?></p>
- *   <?php endif; ?>
- *
- * FakeContext::lastViewVars returns the ViewContext for assertions:
- *   self::assertSame('Home', $ctx->lastViewVars->title);
+ * Core\ViewContext — typed wrapper for template variables, replacing
+ * extract($vars) in View.php: templates access $view->title,
+ * $view->user, $view->specs, etc. instead of bare variables.
  * ═══════════════════════════════════════════════════════════════════════
  */
 final class ViewContext

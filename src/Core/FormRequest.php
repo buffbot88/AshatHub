@@ -5,29 +5,14 @@ namespace Core;
 
 /**
  * ═══════════════════════════════════════════════════════════════════════
- * Core\FormRequest — typed, validated input extraction.
+ * Core\FormRequest — typed, validated input extraction: every controller
+ * action that reads $_POST, $_GET, or php://input should define a
+ * subclass instead, eliminating the trim-cast pattern and preventing
+ * open-redirect via the safeRedirect() accessor.
  *
- * Every controller action that reads $_POST, $_GET, or php://input
- * should define a FormRequest subclass instead. This eliminates the
- * `trim((string) ($_POST['x'] ?? ''))` pattern (~35 occurrences in
- * the codebase) and prevents open-redirect vulnerabilities through
- * the safeRedirect() accessor.
- *
- * Usage:
- *   $req = LoginRequest::fromGlobals();
- *   if ($req->failed()) {
- *       // redirect with errors
- *   }
- *   $username = $req->string('username');
- *   $next     = $req->safeRedirect('next', '/');
- *
- * Testing (no HTTP, no $_SESSION):
- *   $req = LoginRequest::fromArray([
- *       'username' => 'alice',
- *       'password' => 'secret',
- *       'next'     => 'https://evil.com',  // safeRedirect will reject
- *   ]);
- *   assert($req->safeRedirect('next') === '/');
+ * Usage: $req = LoginRequest::fromGlobals(); then $req->string('username'),
+ * $req->failed(), $req->safeRedirect('next', '/'); tests use
+ * LoginRequest::fromArray([...]) with no HTTP or $_SESSION involved.
  * ═══════════════════════════════════════════════════════════════════════
  */
 abstract class FormRequest
@@ -188,11 +173,9 @@ abstract class FormRequest
     }
 
     /**
-     * Get a safe redirect URL — only relative paths (starting with /).
-     *
-     * Prevents open-redirect attacks where an attacker supplies
-     * an external URL like https://evil.com as the "next" parameter.
-     * If the value doesn't start with /, the $default is returned.
+     * Get a safe redirect URL — only relative paths (starting with /),
+     * falling back to $default otherwise. This prevents open-redirect
+     * attacks via external URLs like https://evil.com as "next".
      */
     public function safeRedirect(string $key, string $default = '/'): string
     {

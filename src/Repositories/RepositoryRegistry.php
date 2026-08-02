@@ -6,26 +6,11 @@ use Core\PdoDatabase;
 
 /**
  * ═══════════════════════════════════════════════════════════════════════
- * Repositories\RepositoryRegistry — service locator for repository swaps.
- *
- * Controllers and services access repositories through the registry:
- *   $users = RepositoryRegistry::user();
- *   $user  = $users->find($id);
- *
- * For tests, swap with in-memory implementations:
- *   $old = RepositoryRegistry::swap('user', new InMemoryUserRepository());
- *   try {
- *       // ... every call to RepositoryRegistry::user() returns the in-memory version
- *   } finally {
- *       RepositoryRegistry::swap('user', $old);
- *   }
- *
- * Each entity type has its own swap target — no more single global
- * Database::swap() that must parse SQL.
- *
- * Production repositories share a single PdoDatabase instance injected
- * through the constructor. Tests can inject a PdoDatabase backed by
- * SQLite via the same constructor parameter.
+ * Repositories\RepositoryRegistry — service locator for repository swaps:
+ * controllers access repositories via RepositoryRegistry::user() etc.,
+ * and tests swap in-memory implementations with swap() (restored in a
+ * finally block; each entity has its own swap target). Production
+ * repositories share a single PdoDatabase; tests can inject a SQLite one.
  * ═══════════════════════════════════════════════════════════════════════
  */
 final class RepositoryRegistry

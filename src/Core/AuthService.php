@@ -7,27 +7,11 @@ use Repositories\RepositoryRegistry;
 
 /**
  * ═══════════════════════════════════════════════════════════════════════
- * Core\AuthService — stateless authentication operations.
- *
- * This class replaces the old Core\Auth static facade. It contains the
- * three operations that involve session manipulation and database writes:
- *
- *   - login()    — validate credentials, write session, return user
- *   - register() — validate input, create user + session row, return user
- *   - logout()   — clear session row, destroy session
- *
- * These are stateless service operations (not request-scoped state),
- * which is why they remain static methods on a dedicated class rather
- * than living on RequestContext.
- *
- * What was REMOVED from the old Auth facade (and where it lives now):
- *   - user() / check() / role() / hasRole() / requireRole()
- *     → Core\RequestContext methods (request-scoped state)
- *
- * Usage:
- *   $user = AuthService::login($username, $password);
- *   $user = AuthService::register($username, $email, $password);
- *   AuthService::logout();
+ * Core\AuthService — stateless authentication operations (login, register,
+ * logout) that replace the old Core\Auth static facade. These remain
+ * static service methods (not request-scoped state) because they only
+ * touch sessions and the database; the old user/check/role accessors
+ * moved to Core\RequestContext.
  * ═══════════════════════════════════════════════════════════════════════
  */
 final class AuthService

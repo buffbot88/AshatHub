@@ -12,17 +12,9 @@ use Repositories\RepositoryRegistry;
  * Controllers\ErrorController
  *
  * Renders themed error pages (HTML) or JSON error payloads (for API
- * callers). Single entry point for all "we hit an HTTP status code"
- * situations in the app.
- *
- * Self-contained: no static facade dependencies (Auth::, Response::,
- * Session::). Reads $_SESSION directly for the user, emits JSON via
- * raw PHP (http_response_code + echo), and uses View::render() as a
- * utility (which is also free of static facades after our cleanup).
- *
- * This controller does NOT take a RequestContext because it is called
- * from places where no context exists — bootstrap's exception handler,
- * Router 404 fallback, and middleware role gates.
+ * callers) — the single entry point for every HTTP error status.
+ * Self-contained (no static facades) and context-free: it's called from
+ * bootstrap's exception handler, Router 404 fallback, and role gates.
  * ═══════════════════════════════════════════════════════════════════════
  */
 final class ErrorController
@@ -82,15 +74,10 @@ final class ErrorController
     }
 
     /**
-     * Render a JSON error payload. Used by /api/* paths.
-     * Self-contained: no Response::json() static call.
-     *
-     * NOTE: this method terminates via \Core\Responder::terminate() — a
-     * real `exit;` in production, but a thrown RuntimeException under
-     * PHPUnit (test mode). A stray real exit() here used to silently
-     * truncate the PHPUnit run (false green). FakeContext overrides
-     * jsonResponse()/redirect()/requireRole() to throw instead; keep
-     * test-only code on FakeContext paths.
+     * Render a JSON error payload for /api/* paths (self-contained, no
+     * Response::json() static call). Terminates via
+     * \Core\Responder::terminate() — a real exit in production, a thrown
+     * RuntimeException under PHPUnit (test mode).
      */
     public function showJson(int $code, ?string $message = null): void
     {

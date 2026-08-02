@@ -1066,6 +1066,26 @@ a, button {
   cursor: wait;
 }
 
+/* ── Generation status bubble (in-chat file generation) ───────── */
+.gen-status-bubble {
+  margin-top: 10px;
+  padding: 10px 12px;
+  border-radius: 8px;
+  background: var(--surface-2);
+  border: 1px solid var(--line);
+  border-left: 2px solid var(--accent);
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--text-soft);
+  line-height: 1.6;
+}
+.gen-status-bubble.ok {
+  border-left-color: var(--gold-ok, #6fce8f);
+}
+.gen-status-bubble.err {
+  border-left-color: var(--gold-err);
+}
+
 /* ── Chat project file manager (right-pane tree) ──────────────── */
 #chat-file-tree label:hover {
   background: var(--surface-2);

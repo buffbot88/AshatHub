@@ -103,12 +103,9 @@ final class ApiController
     }
 
     /**
-     * Serve a static asset through the API.
-     * GET /api/asset?path=js/studio/chat.js
-     *
+     * Serve a static asset through the API (GET /api/asset?path=js/studio/chat.js).
      * Useful on hosts where mod_rewrite is unavailable and the
-     * front-controller fallback doesn't apply. Requires Pro or Admin
-     * role (gated by route middleware).
+     * front-controller fallback doesn't apply; Pro/Admin only via route middleware.
      */
     public function serveAsset(RequestContext $ctx): void
     {

@@ -4,11 +4,9 @@ namespace Repositories;
 
 /**
  * ═══════════════════════════════════════════════════════════════════════
- * Repositories\InMemorySessionRepository — in-memory session row store.
- *
- * For tests that need to verify session row creation, TTL extension,
- * and deletion without a database connection. Also useful for testing
- * AuthService in isolation.
+ * Repositories\InMemorySessionRepository — in-memory session row store
+ * for verifying creation, TTL extension, and deletion without a database
+ * (also useful for testing AuthService in isolation).
  * ═══════════════════════════════════════════════════════════════════════
  */
 final class InMemorySessionRepository implements SessionRepository

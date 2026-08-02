@@ -4,15 +4,10 @@ namespace Core;
 
 /**
  * ═══════════════════════════════════════════════════════════════════════
- * Core\RouteCollection — route storage + registration API.
- *
- * Holds route definitions, named middleware, and the prefix/middleware
- * stack state that group() pushes and pops. Pattern-to-regex conversion
- * lives here so the collection is self-contained and testable without a
- * Router instance.
- *
- * Extracted from the old static Router::$routes, Router::$middlewareMap,
- * Router::$prefixStack, and Router::$middlewareStack.
+ * Core\RouteCollection — route storage + registration API: holds route
+ * definitions, named middleware, and the prefix/middleware stack state
+ * that group() pushes and pops. Pattern-to-regex conversion lives here
+ * so the collection is testable without a Router instance.
  * ═══════════════════════════════════════════════════════════════════════
  */
 final class RouteCollection
@@ -67,10 +62,9 @@ final class RouteCollection
     }
 
     /**
-     * Define a route group. Accepts an optional options array as the
-     * second argument for middleware: ['middleware' => ['auth', ...]].
-     *
-     * Groups nest — prefix strings concatenate, middleware stacks merge.
+     * Define a route group with an optional middleware options array
+     * (['middleware' => ['auth', ...]]). Groups nest — prefixes
+     * concatenate and middleware stacks merge.
      */
     public function group(string $prefix, array|callable $arg2, ?callable $arg3 = null): void
     {

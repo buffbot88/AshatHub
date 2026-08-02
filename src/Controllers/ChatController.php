@@ -10,14 +10,8 @@ use Repositories\RepositoryRegistry;
 /**
  * ═══════════════════════════════════════════════════════════════════════
  * Controllers\ChatController — AI chat proxying and BrainStem admin
- * config management.
- *
- * Provides two chat modes:
- *   - chat()      — non-streaming JSON response
- *   - chatStream()— SSE streaming (Server-Sent Events)
- *
- * Backend selection: BrainStem (server-side) wins, BYO (browser) is
- * fallback. Both go through ChatBackend for unified request building.
+ * config management. Provides non-streaming chat() and SSE chatStream()
+ * modes; both go through ChatBackend for unified request building.
  * ═══════════════════════════════════════════════════════════════════════
  */
 final class ChatController
@@ -178,8 +172,8 @@ final class ChatController
 
     /**
      * POST JSON to an OpenAI-compatible endpoint with retry/backoff on
-     * transient failures (429 / 5xx). Non-2xx responses are returned with
-     * the body intact once retries are exhausted.
+     * transient failures (429 / 5xx), returning non-2xx bodies intact
+     * once retries are exhausted.
      *
      * @return array{status:int, body:string|false} body is false only when
      *         the connection itself failed on every attempt.

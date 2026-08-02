@@ -1,6 +1,6 @@
 <?php
   /** @var Core\ViewContext $view */
-  /** Home page — Plainspoken design system. No gradients, no glow, no emoji.
+  /** Home page — Plainspoken design system (no gradients, no glow, no emoji).
    *  Slim by design: the how-it-works deep dive lives in /docs/. */
   /* Minimal 24px stroke icons (currentColor) — only those used on this page */
   $icon = [

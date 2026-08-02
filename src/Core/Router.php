@@ -6,32 +6,10 @@ use Throwable;
 
 /**
  * ═══════════════════════════════════════════════════════════════════════
- * Core\Router — declarative front-controller dispatcher with groups
- * and middleware stacking.
- *
- * De-statted in v5.0.0+: the router is instantiable and internally
- * uses a RouteCollection. Route files receive a `$router` variable for
- * registration. A static ::dispatch() shim preserves backward compatibility
- * for public/index.php.
- *
- * Route groups:
- *   $router->group('/admin', function () {
- *       $router->get('/users', [AdminController::class, 'list']);
- *   });
- *   // Registers GET /admin/users
- *
- * $router->group('/api', ['middleware' => ['auth']], function () {
- *     $router->get('/health', [HealthController::class, 'check']);
- * });
- * // Registers GET /api/health with auth middleware
- *
- * Middleware signature:
- *   function (RequestContext $ctx, array $params, callable $next): void {
- *       if (!$ctx->check()) { /* block * / return; }
- *       $next($params);  // pass through
- *   }
- *
- * Groups nest — prefixes concatenate, middleware stacks accumulate.
+ * Core\Router — declarative front-controller dispatcher with groups and
+ * middleware stacking. De-statted in v5.0.0+: instantiable, internally a
+ * RouteCollection, with a static ::dispatch() shim for backward compat —
+ * groups nest, prefixes concatenate, and middleware stacks accumulate.
  * ═══════════════════════════════════════════════════════════════════════
  */
 final class Router

@@ -4,18 +4,10 @@ namespace Repositories;
 
 /**
  * ═══════════════════════════════════════════════════════════════════════
- * Repositories\BuildRepository — contract for Build data access.
- *
- * Builds have three JSON-encoded columns (phase_tree, console_logs,
- * violations) that the find() method decodes from JSON → native arrays.
- * The in-memory implementation stores them as arrays natively.
- *
- * Implementations:
- *   - Repositories\PdoBuildRepository        (production, PDO-backed)
- *   - Repositories\InMemoryBuildRepository   (test double, array-backed)
- *
- * Access via RepositoryRegistry:
- *   $build = RepositoryRegistry::build()->find($id, $userId);
+ * Repositories\BuildRepository — contract for Build data access
+ * (PdoBuildRepository in production, InMemoryBuildRepository in tests),
+ * accessed via RepositoryRegistry::build(). Three JSON-encoded columns
+ * (phase_tree, console_logs, violations) are decoded by find().
  * ═══════════════════════════════════════════════════════════════════════
  */
 interface BuildRepository

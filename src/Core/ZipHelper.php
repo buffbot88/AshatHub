@@ -4,20 +4,10 @@ namespace Core;
 
 /**
  * ═══════════════════════════════════════════════════════════════════════
- * Core\ZipHelper — dependency-free ZIP archive support.
- *
- * The PHP `zip` extension (ZipArchive) is NOT guaranteed on shared hosts,
- * so this class implements the minimum ZIP format needed for the chat
- * File Manager: writing a .zip (deflate method 8) and reading one back
- * (methods 0 stored + 8 deflate). It uses only zlib (gzdeflate/gzinflate)
- * plus crc32, which PHP ships with by default.
- *
- *   $zip  = ZipHelper::create([['path' => 'src/main.ts', 'content' => '...']]);
- *   $rows = ZipHelper::extract($zipBytes);   // [['path' => ..., 'content' => ...]]
- *
- * Security: extract() returns raw entry names; callers must sanitize
- * paths (FilesController::normalizePath) before saving. Only deflate and
- * stored entries are decompressed; anything else is skipped.
+ * Core\ZipHelper — dependency-free ZIP archive support (zlib only, no
+ * ZipArchive extension) for the File Manager: write a .zip (deflate 8)
+ * and read one back (stored 0 + deflate 8). Security: extract() returns
+ * raw entry names — callers must sanitize paths before saving.
  * ═══════════════════════════════════════════════════════════════════════
  */
 final class ZipHelper
@@ -106,12 +96,10 @@ final class ZipHelper
     }
 
     /**
-     * Parse a .zip archive into entries.
-     *
-     * Only stored (0) and deflate (8) entries are decompressed; directory
-     * entries (names ending with '/') are skipped. CRC32 is verified per
-     * entry — corrupt data is dropped. Entry names are returned raw and
-     * MUST be sanitized by the caller before saving to disk/DB.
+     * Parse a .zip archive into entries: only stored (0) and deflate (8)
+     * entries are decompressed, directories skipped, CRC32 verified, and
+     * corrupt data dropped. Entry names are returned raw and MUST be
+     * sanitized by the caller before saving.
      *
      * @return array<int, array{path: string, content: string}>
      */

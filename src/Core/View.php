@@ -6,18 +6,11 @@ use Repositories\RepositoryRegistry;
 
 /**
  * ═══════════════════════════════════════════════════════════════════════
- * Core\View — tiny template engine.
- *
- * View::render('pages/home', ['title' => 'Hi']);   // wraps in header/footer
- * View::render('pages/home', [...], 'raw');        // no layout
- * View::partial('account/login_modal');            // small piece, no layout
- *
- * Templates receive a ViewContext object as $view instead of bare
- * extracted variables. Access values as $view->title, $view->user, etc.
- *
- * This utility class has NO static facade dependencies (Auth::, Session::
- * are never called here). User resolution and flash reads use direct
- * $_SESSION access, same as RequestContext.
+ * Core\View — tiny template engine: render() wraps views in header/footer
+ * (or 'raw' for no layout), partial() renders without a layout.
+ * Templates receive a ViewContext object as $view ($view->title,
+ * $view->user, etc.) instead of bare extracted variables; no static
+ * facade dependencies.
  * ═══════════════════════════════════════════════════════════════════════
  */
 final class View
@@ -114,15 +107,10 @@ final class View
     }
 
     /**
-     * Resolve the authenticated user from $_SESSION.
-     *
-     * Returns null if the database is unreachable rather than throwing,
-     * so error pages can still render even when the DB is down (the page
-     * will simply show no user context). This also prevents the error
-     * handler from entering an infinite loop: when the DB fails during
-     * resolveUser(), the error handler calls ErrorController which calls
-     * View::render() again — without this guard, that second call would
-     * throw again, crashing the error page itself.
+     * Resolve the authenticated user from $_SESSION, returning null (not
+     * throwing) if the database is unreachable so error pages can still
+     * render without user context. This also stops the error handler from
+     * looping into a second throw when the DB is down.
      */
     private static function resolveUser(): ?array
     {

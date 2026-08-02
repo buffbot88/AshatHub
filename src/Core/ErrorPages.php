@@ -4,27 +4,18 @@ namespace Core;
 
 /**
  * ═══════════════════════════════════════════════════════════════════════
- * Core\ErrorPages — themed error-page registry.
- *
- * Single source of truth for which HTTP status codes we ship a custom
- * page for, plus the per-code copy (title, description, action labels,
- * action targets). The view at `pages/error.php` reads from this
- * registry; the controller at `Controllers\ErrorController` uses it
- * to pick the right messaging.
- *
- * Adding a new code is a 1-line edit here — no view or controller
- * change required.
+ * Core\ErrorPages — themed error-page registry: the single source of
+ * truth for which HTTP codes ship a custom page, plus per-code copy
+ * (title, description, action labels). Adding a code is a 1-line edit
+ * here — no view or controller change required.
  * ═══════════════════════════════════════════════════════════════════════
  */
 final class ErrorPages
 {
     /**
-     * All codes we ship custom pages for. Keys = HTTP status (int),
-     * values = messaging + actions.
-     *
-     * `actions` are 0..N button-style links shown on the page. The first
-     * one renders as the gold primary button; the rest render as outline
-     * secondary buttons.
+     * All codes we ship custom pages for: keys are HTTP statuses, values
+     * are messaging + actions. The first action renders as the gold
+     * primary button; the rest render as outline secondary buttons.
      *
      * @return array<int, array{title:string, description:string, tone:string, actions:array<int, array{label:string, href:string, kind?:string}>}>
      */

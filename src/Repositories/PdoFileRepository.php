@@ -92,9 +92,8 @@ final class PdoFileRepository implements FileRepository
 
     /**
      * Rename a file or a folder prefix in ONE transaction so a mid-move
-     * failure can't leave the project half-renamed. Collision check:
-     * any row (other than the ones being moved) that already occupies the
-     * target path — or sits under the target prefix — aborts with 'conflict'.
+     * failure can't leave the project half-renamed; any row occupying the
+     * target path (or under the target prefix) aborts with 'conflict'.
      * Folder-marker rows ('foo/') move along: 'foo/' → 'bar/'.
      */
     public function rename(string $userId, string $oldPath, string $newPath): array

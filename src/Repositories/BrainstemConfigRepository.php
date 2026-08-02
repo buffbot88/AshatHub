@@ -5,17 +5,9 @@ namespace Repositories;
 /**
  * ═══════════════════════════════════════════════════════════════════════
  * Repositories\BrainstemConfigRepository — contract for the singleton
- * BrainStem host config row (id=1).
- *
- * The DB overrides env defaults when configured. active() merges both:
- * DB values win, ConfigBag (sourced from .env / env vars) is the fallback.
- *
- * Implementations:
- *   - Repositories\PdoBrainstemConfigRepository       (production)
- *   - Repositories\InMemoryBrainstemConfigRepository   (test double)
- *
- * Access via RepositoryRegistry:
- *   $config = RepositoryRegistry::brainstemConfig()->active();
+ * BrainStem host config row (id=1), accessed via
+ * RepositoryRegistry::brainstemConfig(). The DB overrides env defaults
+ * when configured; active() merges both with ConfigBag as the fallback.
  * ═══════════════════════════════════════════════════════════════════════
  */
 interface BrainstemConfigRepository
@@ -24,8 +16,8 @@ interface BrainstemConfigRepository
     public function get(): ?array;
 
     /**
-     * Upsert the singleton config (id=1). Returns true on success.
-     * Stores both the raw api_key and a masked copy for safe display.
+     * Upsert the singleton config (id=1), storing the raw api_key plus
+     * a masked copy for safe display. Returns true on success.
      */
     public function upsert(string $url, string $apiKey, string $updatedBy): bool;
 

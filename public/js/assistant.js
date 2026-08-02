@@ -31,9 +31,6 @@
   var clearBtn     = document.getElementById('btn-clear-chat');
   var newChatBtn   = document.getElementById('btn-new-chat');
   var exportBtn    = document.getElementById('btn-export-chat');
-  var specPreview  = document.getElementById('spec-preview');
-  var copyBtn      = document.getElementById('btn-copy-spec');
-  var plannerBtn   = document.getElementById('btn-send-planner');
   var versionsPanel  = document.getElementById('spec-versions-panel');
   var versionTimeline = document.getElementById('version-timeline');
   var versionCountBadge = document.getElementById('version-count-badge');
@@ -107,13 +104,12 @@
       '  be saved as files, no file dumps, and no inline HTML/CSS/JS previews of the',
       '  project.',
       '- The chat is for brainstorming and spec-writing only. Actual file generation',
-      '  is done by the coding agent in the Planner, and ONLY after the user',
-      '  explicitly agrees to it.',
+      '  is done by the coding agent, and ONLY after the user explicitly agrees to it.',
       '- When the spec is complete, ASK the user whether they want you to generate the',
       '  project files — for example: "Want me to generate these files into your',
       '  project folder?" — then wait for their explicit approval.',
-      '- If they say yes, tell them the next step is to open the Planner, where the',
-      '  coding agent builds the files (they approve the plan there too). If they are',
+      '- If they say yes, the app shows a consent prompt; the coding agent then writes',
+      '  the files into their project folder (shown in the File Tree). If they are',
       '  not ready, wait — never generate files unprompted.',
     ].join('\n'),
   };
@@ -204,9 +200,8 @@
   }
 
   /**
-   * Check if the current session is still valid (within 1 hour).
-   * If expired or missing, start a new session.
-   * Returns the (new or existing) session.
+   * Check if the current session is still valid (within 1 hour),
+   * starting a new one if expired or missing. Returns the session.
    */
   function ensureSession() {
     var session = getSession();
@@ -1028,25 +1023,15 @@
   }
 
   function setSpec(spec, skipSave) {
-    if (spec) {
-      // Update the spec preview card if it's present (removed from the
-      // current right-bar layout, but kept for future use)
-      if (specPreview) specPreview.textContent = spec;
-      if (copyBtn) copyBtn.disabled = false;
-      if (plannerBtn) plannerBtn.disabled = false;
+    if (!spec) return;
 
-      // Auto-save a version unless skipSave is set (e.g., when restoring)
-      if (!skipSave) {
-        var title = 'Chat Spec';
-        var titleMatch = spec.match(/^#\s+Project:\s+(.+)$/m);
-        if (titleMatch) title = titleMatch[1].trim();
-        var saved = saveSpecVersion(spec, title);
-        renderVersionTimeline(saved ? saved.id : undefined);
-      }
-    } else {
-      if (specPreview) specPreview.textContent = 'Your spec will appear here after chatting.';
-      if (copyBtn) copyBtn.disabled = true;
-      if (plannerBtn) plannerBtn.disabled = true;
+    // Auto-save a version unless skipSave is set (e.g., when restoring)
+    if (!skipSave) {
+      var title = 'Chat Spec';
+      var titleMatch = spec.match(/^#\s+Project:\s+(.+)$/m);
+      if (titleMatch) title = titleMatch[1].trim();
+      var saved = saveSpecVersion(spec, title);
+      renderVersionTimeline(saved ? saved.id : undefined);
     }
   }
 
@@ -1069,36 +1054,25 @@
     // Don't stack a second card on the same bubble.
     if (body.querySelector('.spec-consent-card')) return;
 
-    var role = window.ASHAT && window.ASHAT.role;
-    var canGenerate = (role === 'Pro' || role === 'Admin');
-
     var card = document.createElement('div');
     card.className = 'spec-consent-card';
     card.innerHTML =
       '<div class="spec-consent-title">Spec ready</div>' +
-      (canGenerate
-        ? '<div class="spec-consent-text">Want me to generate these files into your project folder? ' +
-          'The coding agent builds them in the Planner — you approve the plan before anything is written.</div>'
-        : '<div class="spec-consent-text">Your spec is saved locally. Generating project files in the ' +
-          'Planner requires a Pro account — <a href="' + (window.ASHAT && window.ASHAT.accountUrl ? window.ASHAT.accountUrl : '#') + '" ' +
-          'style="color:var(--accent);text-decoration:underline;">upgrade</a> when you\'re ready to build.</div>') +
+      '<div class="spec-consent-text">Want me to generate these files into your project folder? ' +
+      'The coding agent writes them right here in the chat — nothing is saved until you say yes.</div>' +
       '<div class="spec-consent-actions">' +
-        (canGenerate
-          ? '<button type="button" class="btn-gold spec-consent-yes" style="font-size:10px;padding:5px 12px;">Yes — generate files</button>'
-          : '') +
+        '<button type="button" class="btn-gold spec-consent-yes" style="font-size:10px;padding:5px 12px;">Yes — generate files</button>' +
         '<button type="button" class="btn-outline spec-consent-no" style="font-size:10px;padding:5px 12px;">Not yet</button>' +
       '</div>';
 
     var yesBtn = card.querySelector('.spec-consent-yes');
     var noBtn  = card.querySelector('.spec-consent-no');
 
-    if (yesBtn) {
-      yesBtn.addEventListener('click', function () {
-        yesBtn.disabled = true;
-        yesBtn.textContent = 'Opening Planner...';
-        sendToPlanner(spec);
-      });
-    }
+    yesBtn.addEventListener('click', function () {
+      yesBtn.disabled = true;
+      yesBtn.textContent = 'Generating...';
+      generateFilesInChat(spec, yesBtn);
+    });
 
     noBtn.addEventListener('click', function () {
       if (card.parentNode) card.parentNode.removeChild(card);
@@ -1110,44 +1084,100 @@
   }
 
   // ══════════════════════════════════════════════════════════════════
-  //  SEND TO PLANNER
+  //  GENERATE FILES IN CHAT (consent-gated — open to ALL roles)
   // ══════════════════════════════════════════════════════════════════
 
   /**
-   * Send the finished spec to the Planner so the coding agent can build
-   * the files. This is the CONSENT-GATED handoff: files are only ever
-   * generated into the user's project folder after they explicitly ask
-   * for it (via the spec-consent card), and the Planner's two-phase
-   * flow still requires approving the plan before any file is written.
+   * Run the coding agent (agent.js — already loaded on this page) to
+   * generate the project files into the user's project folder via
+   * /api/files/ (auth-open: Members, Pro, Admin). Only runs after the
+   * consent-card click, so nothing is stored without explicit agreement.
    */
-  async function sendToPlanner(spec) {
-    if (!spec) return;
+  async function generateFilesInChat(spec, yesBtn) {
+    var status = appendGenStatusBubble('Generating project files…');
     try {
+      var agent = window.ASHAT && window.ASHAT.agent;
+      if (!agent || typeof agent.runBuildStream !== 'function') {
+        throw new Error('The coding agent is not available on this page.');
+      }
+      if (!agent.getLocalConfig || !agent.getLocalConfig()) {
+        status.className = 'gen-status-bubble err';
+        status.textContent = '⚠ Chat works via BrainStem, but file generation runs in your browser — add a provider + API key in Account → API Settings (keys stay on your device).';
+        if (yesBtn) { yesBtn.disabled = false; yesBtn.textContent = 'Yes — generate files'; }
+        return;
+      }
+
+      // runBuildStream expects a spec OBJECT ({ title, content }), not a
+      // plain string — pass one so the coding agent actually sees the spec.
       var title = 'Chat Spec';
       var titleMatch = spec.match(/^#\s+Project:\s+(.+)$/m);
       if (titleMatch) title = titleMatch[1].trim();
+      var result = await agent.runBuildStream({ title: title, content: spec }, { mode: 'build' });
+      var files = (result && result.files) || [];
+      if (!files.length) throw new Error('The agent returned no files. Try again or simplify the spec.');
 
-      var resp = await ashatFetch('/api/specs/', {
-        method: 'POST',
-        body: { title: title, content: spec },
-      });
+      status.textContent = 'Writing ' + files.length + ' file(s) into your project folder…';
 
-      if (resp && resp.spec && resp.spec.id) {
-        // Refresh project context since we just created a new spec
-        projectContext = null;
-        contextLoaded = false;
-        fetchProjectContext();
+      var saved = 0;
+      var quotaHit = false;
+      for (var i = 0; i < files.length; i++) {
+        try {
+          await ashatFetch('/api/files/', {
+            method: 'POST',
+            body: { path: files[i].path, content: files[i].content },
+          });
+          saved++;
+        } catch (e) {
+          if (e && e.payload && e.payload.error === 'quota_exceeded') quotaHit = true;
+        }
+      }
 
-        ashatToast('Spec saved! Opening Planner...', 'ok');
-        setTimeout(function () {
-          window.location.href = '/ide/planner/?spec=' + encodeURIComponent(resp.spec.id);
-        }, 400);
-      } else {
-        ashatToast('Could not save spec.', 'err');
+      loadFileTree();
+      status.className = 'gen-status-bubble ' + (saved === files.length ? 'ok' : 'err');
+      status.textContent = saved === files.length
+        ? '✅ ' + saved + ' file(s) generated into your project folder.'
+        : '⚠ ' + saved + ' of ' + files.length + ' file(s) saved' +
+          (quotaHit ? ' — the 150 MB storage quota was reached. Delete files to free space, then try again to retry the missing files.' : ' — some files failed to save. Try again to retry the missing files.');
+      if (saved === files.length) {
+        finishConsentCard(yesBtn, '✓ ' + saved + ' file(s) written');
+        ashatToast('Generated ' + saved + ' file(s) into your project.', 'ok');
+      } else if (yesBtn) {
+        yesBtn.disabled = false;
+        yesBtn.textContent = 'Yes — generate files';
       }
     } catch (err) {
-      ashatToast('Failed to save spec: ' + (err.message || 'unknown'), 'err');
+      status.className = 'gen-status-bubble err';
+      status.textContent = '⚠ ' + (err && err.message ? err.message : 'Generation failed.');
+      if (yesBtn) { yesBtn.disabled = false; yesBtn.textContent = 'Yes — generate files'; }
     }
+  }
+
+  /** Append a small console-style status bubble (never saved to the conversation). */
+  function appendGenStatusBubble(text) {
+    var div = document.createElement('div');
+    div.className = 'gen-status-bubble';
+    div.textContent = text;
+    messagesEl.appendChild(div);
+    messagesEl.scrollTop = messagesEl.scrollHeight;
+    return div;
+  }
+
+  /**
+   * Flip the consent card into a terminal "done" state after a successful
+   * generation so the user can't accidentally re-run the build and upsert
+   * the same files. Retry stays available on the error path only.
+   */
+  function finishConsentCard(yesBtn, message) {
+    if (!yesBtn) return;
+    var card = yesBtn.closest ? yesBtn.closest('.spec-consent-card') : null;
+    if (card) {
+      var title = card.querySelector('.spec-consent-title');
+      var noBtn = card.querySelector('.spec-consent-no');
+      if (title) title.textContent = 'Files generated';
+      if (noBtn) noBtn.disabled = true;
+    }
+    yesBtn.disabled = true;
+    yesBtn.textContent = message;
   }
 
   // ══════════════════════════════════════════════════════════════════
@@ -1997,34 +2027,6 @@
   }
 
   // ══════════════════════════════════════════════════════════════════
-  //  CLIPBOARD FALLBACK
-  // ══════════════════════════════════════════════════════════════════
-
-  function copyToClipboard(text, btn) {
-    if (navigator.clipboard) {
-      navigator.clipboard.writeText(text).then(function () {
-        btn.textContent = 'Copied!';
-        setTimeout(function () { btn.textContent = 'Copy'; }, 2000);
-      }).catch(function () { fallbackCopy(text, btn); });
-    } else {
-      fallbackCopy(text, btn);
-    }
-  }
-
-  function fallbackCopy(text, btn) {
-    var ta = document.createElement('textarea');
-    ta.value = text;
-    ta.style.position = 'fixed';
-    ta.style.opacity = '0';
-    document.body.appendChild(ta);
-    ta.select();
-    document.execCommand('copy');
-    document.body.removeChild(ta);
-    btn.textContent = 'Copied!';
-    setTimeout(function () { btn.textContent = 'Copy'; }, 2000);
-  }
-
-  // ══════════════════════════════════════════════════════════════════
   //  EVENT WIRING
   // ══════════════════════════════════════════════════════════════════
 
@@ -2066,22 +2068,6 @@
   });
 
   exportBtn.addEventListener('click', exportConversation);
-
-  if (copyBtn) {
-    copyBtn.addEventListener('click', function () {
-      if (specPreview && specPreview.textContent) {
-        copyToClipboard(specPreview.textContent, copyBtn);
-      }
-    });
-  }
-
-  if (plannerBtn) {
-    plannerBtn.addEventListener('click', function () {
-      if (specPreview && specPreview.textContent && specPreview.textContent !== 'Your spec will appear here after chatting.') {
-        sendToPlanner(specPreview.textContent);
-      }
-    });
-  }
 
   // Refresh project context
   if (refreshCtxBtn) {

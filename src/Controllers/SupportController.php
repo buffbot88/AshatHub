@@ -7,10 +7,8 @@ use Repositories\RepositoryRegistry;
 
 /**
  * ═══════════════════════════════════════════════════════════════════════
- * Controllers\SupportController — support ticket system for members.
- *
- * Authenticated users (Member, Pro, Admin) can create and view their own
- * tickets. Admins can view all tickets and reply as staff.
+ * Controllers\SupportController — support ticket system for members:
+ * users create and view their own tickets; admins view all and reply.
  * ═══════════════════════════════════════════════════════════════════════
  */
 final class SupportController

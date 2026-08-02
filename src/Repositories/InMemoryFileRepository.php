@@ -7,11 +7,8 @@ use Core\Uuid;
 /**
  * ═══════════════════════════════════════════════════════════════════════
  * Repositories\InMemoryFileRepository — fake FileRepository backed by
- * plain arrays. No SQL parser needed.
- *
- * The save() method implements upsert semantics:
- * - If a file with the same user_id + path exists, update it.
- * - Otherwise, insert a new row.
+ * plain arrays (no SQL). save() implements upsert semantics: update the
+ * row when user_id + path already exists, otherwise insert a new row.
  * ═══════════════════════════════════════════════════════════════════════
  */
 final class InMemoryFileRepository implements FileRepository

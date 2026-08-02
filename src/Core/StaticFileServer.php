@@ -4,26 +4,11 @@ namespace Core;
 
 /**
  * ═══════════════════════════════════════════════════════════════════════
- * Core\StaticFileServer — serve static assets from the public/ directory.
- *
- * Encapsulates the rewrite-rule fallback logic that was previously inlined
- * in public/index.php. Can be called from:
- *
- *   1. The front controller (public/index.php) — early-exit before bootstrap.
- *   2. An API route (/api/asset/*) — for AJAX-driven asset serving.
- *   3. Tests — by injecting a fake public directory.
- *
- * Usage (front controller):
- *   $server = new \Core\StaticFileServer(__DIR__);
- *   if ($server->serve($uriPath)) { return; }
- *
- * Usage (route):
- *   $server->serveRequest();  // reads $_SERVER['REQUEST_URI']
- *
- * Usage (test):
- *   $server = new \Core\StaticFileServer('/tmp/test-public');
- *   $result = $server->serve('/js/app.js');
- *   $this->assertTrue($result);
+ * Core\StaticFileServer — serve static assets from the public/ directory,
+ * encapsulating the rewrite-rule fallback logic that was previously
+ * inlined in public/index.php. Callable from the front controller
+ * ($server->serve($uriPath)), an API route (serveRequest()), or tests
+ * (inject a fake public directory).
  * ═══════════════════════════════════════════════════════════════════════
  */
 final class StaticFileServer
@@ -69,13 +54,10 @@ final class StaticFileServer
     // ── Public API ────────────────────────────────────────────────
 
     /**
-     * Serve a static file for the given URI path.
-     *
-     * Checks whether the path matches a known asset prefix and whether
-     * the resolved file exists inside public/. If so, sends the file
-     * with the correct MIME type and headers, then returns true.
-     * Returns false when the path is not an asset or the file doesn't
-     * exist (no output sent).
+     * Serve a static file for the given URI path if it matches a known
+     * asset prefix and exists inside public/, sending it with the correct
+     * MIME type and returning true. Returns false for non-assets or
+     * missing files (no output sent).
      *
      * @param  string $uriPath  The URL path (e.g. '/js/studio/chat.js').
      * @return bool             True if the file was served.
@@ -150,12 +132,10 @@ final class StaticFileServer
     // ── Internal ──────────────────────────────────────────────────
 
     /**
-     * Resolve a URI path to a filesystem path inside the public directory.
-     * Returns null if the path doesn't match a known asset prefix.
-     *
-     * Both favicon.ico/robots.txt and prefixed assets (/js/..., /css/...)
-     * resolve to the same pattern: publicDir + uriPath — because the URI
-     * path mirrors the filesystem layout under public/.
+     * Resolve a URI path to a filesystem path inside the public directory,
+     * or null if it doesn't match a known asset prefix. Both
+     * favicon.ico/robots.txt and prefixed assets resolve to
+     * publicDir + uriPath, since the URI path mirrors the filesystem.
      */
     private function resolve(string $uriPath): ?string
     {

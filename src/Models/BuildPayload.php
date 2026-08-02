@@ -4,27 +4,10 @@ namespace Models;
 
 /**
  * ═══════════════════════════════════════════════════════════════════════
- * Models\BuildPayload — validated agent build metadata payload.
- *
- * Encapsulates the validation logic that was previously embedded in
- * BuildsController::acceptAgentBuild(). A value object that either
- * holds a valid plan + file_paths list, or an error message.
- *
- * Usage in a controller:
- *   $payload = BuildPayload::fromRequest($plan, $filePaths);
- *   if ($payload->failed()) {
- *       $ctx->jsonResponse(['error' => $payload->error()], 422);
- *   }
- *   // Use $payload->plan(), $payload->paths()
- *
- * Testability seam:
- *   $p = BuildPayload::fromRequest('', []);      // failed → 'agent plan is empty'
- *   $p = BuildPayload::fromRequest('plan', []);   // failed → 'agent returned no files'
- *   $p = BuildPayload::fromRequest('plan', [
- *       ['path' => 'src/main.ts', 'language' => 'typescript', 'size_bytes' => 100],
- *   ]);                                           // success
- *   assert($p->failed() === false);
- *   assert($p->paths()[0]['path'] === 'src/main.ts');
+ * Models\BuildPayload — validated agent build metadata: a value object
+ * that either holds a valid plan + file_paths list, or an error message.
+ * Encapsulates validation that was previously embedded in
+ * BuildsController::acceptAgentBuild(); constructed via fromRequest().
  * ═══════════════════════════════════════════════════════════════════════
  */
 final class BuildPayload

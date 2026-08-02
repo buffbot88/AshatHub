@@ -6,16 +6,10 @@ use PDO;
 
 /**
  * ═══════════════════════════════════════════════════════════════════════
- * Core\PdoDatabase — PDO-backed query executor.
- *
- * Production PDO-backed query executor. Injected into every PDO repository
- * via the constructor. Accepts an optional PDO connection — when omitted,
- * falls back to Database::connection() for backward compat.
- *
- * Usage:
- *   $db = new PdoDatabase();                          // production
- *   $db = new PdoDatabase(new PDO('sqlite::memory:')); // tests
- *   $db->fetchAll('SELECT * FROM users');
+ * Core\PdoDatabase — PDO-backed query executor injected into every PDO
+ * repository via the constructor. Accepts an optional PDO connection,
+ * falling back to Database::connection() when omitted (tests pass a
+ * SQLite PDO).
  * ═══════════════════════════════════════════════════════════════════════
  */
 final class PdoDatabase

@@ -39,7 +39,7 @@ Key code locations:
 |---|---|
 | `php -S localhost:8000 router.php` | Built-in dev server |
 | `php phpunit.phar` | Run all PHP tests (20 test files; phar lives in repo root, gitignored — get it with `curl -L -o phpunit.phar https://phar.phpunit.de/phpunit-10.5.phar`) |
-| `node tests/js/agent-extract.test.js` | Run the agent.js JS unit tests (JSON extraction + localStorage helpers) |
+| `node tests/js/agent-extract.test.js` | Run the agent.js JS unit tests (JSON extraction + prompt building) |
 | `mysql -u root -p < db/schema.sql` | Full-access DB install |
 | `mysql -u root -p < db/spec-language.sql` | Existing-DB migration: adds `specs.language` (idempotent, guarded) |
 | `mysql -u root -p < db/sve-rename.sql` | Existing-DB migration: System Update Engine → System Validation Engine |
@@ -145,8 +145,7 @@ No package.json or composer.json — **zero dependencies**.
   | Key | Contents |
   |---|---|
   | `ashat.api` | BYO provider/key config (never sent to the server) |
-  | `ashat.generated.<id>` | Agent-generated file content per build (server stores metadata only) |
-- **agent.js localStorage helpers**: `saveGenerated`/`loadGenerated` and the prefix-sync helpers (`removeFilesByPrefix`, `renameFilesByPrefix`, `duplicateFileLocal`) still ship in `agent.js` and are covered by `tests/js/agent-extract.test.js`; the chat writes files server-first via `POST /api/files/` and doesn't call them.
+- The chat writes files server-first via `POST /api/files/` — no per-build localStorage content store (the IDE-era `ashat.generated.*` store and its sync helpers were removed with the IDE).
 
 - **Chat page (`/chat`, `ChatPageController`)** — standalone Spec Chat. Left: conversation sidebar (localStorage `ashat.chats`); center: chat + input, and a **file editor panel** (`#chat-file-editor`) that replaces the chat when a project file is clicked (Monaco loaded lazily from the CDN — `__chatMonacoReady`/`__chatMonaco`; textarea fallback if the CDN never arrives; Save via `POST /api/files/`, ← Chat restores the conversation). Right pane: **Project Files** card (tree + Upload/Download/Select all/Delete + usage meter) + **Spec Versions** timeline + **Tips**. The chat File Manager renders rows with `textContent` (XSS-safe) and folder markers share the same prefix semantics as files.
 - **Chat behaviors**: `init()` lands on the home/empty state (never auto-creates or auto-opens a conversation); Export downloads `ChatHistory-YYYY-MM-DD.md` (Markdown, `stripMarkers()`-cleaned, no JSON dump). Generated Spec + Project Context cards were removed — `setSpec()` now feeds the Spec Versions timeline + consent card. The right-pane **Tips** card and the empty-state paragraph teach the consent-first flow — the chat never writes code without the consent card, files land in Project Files, and clicking a file opens it in the editor.

@@ -1,20 +1,16 @@
 /* ═══════════════════════════════════════════════════════════════════════
    ASHAT Hub — Coding Agent (browser-side, local-first)
    Loaded via <script src="/js/agent.js"> before assistant.js on the chat page.
-   Exposes window.ASHAT.agent = { runBuild, saveBuild, chat,
-                                   getLocalConfig, saveGenerated,
-                                   loadGenerated, listGenerated,
-                                   pruneGenerated, uuid }.
+   Exposes window.ASHAT.agent = { runBuild, runBuildStream, chat,
+                                   chatStream, getLocalConfig,
+                                   getByoConfig, uuid }.
 
    Privacy-first design:
    - The user's API key NEVER reaches the server. It lives in
      localStorage["ashat.api"] and is read directly for outbound
      LLM calls.
-   - Generated file content lives in localStorage["ashat.generated.<id>"]
-     and is pruned to keep only the latest build (browsers cap
-     localStorage at ~5 MB).
-   - Server only sees a metadata-only payload: spec id, plan,
-     and the list of file paths/languages/sizes.
+   - Generated files are written to the user's Project Files via
+     POST /api/files/ — the server stores the content.
    ═══════════════════════════════════════════════════════════════════════ */
 
 (function () {
@@ -23,15 +19,12 @@
   // ── Hard caps (defense-in-depth; backend re-validates too) ───────
   const MAX_FILE_BYTES       = 250 * 1024;        // 250 KB per file
   const MAX_TOTAL_BYTES      = 5  * 1024 * 1024;  // 5 MB total per build
-  const LOCALSTORAGE_BUDGET  = 4  * 1024 * 1024;  // stay under 5MB hard cap
-  const KEEP_BUILD_COUNT     = 1;                 // prune: latest only
   const REQUEST_TIMEOUT      = 120_000;           // 120 s for slow models
   const DEFAULT_MAX_TOKENS   = 8192;               // safe default (plan/chat)
   const BUILD_MAX_TOKENS     = 16384;              // multi-file builds need more room
 
-  // ── localStorage keys (single source of truth) ──────────────────
+  // ── localStorage key (single source of truth) ───────────────────
   const KEY_API       = 'ashat.api';
-  const KEY_PREFIX    = 'ashat.generated.';   // ashat.generated.<uuid>
 
   // ── System prompt (matches AshatOS_Old/src/api/agent.ts in spirit) ─
   const BASE_SYSTEM_PROMPT = [
@@ -199,231 +192,6 @@
     return String(s).replace(/[&<>"']/g, function (c) {
       return ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'})[c];
     });
-  }
-
-  // ── Public API: generated-code store (per-build) ────────────────
-  function saveGenerated(buildId, payload) {
-    payload = payload || {};
-    if (!buildId) throw new Error('saveGenerated requires a buildId');
-    if (!Array.isArray(payload.files)) payload.files = [];
-    // Strip content from the payload that becomes the size source for
-    // the metadata-only POST — but keep content in localStorage.
-    const metaFiles = payload.files.map((f) => ({
-      path:        f.path,
-      language:    f.language || detectLanguage(f.path),
-      size_bytes:  (f.content || '').length,
-      language_detected: f.language || detectLanguage(f.path), // (kept for back-compat with older saved entries)
-    }));
-    // Persist full payload locally
-    const entry = {
-      build_id:    buildId,
-      plan:        payload.plan || '',
-      files:       payload.files || [],
-      file_meta:   metaFiles,
-      saved_at:    Date.now(),
-    };
-    let serialized;
-    try { serialized = JSON.stringify(entry); }
-    catch (e) { throw new Error('Could not serialize build entry: ' + e.message); }
-    if (serialized.length > LOCALSTORAGE_BUDGET) {
-      throw new Error('Build payload is too large for localStorage cap (' +
-                       (LOCALSTORAGE_BUDGET / 1024 / 1024) + 'MB).');
-    }
-    try { localStorage.setItem(KEY_PREFIX + buildId, serialized); }
-    catch (e) {
-      if (e && e.name === 'QuotaExceededError') {
-        // Aggressively prune and retry once.
-        pruneGenerated();
-        localStorage.setItem(KEY_PREFIX + buildId, serialized);
-      } else {
-        throw e;
-      }
-    }
-    pruneGenerated();
-    return entry;
-  }
-
-  function loadGenerated(buildId) {
-    try {
-      const raw = localStorage.getItem(KEY_PREFIX + buildId);
-      if (!raw) return null;
-      return JSON.parse(raw);
-    } catch (e) { return null; }
-  }
-
-  function listGenerated() {
-    const out = [];
-    for (let i = 0; i < localStorage.length; i++) {
-      const k = localStorage.key(i);
-      if (k && k.startsWith(KEY_PREFIX)) {
-        try {
-          const e = JSON.parse(localStorage.getItem(k));
-          e.local_key = k;
-          out.push(e);
-        } catch (_) { /* skip corrupt */ }
-      }
-    }
-    out.sort((a, b) => (b.saved_at || 0) - (a.saved_at || 0));
-    return out;
-  }
-
-  function pruneGenerated() {
-    const all = listGenerated();
-    const excess = all.slice(KEEP_BUILD_COUNT);
-    for (const e of excess) {
-      try { localStorage.removeItem(e.local_key); } catch (_) { /* swallow */ }
-    }
-  }
-
-  // Remove every generated file matching a path or folder prefix across
-  // ALL saved builds in localStorage. Used by the File Manager delete
-  // buttons: an AI-generated file's content lives in the browser, so
-  // deleting the server metadata row alone would leave a ghost entry.
-  // Returns the number of files removed.
-  function removeFilesByPrefix(prefix) {
-    prefix = String(prefix || '').trim();
-    if (!prefix) return 0;
-    // Normalize: no leading slash (mirrors sanitizePath), trailing
-    // slash optional — 'src' and 'src/' both mean the src/ folder.
-    prefix = prefix.replace(/^\/+/, '').replace(/\/+$/, '');
-    if (!prefix) return 0;
-    let removed = 0;
-    for (const entry of listGenerated()) {
-      const files = entry.files || [];
-      const keep = files.filter((f) => {
-        const p = (f && f.path) || '';
-        const hit = p === prefix || p.startsWith(prefix + '/');
-        if (hit) removed++;
-        return !hit;
-      });
-      if (keep.length === files.length) continue;
-      entry.files = keep;
-      entry.file_meta = (entry.file_meta || []).filter((m) => {
-        const p = (m && m.path) || '';
-        return !(p === prefix || p.startsWith(prefix + '/'));
-      });
-      // listGenerated() injects local_key into the parsed object — strip
-      // it before re-serializing so it never pollutes stored JSON.
-      const key = entry.local_key;
-      delete entry.local_key;
-      try {
-        if (keep.length === 0) {
-          localStorage.removeItem(key);
-        } else {
-          localStorage.setItem(key, JSON.stringify(entry));
-        }
-      } catch (_) { /* storage full/unavailable — best effort */ }
-    }
-    return removed;
-  }
-
-  // Rename generated files matching a path or folder prefix across ALL
-  // saved builds in localStorage (File Manager rename action). The server
-  // row is renamed separately via /api/files/rename; this keeps the
-  // browser-side content (which lives ONLY here) in sync. Mirrors
-  // removeFilesByPrefix's normalization: 'src' and 'src/' both mean the
-  // src/ folder. Returns the number of files renamed.
-  function renameFilesByPrefix(oldPath, newPath) {
-    const oldP = String(oldPath || '').trim().replace(/^\/+/, '').replace(/\/+$/, '');
-    const newP = String(newPath || '').trim().replace(/^\/+/, '').replace(/\/+$/, '');
-    if (!oldP || !newP || oldP === newP) return 0;
-    let renamed = 0;
-    for (const entry of listGenerated()) {
-      const files = entry.files || [];
-      let changed = false;
-      const moved = files.map((f) => {
-        const p = (f && f.path) || '';
-        if (p === oldP || p.startsWith(oldP + '/')) {
-          f.path = newP + p.slice(oldP.length);
-          renamed++;
-          changed = true;
-        }
-        return f;
-      });
-      if (!changed) continue;
-      entry.files = moved;
-      if (Array.isArray(entry.file_meta)) {
-        entry.file_meta = entry.file_meta.map((m) => {
-          const p = (m && m.path) || '';
-          if (p === oldP || p.startsWith(oldP + '/')) {
-            m.path = newP + p.slice(oldP.length);
-          }
-          return m;
-        });
-      }
-      // listGenerated() injects local_key into the parsed object — strip
-      // it before re-serializing so it never pollutes stored JSON.
-      const key = entry.local_key;
-      delete entry.local_key;
-      try { localStorage.setItem(key, JSON.stringify(entry)); }
-      catch (_) { /* storage full/unavailable — best effort */ }
-    }
-    return renamed;
-  }
-
-  // Duplicate one generated file (exact path) into the SAME saved builds
-  // where it exists — the File Manager Duplicate action. The server row is
-  // duplicated via /api/files/duplicate; this copies the browser-side
-  // content (which lives ONLY here) to the new path. No-op when the source
-  // is missing or the target name is already taken. Returns copies added.
-  function duplicateFileLocal(oldPath, newPath) {
-    const oldP = String(oldPath || '').trim().replace(/^\/+/, '').replace(/\/+$/, '');
-    const newP = String(newPath || '').trim().replace(/^\/+/, '').replace(/\/+$/, '');
-    if (!oldP || !newP || oldP === newP) return 0;
-    let copied = 0;
-    for (const entry of listGenerated()) {
-      const files = entry.files || [];
-      const src = files.find((f) => f && f.path === oldP);
-      if (!src) continue;
-      if (files.some((f) => f && f.path === newP)) continue; // name taken
-      files.push({
-        path:     newP,
-        content:  src.content,
-        language: src.language || '',
-      });
-      if (Array.isArray(entry.file_meta)) {
-        entry.file_meta.push({
-          path:               newP,
-          language:           src.language || '',
-          size_bytes:         (src.content || '').length,
-          language_detected:  src.language || '',
-        });
-      }
-      copied++;
-      // listGenerated() injects local_key into the parsed object — strip
-      // it before re-serializing so it never pollutes stored JSON.
-      const key = entry.local_key;
-      delete entry.local_key;
-      try { localStorage.setItem(key, JSON.stringify(entry)); }
-      catch (_) { /* storage full/unavailable — best effort */ }
-    }
-    return copied;
-  }
-
-  // Update one file's content within a saved build — used when the user
-  // edits an AI-generated file in Monaco and hits "Save".
-  function updateFile(buildId, path, newContent) {
-    const entry = loadGenerated(buildId);
-    if (!entry) return false;
-    let touched = false;
-    for (const f of entry.files) {
-      if (f.path === path) {
-        f.content = String(newContent || '');
-        const meta = (entry.file_meta || []).find((m) => m.path === path);
-        if (meta) meta.size_bytes = f.content.length;
-        touched = true;
-        break;
-      }
-    }
-    if (!touched) return false;
-    try { localStorage.setItem(KEY_PREFIX + buildId, JSON.stringify(entry)); }
-    catch (e) {
-      if (e && e.name === 'QuotaExceededError') {
-        pruneGenerated();
-        localStorage.setItem(KEY_PREFIX + buildId, JSON.stringify(entry));
-      } else { throw e; }
-    }
-    return true;
   }
 
   // ── JSON string cleaner ─────────────────────────────────────────
@@ -842,49 +610,6 @@
     return runSafetyGates(parsed);
   }
 
-  // ── Driver: persist a validated result — locally + server metadata ─
-  // Returns: { server_build_id, entry } where entry is the localStorage payload.
-  async function saveBuild(spec, result) {
-    if (!window.ashatFetch) throw new Error('app.js must load before agent.js');
-    if (!spec || !spec.id) throw new Error('saveBuild requires a spec with an id.');
-
-    const localBuildId = uuid();
-
-    // 1. Save the full payload (incl. content) to localStorage FIRST so
-    //    we never lose content to a server round-trip failure.
-    const entry = saveGenerated(localBuildId, result);
-
-    // 2. POST metadata to the server. Server creates the Build row
-    //    using our localBuildId so cross-references stay in sync.
-    const filePaths = entry.file_meta.map((m) => ({
-      path:     m.path,
-      language: m.language,
-      size_bytes: m.size_bytes,
-    }));
-    const resp = await window.ashatFetch('/api/builds/', {
-      method: 'POST',
-      body: {
-        id:         localBuildId,
-        spec_id:    spec.id,
-        plan:       result.plan || '',
-        file_paths: filePaths,
-      },
-    });
-
-    // 3. If the server returns a different id (shouldn't, since we
-    //    supply our own), remap the localStorage key to match.
-    if (resp && resp.build && resp.build.id && resp.build.id !== localBuildId) {
-      const oldKey = KEY_PREFIX + localBuildId;
-      const newKey = KEY_PREFIX + resp.build.id;
-      try {
-        localStorage.setItem(newKey, localStorage.getItem(oldKey));
-        localStorage.removeItem(oldKey);
-      } catch (_) { /* fallback: keep local id */ }
-    }
-
-    return { server_build: resp && resp.build, entry: entry };
-  }
-
   // ── Streaming chat (SSE from OpenAI-compatible endpoints) ────────
   async function chatStream(messages, opts) {
     opts = opts || {};
@@ -1047,13 +772,10 @@
     // Config (localStorage)
     getLocalConfig,
     getByoConfig,
-    // Generated-code store
-    saveGenerated, loadGenerated, listGenerated, pruneGenerated, updateFile,
-    removeFilesByPrefix, renameFilesByPrefix, duplicateFileLocal,
     uuid,
     escapeHtml,
     // LLM driver
-    chat, chatStream, runBuild, runBuildStream, saveBuild,
+    chat, chatStream, runBuild, runBuildStream,
   };
 
 })();

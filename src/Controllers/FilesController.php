@@ -104,8 +104,7 @@ final class FilesController
     /**
      * Duplicate a single file: copies the row to an auto-named path
      * ('main.ts' → 'main (copy).ts'). The copy's content follows the
-     * source — user-authored content lives in the DB; generated-file
-     * content is copied in the browser via agent.duplicateFileLocal.
+     * source row in the DB (content lives server-side).
      */
     public function duplicate(RequestContext $ctx): void
     {

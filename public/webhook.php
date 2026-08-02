@@ -10,8 +10,8 @@
  *   1. Reads the shared secret from storage/webhook-secret.json
  *   2. Verifies the X-Hub-Signature-256 HMAC against the request body
  *   3. Ignores ping events (just returns 200)
- *   4. On push events, runs GitUpdater::incremental() to download only
- *      the files that changed in the latest commits
+ *   4. On push events, runs GitUpdater::zipUpdate() to sync the whole
+ *      repo from the main branch archive (changed files + cleanup)
  *
  * Setup:
  *   1. Set a webhook secret in Admin → Settings → Webhook
@@ -97,7 +97,7 @@ if ($event !== 'push') {
 // ─── Run the incremental update ──────────────────────────────────
 try {
     $updater = new \Core\GitUpdater();
-    $result  = $updater->incremental();
+    $result  = $updater->zipUpdate();
 
     http_response_code($result['ok'] ? 200 : 500);
     header('Content-Type: application/json');

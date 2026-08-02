@@ -156,12 +156,12 @@ final class AdminController
     }
 
     /**
-     * Apply incremental updates from GitHub via API download (no exec/git needed).
+     * Apply updates by syncing the full main branch archive (no exec/git needed).
      */
     public function applyGitHubUpdates(RequestContext $ctx): void
     {
         $updater = new GitUpdater();
-        $result  = $updater->incremental();
+        $result  = $updater->zipUpdate();
         $ctx->jsonResponse($result);
     }
 

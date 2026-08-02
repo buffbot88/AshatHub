@@ -20,7 +20,7 @@ $router->group('/admin', ['middleware' => ['admin-gate']], function () use ($rou
     // Maintenance mode toggle
     $router->post('/settings/maintenance', [\Controllers\AdminController::class, 'toggleMaintenance']);
 
-    // GitHub update — incremental API mode (no exec/git required, works on any host)
+    // GitHub update — full archive sync (no exec/git required, works on any host)
     $router->get('/settings/github-check',  [\Controllers\AdminController::class, 'checkGitHubUpdates']);
     $router->post('/settings/github-apply', [\Controllers\AdminController::class, 'applyGitHubUpdates']);
 

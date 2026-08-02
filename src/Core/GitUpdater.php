@@ -4,22 +4,21 @@ namespace Core;
 
 /**
  * ═══════════════════════════════════════════════════════════════════════
- * Core\GitUpdater — update project from GitHub via git pull or API.
+ * Core\GitUpdater — update project from GitHub via git pull, archive sync, or API.
  *
- * Two modes:
- *   1. pull()       — git pull via exec() (requires exec + git installed)
- *   2. incremental() — GitHub API + raw file download (no exec needed)
+ * Modes:
+ *   1. zipUpdate() — full-repo archive sync (recommended, no exec needed)
+ *   2. incremental() — GitHub API + raw file download (legacy)
+ *   3. pull()       — git pull via exec() (requires exec + git installed)
  *
- * The incremental mode uses the GitHub API to:
- *   - Fetch recent commits
- *   - Compare against a stored "last known commit" in storage/update-state.json
- *   - Download only the files that changed since that commit
- *   - Preserve config files (.env, conn.php, storage/*)
+ * zipUpdate() downloads the branch archive (main.zip), extracts it with
+ * Core\ZipHelper, overwrites changed files, and deletes stale local files.
  *
  * Usage:
  *   $updater = new GitUpdater();
- *   $result  = $updater->incremental();  // no exec() needed
- *   $result  = $updater->pull();         // requires exec() + git
+ *   $result  = $updater->zipUpdate();     // recommended
+ *   $result  = $updater->incremental();   // legacy API mode
+ *   $result  = $updater->pull();          // requires exec() + git
  * ═══════════════════════════════════════════════════════════════════════
  */
 final class GitUpdater
@@ -31,13 +30,32 @@ final class GitUpdater
     private string $repoName  = 'AshatHub';
     private string $branch    = 'main';
 
-    /** Files/directories that should NEVER be overwritten during updates. */
+    /** Files/directories that should NEVER be overwritten or deleted. */
     private const PROTECTED_PATHS = [
         '/.env',
+        '/.env.local',
         '/config/conn.php',
+        '/config/server_config.json',
         '/storage/',
         '/.git/',
+        '/node_modules/',
+        '/phpunit.phar',
+        '/.phpunit.cache/',
+        '/.vscode/',
+        '/.idea/',
+        '/AshatOS_Old/',
+        '/.freebuff',
+        '/public/css/build/',
+        '/public/js/build/',
+        '/.DS_Store',
+        '/Thumbs.db',
     ];
+
+    /** Alias of PROTECTED_PATHS — cleanup must also never delete these. */
+    private const CLEANUP_EXCLUDE = self::PROTECTED_PATHS;
+
+    /** Known repo source dirs — cleanup prunes these even if renamed/absent upstream. */
+    private const TRACKED_TOP_DIRS = ['src', 'public', 'config', 'tests', 'db'];
 
     public function __construct(?string $repoPath = null)
     {
@@ -305,6 +323,169 @@ final class GitUpdater
     }
 
     // ══════════════════════════════════════════════════════════════════
+    //  ZIP ARCHIVE UPDATE (main.zip — no exec() required)
+    // ══════════════════════════════════════════════════════════════════
+
+    /**
+     * Download the branch archive zip, then sync the local tree to match it.
+     * Returns the applyArchive() result plus a best-effort latest commit SHA.
+     *
+     * @return array{ok: bool, output: string, summary: string, files_updated: int, files_created: int, files_deleted: int, files_unchanged: int, latest_sha: string, error?: string}
+     */
+    public function zipUpdate(): array
+    {
+        // ── Check HTTP fetch capability ────────────────────────────
+        $httpCheck = $this->checkHttpAvailable();
+        if (!$httpCheck['ok']) {
+            return $httpCheck;
+        }
+
+        // ── Download the full branch archive ───────────────────────
+        // https://github.com/{owner}/{repo}/archive/refs/heads/{branch}.zip
+        // redirects to codeload.github.com and contains every tracked file
+        // under a single top-level folder named "{repo}-{branch}".
+        $zipUrl = "https://github.com/{$this->repoOwner}/{$this->repoName}/archive/refs/heads/{$this->branch}.zip";
+        $zip    = $this->downloadArchive($zipUrl);
+
+        if ($zip === null || $zip === '') {
+            return [
+                'ok'      => false,
+                'summary' => 'Failed to download the repository archive.',
+                'error'   => 'Could not download main.zip from GitHub. The server may be blocking outgoing connections or the archive request timed out.',
+                'output'  => '', 'files_updated' => 0, 'files_created' => 0,
+                'files_deleted' => 0, 'files_unchanged' => 0, 'latest_sha' => '',
+            ];
+        }
+
+        // ── Best-effort: resolve the tip commit SHA (keeps check() working)
+        $latestSha = '';
+        $tip = $this->githubGet(
+            "https://api.github.com/repos/{$this->repoOwner}/{$this->repoName}/commits/{$this->branch}"
+        );
+        if (is_array($tip) && !empty($tip['sha'])) {
+            $latestSha = (string) $tip['sha'];
+        }
+
+        // ── Apply the archive to the local tree ────────────────────
+        $result = $this->applyArchive($zip, $latestSha);
+
+        // Only advance the stored commit when the apply actually succeeded,
+        // otherwise the next check() would wrongly report "up to date".
+        if ($result['ok'] && $latestSha !== '') {
+            $this->saveState([
+                'last_commit_sha' => $latestSha,
+                'last_updated'    => date('c'),
+            ]);
+        }
+
+        return $result;
+    }
+
+    /**
+     * Extract a branch archive zip into the local tree: overwrite changed
+     * files, create new ones, and delete files absent from the archive
+     * (cleanup pass). Protected/gitignored paths are never touched.
+     *
+     * @return array{ok: bool, output: string, summary: string, files_updated: int, files_created: int, files_deleted: int, files_unchanged: int, latest_sha: string, error?: string}
+     */
+    public function applyArchive(string $zipBytes, string $latestSha = ''): array
+    {
+        // ── Extract entries (ZipHelper verifies CRC, skips dirs) ───
+        $entries = ZipHelper::extract($zipBytes);
+        if (!$entries) {
+            return [
+                'ok'      => false,
+                'summary' => 'Archive invalid or empty.',
+                'error'   => 'The downloaded archive could not be read (empty or corrupt).',
+                'output'  => '', 'files_updated' => 0, 'files_created' => 0,
+                'files_deleted' => 0, 'files_unchanged' => 0, 'latest_sha' => $latestSha,
+            ];
+        }
+
+        // ── First pass: collect sanitized paths + track top-level dirs
+        $archivePaths = [];
+        $topLevelDirs = [];
+        foreach ($entries as $entry) {
+            $rel = $this->archivePath($entry['path']);
+            if ($rel === '' || $this->isProtected($rel)) continue;
+            $archivePaths[$rel] = true;
+            $top = str_contains($rel, '/') ? explode('/', $rel, 2)[0] : '';
+            if ($top !== '') $topLevelDirs[$top] = true;
+        }
+
+        // ── Second pass: write/overwrite files ─────────────────────
+        $updated   = 0;
+        $created   = 0;
+        $unchanged = 0;
+        $log       = [];
+
+        foreach ($entries as $entry) {
+            $rel = $this->archivePath($entry['path']);
+            if ($rel === '' || $this->isProtected($rel)) continue;
+
+            $localPath = $this->repoPath . '/' . $rel;
+            $dir = dirname($localPath);
+            if (!is_dir($dir)) {
+                @mkdir($dir, 0775, true);
+            }
+
+            $content = (string) $entry['content'];
+
+            if (is_file($localPath)) {
+                $existing = @file_get_contents($localPath);
+                if ($existing === $content) {
+                    $unchanged++;
+                    continue;
+                }
+                $updated++;
+                $log[] = "UPDATED {$rel}";
+            } else {
+                $created++;
+                $log[] = "CREATED {$rel}";
+            }
+
+            if (@file_put_contents($localPath, $content) === false) {
+                // Undo the optimistic count — the write failed.
+                if (is_file($localPath)) $updated--;
+                else $created--;
+                $log[] = "FAILED {$rel} (unwritable)";
+            }
+        }
+
+        // ── Cleanup pass: delete local files missing from the archive
+        $deleted = 0;
+        foreach ($this->collectLocalFiles() as $rel) {
+            if (isset($archivePaths[$rel])) continue;
+            if ($this->isCleanupExcluded($rel)) continue;
+
+            // Prune files under a top-level folder the repo tracks (either
+            // present in the archive or a known source dir), so unrelated
+            // local dirs (uploads/, backups/) are left alone. Root files
+            // absent from the archive are pruned too — .env & friends are
+            // already protected by CLEANUP_EXCLUDE.
+            $top = str_contains($rel, '/') ? explode('/', $rel, 2)[0] : '';
+            if ($top !== '' && !isset($topLevelDirs[$top]) && !in_array($top, self::TRACKED_TOP_DIRS, true)) continue;
+
+            $localPath = $this->repoPath . '/' . $rel;
+            if (is_file($localPath) && @unlink($localPath)) {
+                $deleted++;
+                $log[] = "DELETED {$rel}";
+            }
+        }
+
+        return [
+            'ok'            => true,
+            'output'        => implode("\n", $log),
+            'summary'       => "Updated {$updated} file(s), created {$created}, deleted {$deleted}, unchanged {$unchanged}.",
+            'files_updated' => $updated,
+            'files_created' => $created,
+            'files_deleted' => $deleted,
+            'files_unchanged' => $unchanged,
+            'latest_sha'    => $latestSha,
+        ];
+    }
+
+    // ══════════════════════════════════════════════════════════════════
     //  GIT PULL MODE (requires exec() + git installed)
     // ══════════════════════════════════════════════════════════════════
 
@@ -442,6 +623,109 @@ final class GitUpdater
         }
 
         return null;
+    }
+
+    /**
+     * Download the full branch archive (binary zip) with a long timeout.
+     */
+    private function downloadArchive(string $url): ?string
+    {
+        $headers = ['User-Agent: ASHAT-Hub-Updater/1.0'];
+
+        if (function_exists('file_get_contents') && ini_get('allow_url_fopen')) {
+            $context = stream_context_create([
+                'http' => [
+                    'method' => 'GET',
+                    'header' => implode("\r\n", $headers),
+                    'timeout' => 120,
+                ],
+            ]);
+            $result = @file_get_contents($url, false, $context);
+            return $result !== false ? $result : null;
+        }
+
+        if (function_exists('curl_init')) {
+            $ch = @curl_init($url);
+            if ($ch === false) return null;
+            curl_setopt_array($ch, [
+                CURLOPT_RETURNTRANSFER => true,
+                CURLOPT_HTTPHEADER     => $headers,
+                CURLOPT_TIMEOUT        => 120,
+                CURLOPT_FOLLOWLOCATION => true,
+            ]);
+            $result = @curl_exec($ch);
+            $httpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
+            curl_close($ch);
+            return ($result !== false && $httpCode === 200) ? $result : null;
+        }
+
+        return null;
+    }
+
+    /**
+     * Convert a raw archive entry name to a safe repo-relative path.
+     * Strips the "{repo}-{branch}/" top folder and rejects traversal,
+     * drive-letter segments, and control chars (returns '' when unsafe).
+     */
+    private function archivePath(string $raw): string
+    {
+        $path = str_replace('\\', '/', trim($raw));
+        $path = trim($path, '/');
+        $slash = strpos($path, '/');
+        $path = $slash === false ? '' : substr($path, $slash + 1);
+        $path = trim($path, '/');
+        $path = preg_replace('#/{2,}#', '/', $path) ?? '';
+        if ($path === '' || $path === '.' || $path === '..') return '';
+        foreach (explode('/', $path) as $segment) {
+            if ($segment === '' || $segment === '.' || $segment === '..' || str_contains($segment, ':')) return '';
+            if (preg_match('/[\x00-\x1f]/', $segment) === 1) return '';
+        }
+        return $path;
+    }
+
+    /**
+     * True when a repo-relative path is gitignored/local-only (cleanup-skip).
+     */
+    private function isCleanupExcluded(string $path): bool
+    {
+        foreach (self::CLEANUP_EXCLUDE as $excluded) {
+            if (str_starts_with($path, ltrim($excluded, '/'))) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    /**
+     * Recursively list repo-relative file paths, skipping excluded dirs.
+     */
+    private function collectLocalFiles(): array
+    {
+        $files = [];
+        $this->walkLocalDir('', $files);
+        return $files;
+    }
+
+    /**
+     * Depth-first walk helper for collectLocalFiles().
+     */
+    private function walkLocalDir(string $relDir, array &$files): void
+    {
+        $absDir = $relDir === '' ? $this->repoPath : $this->repoPath . '/' . $relDir;
+        $items = @scandir($absDir);
+        if ($items === false) return;
+
+        foreach ($items as $item) {
+            if ($item === '.' || $item === '..') continue;
+            $rel = $relDir === '' ? $item : $relDir . '/' . $item;
+            $abs = $absDir . '/' . $item;
+            if (is_dir($abs)) {
+                if ($this->isCleanupExcluded($rel . '/')) continue;
+                $this->walkLocalDir($rel, $files);
+            } elseif (is_file($abs)) {
+                $files[] = $rel;
+            }
+        }
     }
 
     /**

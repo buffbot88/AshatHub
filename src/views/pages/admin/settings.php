@@ -191,8 +191,10 @@
         </a>
       </div>
       <p class="text-sm text-chalk-mute mb-4">
-        Pull only the files changed in recent commits &mdash; no shell access or git required.
-        Protected files (<code class="text-xs">.env</code>, <code class="text-xs">config/conn.php</code>, <code class="text-xs">storage/</code>) are never overwritten.
+        Syncs the whole repository from the <code class="text-xs">main</code> branch archive
+        &mdash; no shell access or git required. Changed files are overwritten, new files are
+        created, and files removed from the repo are cleaned up locally.
+        Protected files (<code class="text-xs">.env</code>, <code class="text-xs">config/server_config.json</code>, <code class="text-xs">config/conn.php</code>, <code class="text-xs">storage/</code>) are never touched.
       </p>
 
       <!-- Status line -->

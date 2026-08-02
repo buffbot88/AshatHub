@@ -33,6 +33,7 @@ $router->group('/api', function () use ($router) {
             $router->post('/rename',    [\Controllers\FilesController::class,  'rename']);
             $router->post('/duplicate', [\Controllers\FilesController::class,  'duplicate']);
             $router->delete('/tree',  [\Controllers\FilesController::class,  'deleteTree']);
+            $router->get('/read',     [\Controllers\FilesController::class,  'readByPath']);
             $router->get('/{id}',     [\Controllers\FilesController::class,  'show']);
             $router->post('',         [\Controllers\FilesController::class,  'save']);
             $router->delete('/{id}',  [\Controllers\FilesController::class,  'delete']);

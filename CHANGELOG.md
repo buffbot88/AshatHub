@@ -37,6 +37,116 @@ The version displayed in the UI comes from `APP_VERSION` in `config/bootstrap.ph
     `RouteCollectionTest`/`MiddlewareTest`/`FakeContextTest` no longer
     reference `/api/specs`
 
+### Added
+
+- **Admin panel → single tabbed page** — the four standalone admin pages
+  (`/admin/dashboard`, `/admin/users`, `/admin/support`, `/admin/settings`)
+  were replaced by one page at `/admin/` with hash-aware tabs
+  (`#tab=dashboard|users|support|settings`): `src/views/pages/admin/index.php`
+  composes four partials under `src/views/partials/admin/`, the old page views
+  were deleted, and the old routes now redirect to their tab. Keyboard arrow
+  navigation + `<noscript>` fallback show all panels stacked
+- **GitHub updater — full main.zip archive sync** — `GitUpdater::zipUpdate()`
+  downloads `https://github.com/buffbot88/AshatHub/archive/refs/heads/main.zip`
+  and `applyArchive()` extracts it (dependency-free `Core\ZipHelper`), overwrites
+  changed files, creates new ones, and runs a cleanup pass deleting files absent
+  from the archive — restricted to repo-tracked top-level dirs; protected paths
+  (`.env`, `config/server_config.json`, `config/conn.php`, `storage/`,
+  `phpunit.phar`, `node_modules/`, `.git/`) are never overwritten or deleted
+- **Webhook records pushes — never auto-applies** — `public/webhook.php` now
+  verifies the HMAC signature and writes `storage/webhook-push.json`
+  (timestamp + head SHA) instead of applying anything. The admin reviews the
+  change and clicks **Apply Updates** manually; `GitUpdater::check()` surfaces
+  `webhook_received_at`/`webhook_head`, the dashboard badge lights up on a
+  pending push, and a successful apply consumes the flag
+- **File read-by-path endpoint** — `GET /api/files/read?path=…` returns a full
+  file row (auth-scoped via `findByPath`, normalized with the traversal /
+  drive-letter / control-char guards → 404). Registered before `/{id}` in
+  `routes/api.php`; backend support for the chat "read file" tool
+- **Community projects — publish, edit, delete, publisher pages**
+  - Owners can **edit** (`/community/project/{slug}/edit`) and **delete** their
+    published projects; the project page shows owner controls
+  - **Publisher page** `/community/user/{username}` lists every project one
+    user has published; disabled (soft-banned) accounts 404 on their publisher
+    page and are hidden from the showcase grid and project cards
+  - **Account → My Projects** tab lists the user's published projects with
+    Edit / Delete links and an **Open in Chat** deep link
+    (`/chat/?project={slug}&title=…`) that seeds a conversation
+- **Account page → tabbed** — Profile / My Projects / Settings tabs
+  (hash-aware, same pattern as the admin tabs); the BYO API form moved into
+  the Settings tab (still localStorage-only, Pro/Admin)
+- **Active Users page** — orb-constellation visualization + model-usage bars
+  + active-sessions table for who's online (Pro/Admin)
+- **Chat capture engine — edits AND removals** — the consent card now shows
+  "X write/update(s) and Y removal(s)"; a `## Files to Remove` section is
+  captured, and approved removals delete exact known files. Cards that were
+  already answered (Yes/No) stay hidden, even after a page refresh
+- **Monaco editor save fixes** — `RequestContext::binaryResponse()` now sends
+  `Cache-Control: no-store`; the chat export URL is cache-busted with `?t=`
+  (so repeat downloads never serve a stale zip); `ensureChatMonaco()` queues
+  concurrent callers so only one poller/creator runs (double-create race)
+- **Apache License 2.0** (`LICENSE`) and a committed config template
+  `config/server_config.example.json` (loader skips `//` doc-comment keys)
+- **Fresh Chat Studio docs seed** — `db/docs-chat-studio-seed.sql` repopulates
+  an emptied `docs_articles` table with Chat-first docs (Getting Started,
+  Core Concepts, Build Workflow, Writing Specs, BYO API, Security, Community)
+
+### Changed
+
+- **Home page slimmed** — the "What you can build", "How it works", and
+  "Ready to build with ASHAT…" sections were removed; the hero now points at
+  Chat as the single surface
+- **Navbar** — username/role badge became a dropdown (with Active users for
+  admins, Docs, Support, Account); the hamburger mobile menu was removed
+  entirely; footer condensed to a minimal logo + link row
+- **Chat context budget raised** — streaming `max_tokens` raised to 12288
+  (8192 non-stream) for deeper conversation history and more creative output
+- **Chat file-capture improvements** — better file-structure parsing, live
+  capture during SSE streaming, and file deletions in the build driver
+- **Docs / Knowledge refresh** — `knowledge.md` updated for the Chat-only
+  surface, admin tabs, updater revamp, and new endpoints
+
+### Fixed
+
+- **Monaco edits "not saving"** — saves were working; the *download* served a
+  stale cached zip. Fixed with no-store headers + cache-busted export URL
+- **`ensureChatMonaco()` double-init race** — two rapid file opens before
+  Monaco loaded could double-create the editor on one shell
+- **Community submit gate** — submission previously 403'd every role (the
+  lowercase `guest/pro/admin` list never matched the uppercase role ENUM);
+  now any authenticated user may submit
+
+### Security
+
+- **Username hardening** — new `AuthService::usernameError()` shared validator
+  (used by `register()` AND `RegisterRequest`): reserved-name blocklist
+  (`admin`, `moderator`, `staff`, `root`, `system`, `support`, brand names,
+  …) applied case-insensitively, a curated profanity blocklist with l33t
+  substitution (`@dmin`, `adm1n` → blocked), and the existing 3–30 char
+  `[a-zA-Z0-9_]` whitelist. Registration now rejects these with a field error
+- **Auth rate limiting** — new `Core\Throttler` (dependency-free, file-based
+  sliding window under `storage/throttle/`, survives restarts): login 10/hr/IP,
+  register 5/hr/IP, verify-resend 3/10-min/IP, wired into `AuthController`;
+  excess attempts get the themed 429 page
+- **Email verification (opt-in, config-gated)** — when
+  `EMAIL_VERIFICATION_ENABLED=true` is set:
+  - `AuthService::register()` creates the account unverified and does **not**
+    auto-login; a 32-byte `random_bytes` token (sha256-hashed at rest,
+    single-use via atomic `used` flip, 30-min expiry) is emailed through the
+    new `Core\Mailer` (`mail()`, zero deps, `MAIL_FROM_ADDRESS`/`MAIL_FROM_NAME`)
+  - `AuthService::login()` refuses unverified accounts (generic message — no
+    enumeration); `/auth/verify-email?token=…` verifies + logs in;
+    `/register/verify` shows the check-your-inbox page with a throttled,
+    generic-response resend (`/auth/verify-email/resend`)
+  - Changing email in Account re-verifies the new address
+  - `db/email-verification.sql` adds `users.email_verified_at` + the
+    `email_verifications` table (existing accounts grandfathered as verified);
+    `bin/cleanup-unverified.php` purges unverified accounts older than 48h
+    (data minimization) — safe no-op while the flag is off
+  - New `EmailVerificationRepository` (interface + Pdo + InMemory) registered
+    in `RepositoryRegistry`; `UserRepository` gained `setEmailVerified()` /
+    `purgeUnverified()`; new `ThrottlerTest` + `InMemoryEmailVerificationRepositoryTest`
+
 ## [v5.7] — 2026-08-02
 
 ### Removed

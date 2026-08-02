@@ -3,23 +3,7 @@
   $s = $view->stats ?? [];
   $git = $view->git ?? [];
 ?>
-<section style="border-bottom: 1px solid var(--gold-line);">
-  <div class="container mx-auto px-6 py-12">
-    <div class="flex items-end justify-between flex-wrap gap-4">
-      <div>
-        <h1 class="section-title" style="font-size: clamp(28px, 4vw, 40px);">Admin Dashboard</h1>
-        <p style="color: var(--gold-muted);" class="mt-2">Platform overview at a glance.</p>
-      </div>
-      <nav class="flex items-center gap-3 text-sm">
-        <a href="/admin/users/" class="btn-outline">Users</a>
-        <a href="/admin/support/" class="btn-outline">Support</a>
-        <a href="/admin/settings/" class="btn-outline">Settings</a>
-      </nav>
-    </div>
-  </div>
-</section>
-
-<section class="container mx-auto px-6 py-10">
+<div class="space-y-10">
   <!-- ─── Stats Grid ────────────────────────────────────────────── -->
   <div class="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-4">
     <?php
@@ -55,10 +39,10 @@
   </div>
 
   <!-- ─── Quick Actions ─────────────────────────────────────────── -->
-  <div class="mt-12">
+  <div>
     <h2 class="text-lg font-display font-semibold mb-4">Quick Actions</h2>
     <div class="grid sm:grid-cols-2 lg:grid-cols-4 gap-4">
-      <a href="/admin/users/" class="glass-card-solid p-5" style="display: block;">
+      <a href="/admin/#tab=users" class="glass-card-solid p-5" style="display: block;">
         <div class="flex items-center gap-3">
           <span style="color: var(--text-mute);"><?= $svg['users'] ?></span>
           <div>
@@ -67,7 +51,7 @@
           </div>
         </div>
       </a>
-      <a href="/admin/settings/" class="glass-card-solid p-5" style="display: block;">
+      <a href="/admin/#tab=settings" class="glass-card-solid p-5" style="display: block;">
         <div class="flex items-center gap-3">
           <span style="color: var(--text-mute);"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.9l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.9-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1-1.6 1.7 1.7 0 0 0-1.9.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.9 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.6-1 1.7 1.7 0 0 0-.3-1.9l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.9.3h.1a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5h.1a1.7 1.7 0 0 0 1.9-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.9v.1a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z"/></svg></span>
           <div>
@@ -85,7 +69,7 @@
           </div>
         </div>
       </a>
-      <a href="/admin/settings/" class="glass-card-solid p-5 relative" style="display: block;">
+      <a href="/admin/#tab=settings" class="glass-card-solid p-5 relative" style="display: block;">
         <span id="github-update-badge"
               class="hidden absolute -top-2 -right-2 bg-err text-white text-[10px] font-bold font-mono px-2 py-0.5 rounded-full z-10"></span>
         <div class="flex items-center gap-3">
@@ -98,8 +82,7 @@
       </a>
     </div>
   </div>
-
-</section>
+</div>
 
 <script>
 (function () {
@@ -126,8 +109,8 @@
   }
 
   function render(data) {
-    if (data && data.ok && data.behind > 0) {
-      badge.textContent = '+' + data.behind;
+    if (data && data.ok && (data.behind > 0 || data.webhook_received_at)) {
+      badge.textContent = data.behind > 0 ? '+' + data.behind : '!'; // '!' = pending webhook push
       badge.classList.remove('hidden');
     } else {
       badge.classList.add('hidden');

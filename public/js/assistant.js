@@ -2404,6 +2404,7 @@
   var fmSelected = {};
   var fmAllSelected = false;
   var chatMonacoEd = null;
+  var chatMonacoPending = [];
   var activeFilePath = null;
   var fmBulkStatus = null;
 
@@ -2587,46 +2588,60 @@
   /** Lazy-create the Monaco editor (or a textarea fallback) in the chat shell. */
   function ensureChatMonaco(cb) {
     if (chatMonacoEd) return cb(chatMonacoEd);
+    // Queue concurrent waiters so only ONE poller/creator ever runs —
+    // double editor.create() on the same shell throws and can save the
+    // wrong file's content under the wrong path.
+    chatMonacoPending.push(cb);
+    if (chatMonacoPending.length > 1) return;
+
     var attempts = 0;
     var timer = setInterval(function () {
-      if (window.__chatMonacoReady && window.__chatMonaco) {
+      var settle = function () {
         clearInterval(timer);
+        var pending = chatMonacoPending;
+        chatMonacoPending = [];
+        for (var i = 0; i < pending.length; i++) pending[i](chatMonacoEd);
+      };
+      if (window.__chatMonacoReady && window.__chatMonaco) {
         try {
-          chatMonacoEd = window.__chatMonaco.editor.create(monacoChatShell, {
-            value: '',
-            language: 'plaintext',
-            theme: 'ashat',
-            fontSize: 13,
-            fontFamily: 'ui-monospace, "JetBrains Mono", Menlo, Consolas, monospace',
-            minimap: { enabled: false },
-            scrollBeyondLastLine: false,
-            automaticLayout: true,
-            wordWrap: 'on',
-            tabSize: 2,
-            renderWhitespace: 'selection',
-            lineNumbersMinChars: 3,
-            padding: { top: 12 },
-          });
-          cb(chatMonacoEd);
+          if (!chatMonacoEd) {
+            chatMonacoEd = window.__chatMonaco.editor.create(monacoChatShell, {
+              value: '',
+              language: 'plaintext',
+              theme: 'ashat',
+              fontSize: 13,
+              fontFamily: 'ui-monospace, "JetBrains Mono", Menlo, Consolas, monospace',
+              minimap: { enabled: false },
+              scrollBeyondLastLine: false,
+              automaticLayout: true,
+              wordWrap: 'on',
+              tabSize: 2,
+              renderWhitespace: 'selection',
+              lineNumbersMinChars: 3,
+              padding: { top: 12 },
+            });
+          }
         } catch (e) {
-          cb(null);
+          chatMonacoEd = null;
         }
+        settle();
         return;
       }
       if (++attempts > 50) {
-        clearInterval(timer);
         // Monaco never arrived — fall back to a plain textarea.
-        monacoChatShell.innerHTML = '';
-        var ta = document.createElement('textarea');
-        ta.className = 'fallback-editor';
-        ta.style.cssText = 'width:100%;height:100%;resize:none;background:rgba(15,15,23,0.5);color:var(--text);font-family:var(--font-mono);font-size:12px;border:none;outline:none;padding:12px;';
-        monacoChatShell.appendChild(ta);
-        chatMonacoEd = {
-          _fallback: true,
-          getValue: function () { return ta.value; },
-          setValue: function (v) { ta.value = v; },
-        };
-        cb(chatMonacoEd);
+        if (!chatMonacoEd) {
+          monacoChatShell.innerHTML = '';
+          var ta = document.createElement('textarea');
+          ta.className = 'fallback-editor';
+          ta.style.cssText = 'width:100%;height:100%;resize:none;background:rgba(15,15,23,0.5);color:var(--text);font-family:var(--font-mono);font-size:12px;border:none;outline:none;padding:12px;';
+          monacoChatShell.appendChild(ta);
+          chatMonacoEd = {
+            _fallback: true,
+            getValue: function () { return ta.value; },
+            setValue: function (v) { ta.value = v; },
+          };
+        }
+        settle();
       }
     }, 200);
   }
@@ -2722,7 +2737,7 @@
     if (btnFileDownload) {
       btnFileDownload.addEventListener('click', function () {
         var a = document.createElement('a');
-        a.href = '/api/files/export';
+        a.href = '/api/files/export?t=' + Date.now();
         a.download = 'project.zip';
         document.body.appendChild(a);
         a.click();

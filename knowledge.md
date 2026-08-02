@@ -38,10 +38,13 @@ Key code locations:
 | Command | Purpose |
 |---|---|
 | `php -S localhost:8000 router.php` | Built-in dev server |
-| `php phpunit.phar` | Run all PHP tests (17 test files; phar lives in repo root, gitignored — get it with `curl -L -o phpunit.phar https://phar.phpunit.de/phpunit-10.5.phar`) |
+| `php phpunit.phar` | Run all PHP tests (20 test files; phar lives in repo root, gitignored — get it with `curl -L -o phpunit.phar https://phar.phpunit.de/phpunit-10.5.phar`) |
 | `node tests/js/agent-extract.test.js` | Run the agent.js JS unit tests (JSON extraction + prompt building) |
+| `node tests/js/chat-capture.test.js` | Run the assistant.js chat code-capture engine tests |
 | `mysql -u root -p < db/schema.sql` | Full-access DB install |
 | `mysql -u root -p < db/docs-chat-studio-seed.sql` | Fresh Chat Studio docs seed (for an emptied `docs_articles` table) |
+| `mysql -u root -p < db/email-verification.sql` | Email-verification migration (adds `email_verified_at` + `email_verifications` table; run BEFORE enabling the flag) |
+| `php bin/cleanup-unverified.php [HOURS]` | Purge unverified accounts older than N hours (default 48; no-op unless verification is enabled) |
 
 No package.json or composer.json — **zero dependencies**.
 
@@ -81,6 +84,24 @@ No package.json or composer.json — **zero dependencies**.
 - Three named middleware: `auth`, `pro-or-admin` (checks `Pro`/`Admin`), `admin-gate` (checks `Admin`)
 - Sessions: server-side, HttpOnly, SameSite=Lax
 - API keys stored **only in localStorage** — server never sees them
+- **Username hardening** — `AuthService::usernameError()` is the single source of
+  truth (used by `register()` and `RegisterRequest`'s closure rule): reserved-name
+  blocklist + curated profanity list with l33t substitution, applied after the
+  `[a-zA-Z0-9_]{3,30}` whitelist. Extend `RESERVED_USERNAMES` / `PROFANITY_BLOCKLIST`
+  consts to add entries — both layers stay in sync automatically
+- **Rate limiting** — `Core\Throttler`: file-based sliding window under
+  `storage/throttle/` (one JSON file per sha1(key), survives restarts, no DB).
+  `AuthController::throttle()` wraps login (10/hr/IP), register (5/hr/IP), and
+  verify-resend (3/10-min/IP); excess renders the themed 429 page.
+- **Email verification (opt-in)** — gated by `EMAIL_VERIFICATION_ENABLED`
+  (default off; migration `db/email-verification.sql` must run first). When on:
+  register does NOT auto-login (check-your-inbox page `/register/verify`),
+  login refuses unverified accounts with a generic message, `/auth/verify-email?token=`
+  verifies (single-use sha256-hashed token, 30-min expiry, atomic `used` flip),
+  resend is throttled + always-generic. Email changes in Account re-verify.
+  `Core\Mailer` = `mail()` with `MAIL_FROM_ADDRESS`/`MAIL_FROM_NAME`; new
+  `EmailVerificationRepository` (Pdo + InMemory) via `RepositoryRegistry`;
+  `UserRepository::setEmailVerified()`/`purgeUnverified()`
 
 ### Styling
 - Tailwind via CDN (`tailwindcss.com?plugins=typography` in dev; compiled `tailwind-prod.css` when `APP_ENV=production`)
@@ -95,7 +116,7 @@ No package.json or composer.json — **zero dependencies**.
   whenever `tailwind.config.js` or the color tokens in `header.php` change
 
 ### Testing
-- PHPUnit 10.5 in `phpunit.xml.dist` (run: `php phpunit.phar` — 433 tests, 769 assertions, green; 1 pre-existing skip)
+- PHPUnit 10.5 in `phpunit.xml.dist` (run: `php phpunit.phar` — 469 tests, 864 assertions, green; 1 pre-existing skip)
 - **Vow 8 is enforced**: `tests/Core/VowDocblockTest.php` scans every `.php`/`.js` under `src/` + `public/`, parses `/** */` docblocks, and fails if any prose exceeds 2 sentences. The counter is deliberately fair: it strips `@annotation` lines, banner-art lines, numbered-list markers, and neutralizes abbreviations (`e.g.`, `etc.`) + decimals before counting sentence ends — so keep docblocks to 1–2 crisp sentences and the suite stays green.
 - Tests bootstrap from `tests/bootstrap.php` (minimal — no session, no DB)
 - FakeContext + InMemoryRepositories = no database needed
@@ -128,6 +149,7 @@ No package.json or composer.json — **zero dependencies**.
   |---|---|
   | `GET /api/files/` | list (metadata only) + `usage_bytes` + `quota_bytes` (150 MB) |
   | `GET /api/files/{id}` | row incl. content |
+  | `GET /api/files/read?path=` | row incl. content by path (traversal-guarded → 404; backend for the chat read-file tool) |
   | `POST /api/files/` | save/upsert by path (quota: size-delta check) |
   | `POST /api/files/rename` | rename file OR folder prefix |
   | `POST /api/files/duplicate` | duplicate a file (`x (copy).ts`, `x (copy 2).ts`) |
@@ -148,7 +170,26 @@ No package.json or composer.json — **zero dependencies**.
 
 - **Chat page (`/chat`, `ChatPageController`)** — standalone Spec Chat. Left: conversation sidebar (localStorage `ashat.chats`); center: chat + input, and a **file editor panel** (`#chat-file-editor`) that replaces the chat when a project file is clicked (Monaco loaded lazily from the CDN — `__chatMonacoReady`/`__chatMonaco`; textarea fallback if the CDN never arrives; Save via `POST /api/files/`, ← Chat restores the conversation). Right pane: **Project Files** card (tree + Upload/Download/Select all/Delete + usage meter) + **Spec Versions** timeline + **Tips**. The chat File Manager renders rows with `textContent` (XSS-safe) and folder markers share the same prefix semantics as files.
 - **Chat behaviors**: `init()` lands on the home/empty state (never auto-creates or auto-opens a conversation); Export downloads `ChatHistory-YYYY-MM-DD.md` (Markdown, `stripMarkers()`-cleaned, no JSON dump). Generated Spec + Project Context cards were removed — `setSpec()` now feeds the Spec Versions timeline + consent card. The right-pane **Tips** card and the empty-state paragraph teach the consent-first flow — the chat never writes code without the consent card, files land in Project Files, and clicking a file opens it in the editor.
+- **Capture engine covers edits AND removals** — the consent card counts writes/updates and removals separately; a `## Files to Remove` section is parsed (removal section accepts list items or standalone paths) and approved removals delete exact known files. Cards that were already answered (Yes/No) stay hidden across page reloads.
+- **Monaco save/download**: `binaryResponse()` sends `Cache-Control: no-store` and the export URL is cache-busted (`?t=`), so repeat downloads never serve a stale zip. `ensureChatMonaco()` queues concurrent openers in `chatMonacoPending` — only one poller/creator runs (prevents double `editor.create()` on the same shell).
+
+### Admin Panel (tabbed)
+- **One page, four tabs** — `/admin/` renders `pages/admin/index.php`, which composes `partials/admin/{dashboard,users,support,settings}.php`. Tabs are hash-aware (`#tab=dashboard|users|settings|support`), keyboard-arrow navigable, with a `<noscript>` fallback.
+- The old page routes (`/admin/dashboard`, `/admin/users`, `/admin/settings`, `/admin/support`) redirect to `/admin/#tab=…`; `AdminController::dashboard()` gathers ALL data (stats, git, users, brainstem, maint, tickets) and renders the tabbed shell. POST handlers redirect to their tab target.
+- `SupportController::adminIndex()` redirects to `/admin/#tab=support` (the tickets render in the tab).
+
+### GitHub Updates (manual-apply only)
+- **`Core\GitUpdater`** — `zipUpdate()` downloads the full branch archive (`archive/refs/heads/main.zip`), `applyArchive()` extracts it with `Core\ZipHelper`, overwrites changed files, creates new ones, and runs a **cleanup pass** that deletes local files absent from the archive (restricted to repo-tracked top-level dirs; root files pruned; unrelated local dirs like `uploads/` survive).
+- **Protected paths** (`.env`, `config/server_config.json`, `config/conn.php`, `storage/`, `phpunit.phar`, `node_modules/`, `.git/`, …) are never overwritten or deleted; `TRACKED_TOP_DIRS` = `src, public, config, tests, db`.
+- **Webhook never auto-applies** — `public/webhook.php` verifies the HMAC signature, then `recordWebhookPush()` writes `storage/webhook-push.json` (timestamp + head SHA). `check()` surfaces `webhook_received_at`/`webhook_head`; a successful `applyArchive()` calls `clearWebhookPush()`. The admin applies manually from Settings → Update from GitHub.
+- Tests: `tests/Core/GitUpdaterTest.php` (synthetic zips, no network).
 - **Code consent (chat AI never writes code)**: the SYSTEM_PROMPT in `assistant.js` enforces a CODE CONSENT POLICY — the chat AI does NOT emit code files or inline HTML/CSS/JS previews (the old `<!--PREVIEW-->` live-preview mechanism was removed). When a spec (`<!--SPEC-->`) is detected, `appendSpecConsentCard()` renders a consent card on the last assistant bubble asking whether to generate the files; only clicking **Yes — generate files** runs `generateFilesInChat()`, which drives the coding agent (`window.ASHAT.agent.runBuildStream`) and writes the resulting files straight into the user's Project Files via `POST /api/files/` (auth-open — works for **Member, Pro, and Admin alike**). A `gen-status-bubble` shows progress; nothing is ever stored without the consent-card click. "Not yet" just dismisses the card. Chat is the only dev surface — no role-gated IDE anymore.
+
+### Community / Publisher Pages
+- **Publisher page** `/community/user/{username}` — lists every project one user published; unknown OR inactive (`is_active = 0`) accounts 404 (no public profile for soft-banned users).
+- **Show/edit/delete guards** — `show()`, `edit()`, `update()`, `delete()` all 404 when the publisher is inactive; owner-only checks redirect non-owners.
+- **Account → My Projects** tab lists the user's published projects with Edit / Delete links and an **Open in Chat** deep link (`/chat/?project={slug}&title=…`).
+- `submit()` uses `requireRole()` (no args = any authenticated role) — the old lowercase `guest/pro/admin` list never matched the uppercase ENUM and 403'd everyone.
 
 ### Maintenance Mode
 - Toggled via admin UI → writes `storage/maintenance.json`
@@ -164,6 +205,7 @@ No package.json or composer.json — **zero dependencies**.
   - `config/server_config.json` — primary config file (not a dotfile). Covers ALL settings. Loaded before `.env`, skips `.env` if present. `server_config.example.json` is a committed template — copy it for new installs; the loader skips keys starting with `//` (documentation comments).
 - **No mod_rewrite needed** — `.htaccess` uses `ErrorDocument 404/403 /index.php` for shared hosts; `RedirectMatch 403` from mod_alias blocks private dirs
 - **`?__diag=1`** endpoint runs before bootstrap — use it to check PHP version and file existence on a fresh deploy
+- **Version bump for releases** — bump `APP_VERSION` in `config/bootstrap.php` (single source of truth; `APP_VERSION_DISPLAY` = `v` + version renders in navbar/footer/admin/API) and add a `## [vX.Y]` section to `CHANGELOG.md`
 - **`never` return type** on `RequestContext::redirect()` and `jsonResponse()` — method always exits/throws
 - Role ENUM: `Member`/`Pro`/`Admin` (uppercase). AuthController, middleware, and tests all use uppercase
 - `e()` helper = `htmlspecialchars()` — always escape output

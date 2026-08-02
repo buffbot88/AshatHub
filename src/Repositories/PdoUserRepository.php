@@ -121,4 +121,20 @@ final class PdoUserRepository implements UserRepository
             [(int) $active, $id]
         );
     }
+
+    public function setEmailVerified(string $id, bool $verified): void
+    {
+        $this->db->execute(
+            "UPDATE users SET email_verified_at = ?, updated_at = NOW() WHERE id = ?",
+            [$verified ? date('Y-m-d H:i:s') : null, $id]
+        );
+    }
+
+    public function purgeUnverified(int $hours): int
+    {
+        return $this->db->execute(
+            "DELETE FROM users WHERE email_verified_at IS NULL AND created_at < DATE_SUB(NOW(), INTERVAL ? HOUR)",
+            [$hours]
+        );
+    }
 }

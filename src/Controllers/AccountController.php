@@ -3,6 +3,7 @@ declare(strict_types=1);
 namespace Controllers;
 
 use Controllers\FormRequests\UpdateProfileRequest;
+use Core\AuthService;
 use Core\RequestContext;
 use Repositories\RepositoryRegistry;
 
@@ -62,6 +63,17 @@ final class AccountController
             $ctx->flash('error', 'Could not update profile — database unavailable.');
             $ctx->redirect('/account/');
         }
+
+        // Email changed + verification enabled → re-verify the new address.
+        $emailChanged = strcasecmp((string) $user['email'], $email) !== 0;
+        if ($emailChanged && defined('EMAIL_VERIFICATION_ENABLED') && EMAIL_VERIFICATION_ENABLED) {
+            RepositoryRegistry::user()->setEmailVerified($user['id'], false);
+            $token = AuthService::issueVerificationToken($user['id']);
+            AuthService::sendVerificationEmail($email, $token);
+            $ctx->flash('success', 'Profile updated. Check your inbox to verify the new email address.');
+            $ctx->redirect('/account/');
+        }
+
         $ctx->flash('success', 'Profile updated.');
         $ctx->redirect('/account/');
     }

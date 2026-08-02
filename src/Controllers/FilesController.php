@@ -33,6 +33,23 @@ final class FilesController
         $ctx->jsonResponse(['file' => $file]);
     }
 
+    /**
+     * Read a project file's full contents by path for the chat
+     * read-file tool. Returns 404 for missing or invalid paths.
+     */
+    public function readByPath(RequestContext $ctx): void
+    {
+        $raw = trim((string) ($ctx->query('path') ?? ''));
+        if ($raw === '') $ctx->jsonResponse(['error' => 'path_required'], 400);
+
+        $path = $this->normalizePath($raw);
+        if ($path === '') $ctx->jsonResponse(['error' => 'not_found'], 404);
+
+        $file = RepositoryRegistry::file()->findByPath((string) $ctx->user()['id'], $path);
+        if (!$file) $ctx->jsonResponse(['error' => 'not_found'], 404);
+        $ctx->jsonResponse(['file' => $file]);
+    }
+
     public function save(RequestContext $ctx): void
     {
         $body    = $ctx->jsonBody();

@@ -188,4 +188,51 @@ final class GitUpdaterTest extends TestCase
         $this->assertFalse($result['ok']);
         $this->assertStringContainsString('invalid', $result['summary']);
     }
+
+    public function test_webhook_push_flag_records_reads_and_clears(): void
+    {
+        $updater = new GitUpdater($this->tmp);
+
+        // No flag initially.
+        $this->assertFileDoesNotExist($this->tmp . '/storage/webhook-push.json');
+
+        // Record a push with a head SHA.
+        $updater->recordWebhookPush('abc123');
+        $this->assertFileExists($this->tmp . '/storage/webhook-push.json');
+        $data = json_decode((string) file_get_contents($this->tmp . '/storage/webhook-push.json'), true);
+        $this->assertSame('abc123', $data['head_sha'] ?? '');
+        $this->assertNotEmpty($data['received_at'] ?? '');
+
+        // Clear removes the flag.
+        $updater->clearWebhookPush();
+        $this->assertFileDoesNotExist($this->tmp . '/storage/webhook-push.json');
+    }
+
+    public function test_successful_apply_consumes_pending_webhook_push(): void
+    {
+        $this->write('index.php', 'v1');
+
+        $updater = new GitUpdater($this->tmp);
+        $updater->recordWebhookPush('deadbeef');
+        $this->assertFileExists($this->tmp . '/storage/webhook-push.json');
+
+        $result = $updater->applyArchive($this->zip([
+            ['path' => 'AshatHub-main/index.php', 'content' => 'v2'],
+        ]));
+
+        $this->assertTrue($result['ok']);
+        // A successful manual apply clears the pending push notification.
+        $this->assertFileDoesNotExist($this->tmp . '/storage/webhook-push.json');
+    }
+
+    public function test_failed_apply_keeps_pending_webhook_push(): void
+    {
+        $updater = new GitUpdater($this->tmp);
+        $updater->recordWebhookPush('deadbeef');
+
+        // An invalid archive fails the apply — the flag must survive.
+        $result = $updater->applyArchive('garbage');
+        $this->assertFalse($result['ok']);
+        $this->assertFileExists($this->tmp . '/storage/webhook-push.json');
+    }
 }

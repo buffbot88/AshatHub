@@ -47,4 +47,10 @@ interface UserRepository
 
     /** Set active status (soft-disable). */
     public function setActive(string $id, bool $active): void;
+
+    /** Mark a user's email verified (or unverified). */
+    public function setEmailVerified(string $id, bool $verified): void;
+
+    /** Delete users whose email was never verified, created before $hours ago. */
+    public function purgeUnverified(int $hours): int;
 }

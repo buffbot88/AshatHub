@@ -6,7 +6,9 @@ use Controllers\FormRequests\LoginRequest;
 use Controllers\FormRequests\RegisterRequest;
 use Controllers\FormRequests\SessionAuthRequest;
 use Core\AuthService;
+use Core\ErrorController;
 use Core\RequestContext;
+use Core\Throttler;
 use Repositories\RepositoryRegistry;
 
 /**
@@ -23,6 +25,10 @@ final class AuthController
 
     public function login(RequestContext $ctx): void
     {
+        if (!self::throttle('login', 10, 3600)) {
+            return; // 429 page already rendered
+        }
+
         $req = LoginRequest::fromGlobals();
 
         $result = AuthService::login(
@@ -63,7 +69,28 @@ final class AuthController
 
     public function register(RequestContext $ctx): void
     {
+        if (!self::throttle('register', 5, 3600)) {
+            return; // 429 page already rendered
+        }
+
         $req = RegisterRequest::fromGlobals();
+
+        if ($req->failed()) {
+            $_SESSION['_old_input'] = [
+                'username'     => $req->string('username'),
+                'email'        => $req->string('email'),
+                'display_name' => $req->string('display_name'),
+            ];
+            $first = 'Check the form and try again.';
+            foreach ($req->errors() as $fieldErrors) {
+                if (!empty($fieldErrors)) {
+                    $first = $fieldErrors[0];
+                    break;
+                }
+            }
+            $ctx->flash('error', $first);
+            $ctx->redirect('/register/');
+        }
 
         try {
             $user = AuthService::register(
@@ -72,6 +99,13 @@ final class AuthController
                 $req->string('password'),    // NOT trimmed — passwords are case-sensitive
                 $req->string('display_name'),
             );
+
+            if (defined('EMAIL_VERIFICATION_ENABLED') && EMAIL_VERIFICATION_ENABLED) {
+                $_SESSION['_pending_verify_email'] = $req->string('email');
+                $ctx->flash('success', 'Almost there — check your inbox for the verification link.');
+                $ctx->redirect('/register/verify');
+            }
+
             $ctx->flash('success', 'Welcome to ' . APP_NAME . '!');
             $ctx->redirect('/account/');
         } catch (\InvalidArgumentException $e) {
@@ -144,6 +178,69 @@ final class AuthController
             'title'    => 'Connect · ' . APP_NAME,
             'callback' => $callback,
         ], 'raw');
+    }
+
+    /**
+     * Check-your-inbox page shown after registration with verification on.
+     */
+    public function verifyEmailForm(RequestContext $ctx): void
+    {
+        $email = (string) ($_SESSION['_pending_verify_email'] ?? '');
+        $ctx->view('pages/verify_email', [
+            'title' => 'Verify your email · ' . APP_NAME,
+            'email' => $email,
+        ]);
+    }
+
+    /**
+     * Verify an email token (GET /auth/verify-email?token=…).
+     */
+    public function verifyEmail(RequestContext $ctx): void
+    {
+        $token = trim((string) ($ctx->query('token', '')));
+        if ($token === '') {
+            $ctx->flash('error', 'Missing verification token.');
+            $ctx->redirect('/register/verify');
+        }
+
+        $user = AuthService::verifyEmail($token);
+
+        if (!$user) {
+            $ctx->flash('error', 'That link is invalid or has expired. Request a new one below.');
+            $ctx->redirect('/register/verify');
+        }
+
+        unset($_SESSION['_pending_verify_email']);
+        $ctx->flash('success', 'Email verified — welcome to ' . APP_NAME . '!');
+        $ctx->redirect('/account/');
+    }
+
+    /**
+     * Resend the verification email (POST, throttled, no enumeration).
+     */
+    public function resendVerification(RequestContext $ctx): void
+    {
+        if (!self::throttle('verify-resend', 3, 600)) {
+            return; // 429 page already rendered
+        }
+
+        $email = trim((string) ($ctx->str('email')));
+        AuthService::resendVerification($email);
+        $ctx->flash('success', 'If that email exists, a fresh verification link is on its way.');
+        $ctx->redirect('/register/verify');
+    }
+
+    /**
+     * Apply per-IP+route throttling; renders the 429 page when exceeded.
+     */
+    private static function throttle(string $route, int $max, int $windowSeconds): bool
+    {
+        $key = $route . ':' . ($_SERVER['REMOTE_ADDR'] ?? 'unknown');
+        if ((new Throttler())->allow($key, $max, $windowSeconds)) {
+            return true;
+        }
+        (new ErrorController())->show(429, 'Too many attempts. Please wait and try again.');
+        return false;
     }
 
     /**

@@ -136,12 +136,9 @@ final class SupportController
 
     public function adminIndex(RequestContext $ctx): void
     {
-        $tickets = RepositoryRegistry::ticket()->allOpen();
-
-        $ctx->view('pages/admin/support', [
-            'title'   => 'Admin · Support Tickets · ' . APP_NAME,
-            'tickets' => $tickets,
-        ]);
+        // The admin panel is now a single tabbed page — the tickets are
+        // rendered by the Support tab, so just deep-link to it.
+        $ctx->redirect('/admin/#tab=support');
     }
 
     // ── Admin: update ticket status ─────────────────────────────────
@@ -153,12 +150,12 @@ final class SupportController
 
         if ($ticketId === '') {
             $ctx->flash('error', 'Missing ticket ID.');
-            $ctx->redirect('/admin/support');
+            $ctx->redirect('/admin/#tab=support');
         }
 
         if (!in_array($status, self::VALID_STATUSES, true)) {
             $ctx->flash('error', 'Invalid status.');
-            $ctx->redirect('/admin/support');
+            $ctx->redirect('/admin/#tab=support');
         }
 
         RepositoryRegistry::ticket()->updateStatus($ticketId, $status);
@@ -180,6 +177,6 @@ final class SupportController
 
         RepositoryRegistry::ticket()->delete($id);
         $ctx->flash('success', 'Ticket deleted.');
-        $ctx->redirect('/admin/support');
+        $ctx->redirect('/admin/#tab=support');
     }
 }

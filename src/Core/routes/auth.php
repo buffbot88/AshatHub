@@ -12,6 +12,11 @@ $router->get('/register',        [\Controllers\AuthController::class,    'regist
 $router->post('/register',       [\Controllers\AuthController::class,    'register']);
 $router->post('/logout',         [\Controllers\AuthController::class,    'logout']);
 
+// ─── Email verification ────────────────────────────────────────────
+$router->get('/register/verify',        [\Controllers\AuthController::class, 'verifyEmailForm']);
+$router->get('/auth/verify-email',      [\Controllers\AuthController::class, 'verifyEmail']);
+$router->post('/auth/verify-email/resend', [\Controllers\AuthController::class, 'resendVerification']);
+
 // ─── Account ───────────────────────────────────────────────────────
 $router->get('/account',                 [\Controllers\AccountController::class, 'index']);
 $router->get('/account/active-users',    [\Controllers\AccountController::class, 'activeUsers']);

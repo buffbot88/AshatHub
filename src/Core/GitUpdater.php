@@ -70,12 +70,22 @@ final class GitUpdater
      * Check what updates are available via the GitHub API.
      * Does NOT download anything — just reports what's new.
      *
-     * @return array{ok: bool, behind: int, commits: array, files: array, last_sha: string, latest_sha: string, summary: string, error?: string}
+     * @return array{ok: bool, behind: int, commits: array, files: array, last_sha: string, latest_sha: string, summary: string, webhook_received_at?: string, webhook_head?: string, error?: string}
      */
     public function check(): array
     {
         // ── Check HTTP fetch capability ────────────────────────────
         $httpCheck = $this->checkHttpAvailable();
+
+        // ── Surface a webhook-recorded push (never auto-applied) ───
+        // Read the flag before the HTTP check so a recorded push is
+        // surfaced even when the GitHub API is unreachable.
+        $pending = $this->readWebhookPush();
+        if ($pending !== []) {
+            $httpCheck['webhook_received_at'] = $pending['received_at'] ?? '';
+            $httpCheck['webhook_head']        = $pending['head_sha'] ?? '';
+        }
+
         if (!$httpCheck['ok']) {
             return $httpCheck;
         }
@@ -160,6 +170,8 @@ final class GitUpdater
                 'summary'     => $behind > 0
                     ? "{$behind} new commit(s) · " . count($changedFiles) . " file(s) changed"
                     : 'Up to date.',
+                'webhook_received_at' => $pending['received_at'] ?? '',
+                'webhook_head'        => $pending['head_sha'] ?? '',
             ];
         }
 
@@ -209,6 +221,8 @@ final class GitUpdater
             'last_sha'    => '(first time — will download all files)',
             'latest_sha'  => $latestSha,
             'summary'     => "{$behind} recent commit(s) — run Apply to start tracking",
+            'webhook_received_at' => $pending['received_at'] ?? '',
+            'webhook_head'        => $pending['head_sha'] ?? '',
         ];
     }
 
@@ -472,6 +486,9 @@ final class GitUpdater
                 $log[] = "DELETED {$rel}";
             }
         }
+
+        // A successful manual apply consumes any pending webhook push flag.
+        $this->clearWebhookPush();
 
         return [
             'ok'            => true,
@@ -776,6 +793,53 @@ final class GitUpdater
             }
         }
         return false;
+    }
+
+    // ══════════════════════════════════════════════════════════════════
+    //  WEBHOOK PUSH FLAG (record-only — never auto-applies)
+    // ══════════════════════════════════════════════════════════════════
+
+    /**
+     * Record a verified GitHub push so the admin can review before applying.
+     * The push is NEVER applied automatically — check() surfaces it instead.
+     */
+    public function recordWebhookPush(string $headSha = ''): void
+    {
+        $dir = $this->repoPath . '/storage';
+        if (!is_dir($dir)) {
+            @mkdir($dir, 0775, true);
+        }
+        file_put_contents(
+            $dir . '/webhook-push.json',
+            json_encode([
+                'received_at' => date('c'),
+                'head_sha'    => $headSha,
+            ], JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES)
+        );
+    }
+
+    /**
+     * Read the pending webhook push flag, or [] when none is recorded.
+     */
+    private function readWebhookPush(): array
+    {
+        $file = $this->repoPath . '/storage/webhook-push.json';
+        if (!is_file($file)) {
+            return [];
+        }
+        $data = json_decode(file_get_contents($file), true);
+        return is_array($data) ? $data : [];
+    }
+
+    /**
+     * Clear the pending webhook push flag (called after a successful apply).
+     */
+    public function clearWebhookPush(): void
+    {
+        $file = $this->repoPath . '/storage/webhook-push.json';
+        if (is_file($file)) {
+            @unlink($file);
+        }
     }
 
     // ══════════════════════════════════════════════════════════════════

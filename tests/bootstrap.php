@@ -38,6 +38,9 @@ defined('BRAINSTEM_KEY')  || define('BRAINSTEM_KEY', '');
 
 defined('APP_VERSION') || define('APP_VERSION', '0.0.0-test');
 defined('APP_VERSION_DISPLAY') || define('APP_VERSION_DISPLAY', 'v' . APP_VERSION);
+defined('EMAIL_VERIFICATION_ENABLED') || define('EMAIL_VERIFICATION_ENABLED', false);
+defined('MAIL_FROM_ADDRESS') || define('MAIL_FROM_ADDRESS', '');
+defined('MAIL_FROM_NAME') || define('MAIL_FROM_NAME', 'ASHAT Hub');
 
 // ─── Autoloader ───────────────────────────────────────────────────
 spl_autoload_register(function (string $class): void {

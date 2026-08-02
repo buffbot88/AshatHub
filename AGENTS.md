@@ -61,7 +61,8 @@ then is validated and reviewed.
   `RequestContext $ctx`; views in `src/views/pages/`; repositories via
   `RepositoryRegistry` (Pdo* = prod, InMemory* = tests).
 - **Commands**: dev server `php -S localhost:8000 router.php`; tests
-  `php phpunit.phar` and `node tests/js/agent-extract.test.js`.
+  `php phpunit.phar` plus `node tests/js/agent-extract.test.js` and
+  `node tests/js/chat-capture.test.js`.
 
 ## Working conventions
 

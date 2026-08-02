@@ -1,6 +1,6 @@
 # ASHAT Hub — PHP/MySQL Edition
 
-A browser-based AI coding platform, rewritten from the original React SPA into **vanilla PHP + PDO + MySQL** with a clean "Midnight Protocol" redesign.
+A browser-based AI coding platform, rewritten from the original React SPA into **vanilla PHP + PDO + MySQL** with a clean "Plainspoken" redesign.
 
 **[Changelog](CHANGELOG.md) · [License](LICENSE)**
 
@@ -27,7 +27,7 @@ No build step. No bundler. Drop the folder on a PHP-capable host and run.
 ├── public/                ← document root (exposed to web)
 │   ├── index.php          ← Front Controller — all requests go here
 │   ├── .htaccess          ← Apache rewrite rules
-│   ├── css/app.css        ← Custom styles (Midnight Protocol / Ashat Gold Pulse)
+│   ├── css/app.css        ← Custom styles (Plainspoken design system)
 │   ├── js/                ← Vanilla JS (app.js, agent.js, assistant.js)
 │   └── assets/            ← logo, favicon
 ├── src/
@@ -190,13 +190,15 @@ If the home page returns a plain 500, three diagnostic paths ship with the proje
 | Route                       | Page              | Notes                                    |
 |----------------------------|-------------------|------------------------------------------|
 | `/`                        | Home              | Hero, features, workflow, pipeline SVG   |
-| `/community/`              | Community         | Project cards grid                       |
-| `/community/project/:slug` | Project Detail    | Stack, likes, downloads                  |
+| `/community/`              | Community         | Project cards grid + submit form          |
+| `/community/project/:slug` | Project Detail    | Stack, likes, downloads, owner edit/delete|
+| `/community/user/:name`    | Publisher page    | Every project one user has published      |
 | `/docs/`                   | Docs index        | Articles grouped by category             |
 | `/docs/:slug`              | Docs article      | Markdown rendered to HTML                |
 | `/chat/`                   | Chat              | Brainstorm with the AI, build specs, generate files into your Project Files, edit with Monaco, export Markdown |
-| `/account/`                | Account           | Profile, stats                           |
-| `/account/active-users/`   | Active Users      | Recent sign-ins (admin)                  |
+| `/account/`                | Account           | Tabs: Profile / My Projects / Settings    |
+| `/account/active-users/`   | Active Users      | Who's online — orb viz + model usage (Pro/Admin) |
+| `/admin/`                  | Admin panel       | Tabbed dashboard / users / support / settings |
 | `/register/`               | Register          | New account                              |
 | `/login/`                  | Login             | Sign in                                  |
 | `/logout/`                 | Logout            | Sign out                                 |
@@ -210,7 +212,6 @@ If the home page returns a plain 500, three diagnostic paths ship with the proje
 - **SQLi**: every query via PDO prepared statements.
 - **Sessions**: signed by PHP, `HttpOnly`, `SameSite=Lax`, optional `Secure` flag.
 - **BYO API keys**: stored **only in the user's browser** (`localStorage["ashat.api"]`). The server never sees them.
-- **Generated file content**: lives **only in the browser** (`localStorage["ashat.generated.*"]`); the server stores metadata rows only.
 - **Roles**: `Member` (default), `Pro`, `Admin` — enforced by middleware (`pro-or-admin`, `admin-gate`).
 
 

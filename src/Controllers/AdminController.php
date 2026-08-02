@@ -18,38 +18,69 @@ use Repositories\RepositoryRegistry;
 final class AdminController
 {
     /**
-     * Admin dashboard — high-level platform stats.
+     * Admin panel — single tabbed page (dashboard, users, support, settings).
      */
     public function dashboard(RequestContext $ctx): void
     {
         $user      = $ctx->user();
         $stats     = self::gatherStats();
-
-        // Get git status (GitUpdater handles all errors internally)
         $gitStatus = (new GitUpdater())->status();
 
-        $ctx->view('pages/admin/dashboard', [
-            'title' => 'Admin · Dashboard · ' . APP_NAME,
-            'user'  => $user,
-            'stats' => $stats,
-            'git'   => $gitStatus,
+        $allUsers    = RepositoryRegistry::user()->all();
+        $activeCount = count(array_filter($allUsers, static fn ($u) => $u['is_active']));
+
+        $brainstem = RepositoryRegistry::brainstemConfig()->get();
+        $config    = ConfigBag::getInstance();
+        $maintFile = ASHAT_ROOT . '/storage/maintenance.json';
+        $maint = ['enabled' => false, 'message' => ''];
+        if (is_file($maintFile)) {
+            $data = json_decode(file_get_contents($maintFile), true);
+            if (is_array($data)) {
+                $maint = $data;
+            }
+        }
+
+        $tickets = RepositoryRegistry::ticket()->allOpen();
+
+        $ctx->view('pages/admin/index', [
+            'title'        => 'Admin · ' . APP_NAME,
+            'user'         => $user,
+            'stats'        => $stats,
+            'git'          => $gitStatus,
+            'users'        => $allUsers,
+            'total_count'  => count($allUsers),
+            'active_count' => $activeCount,
+            'brainstem'    => $brainstem,
+            'active'       => RepositoryRegistry::brainstemConfig()->active(),
+            'env_url'      => $config->brainstemUrl(),
+            'env_key_set'  => $config->brainstemKey() !== '',
+            'maint'        => $maint,
+            'tickets'      => $tickets,
         ]);
     }
 
     /**
-     * List all users with role/status management.
+     * Redirect to the Users tab (deep-link compat).
      */
     public function users(RequestContext $ctx): void
     {
-        $allUsers    = RepositoryRegistry::user()->all();
-        $activeCount = count(array_filter($allUsers, static fn ($u) => $u['is_active']));
+        $ctx->redirect('/admin/#tab=users');
+    }
 
-        $ctx->view('pages/admin/users', [
-            'title'       => 'Admin · Users · ' . APP_NAME,
-            'users'       => $allUsers,
-            'total_count' => count($allUsers),
-            'active_count'=> $activeCount,
-        ]);
+    /**
+     * Redirect to the Settings tab (deep-link compat).
+     */
+    public function settings(RequestContext $ctx): void
+    {
+        $ctx->redirect('/admin/#tab=settings');
+    }
+
+    /**
+     * Redirect to the Support tab (deep-link compat).
+     */
+    public function support(RequestContext $ctx): void
+    {
+        $ctx->redirect('/admin/#tab=support');
     }
 
     /**
@@ -59,7 +90,7 @@ final class AdminController
     {
         $userId = trim((string) ($ctx->str('user_id')));
         $role   = trim((string) ($ctx->str('role')));
-        $next   = $ctx->input('next', '/admin/users/');
+        $next   = $ctx->input('next', '/admin/#tab=users');
 
         if ($userId === '' || !in_array($role, ['Admin', 'Pro', 'Member'], true)) {
             $ctx->flash('error', 'Invalid user ID or role.');
@@ -72,13 +103,23 @@ final class AdminController
     }
 
     /**
+     * Default Users tab redirect target for POST handlers.
+     */
+    private const USERS_TAB = '/admin/#tab=users';
+
+    /**
+     * Default Settings tab redirect target for POST handlers.
+     */
+    private const SETTINGS_TAB = '/admin/#tab=settings';
+
+    /**
      * Toggle a user's active status (POST).
      */
     public function toggleUserStatus(RequestContext $ctx): void
     {
         $userId = trim((string) ($ctx->str('user_id')));
         $active = (int) ($ctx->int('is_active'));
-        $next   = $ctx->input('next', '/admin/users/');
+        $next   = $ctx->input('next', self::USERS_TAB);
 
         if ($userId === '') {
             $ctx->flash('error', 'Invalid user ID.');
@@ -88,36 +129,6 @@ final class AdminController
         RepositoryRegistry::user()->setActive($userId, (bool) $active);
         $ctx->flash('success', 'User status updated.');
         $ctx->redirect($next);
-    }
-
-    /**
-     * System settings — BrainStem config + maintenance mode management.
-     */
-    public function settings(RequestContext $ctx): void
-    {
-        $brainstem = RepositoryRegistry::brainstemConfig()->get();
-        $config    = ConfigBag::getInstance();
-
-        // Read maintenance config from storage file
-        $maintFile = ASHAT_ROOT . '/storage/maintenance.json';
-        $maint = ['enabled' => false, 'message' => ''];
-        if (is_file($maintFile)) {
-            $data = json_decode(file_get_contents($maintFile), true);
-            if (is_array($data)) {
-                $maint = $data;
-            }
-        }
-
-        $active = RepositoryRegistry::brainstemConfig()->active();
-
-        $ctx->view('pages/admin/settings', [
-            'title'          => 'Admin · Settings · ' . APP_NAME,
-            'brainstem'      => $brainstem,
-            'active'         => $active,
-            'env_url'        => $config->brainstemUrl(),
-            'env_key_set'    => $config->brainstemKey() !== '',
-            'maint'          => $maint,
-        ]);
     }
 
     /**
@@ -132,7 +143,7 @@ final class AdminController
         RepositoryRegistry::brainstemConfig()->upsert($url, $apiKey, $admin['username']);
 
         $ctx->flash('success', 'BrainStem config updated.');
-        $ctx->redirect('/admin/settings/');
+        $ctx->redirect('/admin/#tab=settings');
     }
 
     /**
@@ -142,7 +153,7 @@ final class AdminController
     {
         RepositoryRegistry::brainstemConfig()->upsert('', '', $ctx->user()['username']);
         $ctx->flash('success', 'BrainStem config reset to environment defaults.');
-        $ctx->redirect('/admin/settings/');
+        $ctx->redirect('/admin/#tab=settings');
     }
 
     /**
@@ -212,7 +223,7 @@ final class AdminController
                 unlink($file);
             }
             $ctx->flash('success', 'Webhook secret cleared. GitHub webhook will no longer be accepted.');
-            $ctx->redirect('/admin/settings/');
+            $ctx->redirect('/admin/#tab=settings');
         }
 
         // Generate a cryptographically secure random secret
@@ -259,7 +270,7 @@ final class AdminController
         } else {
             $ctx->flash('success', 'Maintenance mode disabled. Site is fully accessible again.');
         }
-        $ctx->redirect('/admin/settings/');
+        $ctx->redirect('/admin/#tab=settings');
     }
 
     // ── Private helpers ─────────────────────────────────────────────

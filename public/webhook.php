@@ -10,11 +10,12 @@
  *   1. Reads the shared secret from storage/webhook-secret.json
  *   2. Verifies the X-Hub-Signature-256 HMAC against the request body
  *   3. Ignores ping events (just returns 200)
- *   4. On push events, runs GitUpdater::zipUpdate() to sync the whole
- *      repo from the main branch archive (changed files + cleanup)
+ *   4. On push events, records the push in storage/webhook-push.json so
+ *      the admin can review changes and apply them manually from the
+ *      admin panel — it is NEVER applied automatically
  *
  * Setup:
- *   1. Set a webhook secret in Admin → Settings → Webhook
+ *   1. Set a webhook secret in Admin → Settings → Update from GitHub
  *   2. In your GitHub repo: Settings → Webhooks → Add webhook
  *      - Payload URL: https://yoursite.com/webhook.php
  *      - Content type: application/json
@@ -94,20 +95,23 @@ if ($event !== 'push') {
     exit;
 }
 
-// ─── Run the incremental update ──────────────────────────────────
+// ─── Record the push (never auto-apply) ────────────────────────────
 try {
-    $updater = new \Core\GitUpdater();
-    $result  = $updater->zipUpdate();
+    // Pull the head SHA from the push payload so the admin can see which
+    // commit triggered the notification.
+    $payload = json_decode($rawBody, true);
+    $headSha = is_array($payload) ? (string) ($payload['head_commit']['id'] ?? ($payload['after'] ?? '')) : '';
 
-    http_response_code($result['ok'] ? 200 : 500);
+    $updater = new \Core\GitUpdater();
+    $updater->recordWebhookPush($headSha);
+
+    http_response_code(200);
     header('Content-Type: application/json');
     echo json_encode([
-        'ok'      => $result['ok'],
-        'event'   => 'push',
-        'summary' => $result['summary'] ?? '',
-        'updated' => $result['files_updated'] ?? 0,
-        'created' => $result['files_created'] ?? 0,
-        'deleted' => $result['files_deleted'] ?? 0,
+        'ok'        => true,
+        'event'     => 'push',
+        'message'   => 'Push recorded. Review and apply manually from the admin panel.',
+        'head_sha'  => $headSha,
     ]);
     exit;
 

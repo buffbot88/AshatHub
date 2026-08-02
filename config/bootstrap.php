@@ -102,6 +102,9 @@ $defaults = [
     'SESSION_LIFETIME' => '7200',
     'SESSION_COOKIE_NAME' => 'ashat_sid',
     'SESSION_SECURE_COOKIE' => 'false',
+    'EMAIL_VERIFICATION_ENABLED' => 'false',
+    'MAIL_FROM_ADDRESS' => '',
+    'MAIL_FROM_NAME' => 'ASHAT Hub',
 ];
 foreach ($defaults as $k => $v) {
     if (!isset($_ENV[$k]) && getenv($k) === false) {
@@ -166,6 +169,10 @@ define('APP_KEY', (string) $__env('APP_KEY', ''));
 
 define('MAINTENANCE_MODE', filter_var($__env('MAINTENANCE_MODE', 'false'), FILTER_VALIDATE_BOOLEAN));
 define('MAINTENANCE_MESSAGE', (string) $__env('MAINTENANCE_MESSAGE', 'Our little AI is busy upgrading the hub with brand-new magic!'));
+
+define('EMAIL_VERIFICATION_ENABLED', filter_var($__env('EMAIL_VERIFICATION_ENABLED', 'false'), FILTER_VALIDATE_BOOLEAN));
+define('MAIL_FROM_ADDRESS', (string) $__env('MAIL_FROM_ADDRESS', ''));
+define('MAIL_FROM_NAME', (string) $__env('MAIL_FROM_NAME', APP_NAME));
 
 define('APP_VERSION', '5.8');
 define('APP_VERSION_DISPLAY', 'v' . APP_VERSION);

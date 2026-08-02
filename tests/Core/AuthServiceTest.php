@@ -66,6 +66,58 @@ final class AuthServiceTest extends TestCase
         RepositoryRegistry::swap('session', $this->oldSession);
     }
 
+    // ── usernameError() — Tier 1 hardening ─────────────────────────
+
+    public function test_username_error_rejects_short_and_invalid_chars(): void
+    {
+        $this->assertNotNull(AuthService::usernameError('ab'));       // too short
+        $this->assertNotNull(AuthService::usernameError('has space'));
+        $this->assertNotNull(AuthService::usernameError('dash-name'));
+        $this->assertNotNull(AuthService::usernameError('unicodeÿ'));
+    }
+
+    public function test_username_error_accepts_valid_edge_cases(): void
+    {
+        $this->assertNull(AuthService::usernameError('abc'));      // 3-char min
+        $this->assertNull(AuthService::usernameError(str_repeat('a', 30))); // 30-char max
+        $this->assertNull(AuthService::usernameError('snake_case_1'));
+        $this->assertNull(AuthService::usernameError('Alice42'));  // mixed case allowed
+    }
+
+    public function test_username_error_blocks_reserved_names_case_insensitively(): void
+    {
+        foreach (['admin', 'Admin', 'ADMIN', 'support', 'root', 'system', 'moderator', 'staff', 'ashat', 'brainstem'] as $name) {
+            $this->assertNotNull(AuthService::usernameError($name), "should block reserved: $name");
+        }
+    }
+
+    public function test_username_error_blocks_reserved_prefix_variants(): void
+    {
+        // Reserved words used as a prefix (admin_1) are still blocked.
+        $this->assertNotNull(AuthService::usernameError('admin_1'));
+        $this->assertNotNull(AuthService::usernameError('support_team'));
+    }
+
+    public function test_username_error_blocks_l33t_squatting(): void
+    {
+        // @dmin → admin via l33t map; adm1n → admin via digit substitution.
+        $this->assertNotNull(AuthService::usernameError('@dmin'));
+        $this->assertNotNull(AuthService::usernameError('adm1n'));
+        $this->assertNotNull(AuthService::usernameError('sUpp0rt'));
+    }
+
+    public function test_username_error_blocks_profanity(): void
+    {
+        $this->assertNotNull(AuthService::usernameError('fuckface'));
+        $this->assertNotNull(AuthService::usernameError('sh1tposter'));
+    }
+
+    public function test_register_rejects_reserved_username(): void
+    {
+        $this->expectException(\InvalidArgumentException::class);
+        AuthService::register('support', 'support@example.com', 'password1234');
+    }
+
     // ── login() — happy path ───────────────────────────────────────
 
     public function test_login_returns_user_on_valid_credentials(): void

@@ -186,4 +186,26 @@ final class InMemoryUserRepository implements UserRepository
         $this->rows[$id]['is_active'] = $active ? 1 : 0;
         $this->rows[$id]['updated_at'] = date('Y-m-d H:i:s');
     }
+
+    public function setEmailVerified(string $id, bool $verified): void
+    {
+        if (!isset($this->rows[$id])) return;
+        $this->rows[$id]['email_verified_at'] = $verified ? date('Y-m-d H:i:s') : null;
+        $this->rows[$id]['updated_at'] = date('Y-m-d H:i:s');
+    }
+
+    public function purgeUnverified(int $hours): int
+    {
+        $cutoff = time() - ($hours * 3600);
+        $removed = 0;
+        foreach ($this->rows as $id => $u) {
+            $created = strtotime((string) ($u['created_at'] ?? ''));
+            $unverified = empty($u['email_verified_at']);
+            if ($unverified && $created !== false && $created < $cutoff) {
+                unset($this->rows[$id]);
+                $removed++;
+            }
+        }
+        return $removed;
+    }
 }

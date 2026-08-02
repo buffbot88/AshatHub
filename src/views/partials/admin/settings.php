@@ -8,19 +8,7 @@
   $maint      = $view->maint ?? ['enabled' => false, 'message' => ''];
 ?>
 
-<section class="border-b border-ink-line">
-  <div class="container mx-auto px-6 py-12">
-    <div class="flex items-end justify-between flex-wrap gap-4">
-      <div>
-        <h1 class="text-3xl md:text-4xl font-display font-semibold">System Settings</h1>
-        <p class="text-chalk-mute mt-2">Manage BrainStem host and view environment configuration.</p>
-      </div>
-      <a href="/admin/" class="px-3 py-1.5 text-sm border border-ink-line rounded-md hover:border-accent transition">&larr; Dashboard</a>
-    </div>
-  </div>
-</section>
-
-<section class="container mx-auto px-6 py-10 grid lg:grid-cols-2 gap-8">
+<div class="grid lg:grid-cols-2 gap-8">
   <!-- ─── BrainStem Config ──────────────────────────────────────── -->
   <div class="space-y-6">
     <div class="p-6 rounded-xl bg-ink-panel border border-ink-line">
@@ -235,20 +223,22 @@
              class="text-xs font-mono bg-ink-deep rounded-lg p-4 border border-ink-line overflow-x-auto max-h-64 overflow-y-auto whitespace-pre-wrap"></pre>
       </div>
 
-      <!-- ═══ Webhook Auto-Update ═══ -->
+      <!-- ═══ Webhook Notifications (manual apply only) ═══ -->
       <hr class="my-5 border-ink-line/50">
       <div class="pt-2">
         <div class="flex items-center justify-between flex-wrap gap-2 mb-1">
           <h3 class="text-base font-display font-semibold">
-            Auto-Update via Webhook
+            Webhook Notifications
           </h3>
           <span id="wh-status-chip" class="chip-gold text-[10px]">
             <span class="dot"></span> <span id="wh-status-text">loading</span>
           </span>
         </div>
         <p class="text-xs text-chalk-mute mb-3">
-          When configured, GitHub automatically notifies this endpoint on every push.
-          The site updates itself &mdash; no manual clicking needed.
+          When configured, GitHub notifies this endpoint on every push. The push is
+          recorded and flagged here &mdash; it is <strong>never applied automatically</strong>.
+          Review changes with <em>Check for Updates</em>, then click <em>Apply Updates</em> to
+          sync from the main.zip archive yourself.
         </p>
 
         <!-- Webhook URL display -->
@@ -273,7 +263,7 @@
           </div>
           <p class="text-[10px] text-chalk-mute mt-1">
             GitHub uses this secret to sign the request payload. The server verifies
-            the signature before applying updates.
+            the signature before recording the push.
           </p>
         </div>
 
@@ -357,7 +347,7 @@
       </form>
     </div>
   </div>
-</section>
+</div>
 
 <script>
 (function () {
@@ -448,12 +438,25 @@
       return;
     }
 
+    // Webhook recorded a push — surface it so the admin knows a change
+    // arrived but was NOT applied automatically. Shown even when the
+    // compare says up to date, so the notification is never swallowed.
+    var webhookNote = '';
+    if (data.webhook_received_at) {
+      var whDate = new Date(data.webhook_received_at);
+      var whWhen = isNaN(whDate.getTime()) ? data.webhook_received_at : whDate.toLocaleString();
+      webhookNote = 'Webhook push recorded ' + whWhen + ' — review below';
+      if (data.webhook_head) webhookNote += ' (' + data.webhook_head.slice(0, 7) + ')';
+    }
+
     if (data.behind === 0) {
       setDot('bg-ok', false);
-      statusText.textContent = 'Up to date \u2705';
+      statusText.textContent = webhookNote || 'Up to date \u2705';
       pendingApply = false;
       return;
     }
+
+    if (webhookNote) statusText.textContent = webhookNote;
 
     // ── New commits available ───────────────────────────────────
     setDot('bg-accent', false);
@@ -520,11 +523,6 @@
       statusText.textContent = 'Checking for updates...';
       checkLabel.textContent = 'Checking\u2026';
       setButtons(false);
-      // ── Manual redirect mode ─────────────────────────────────
-      // If the admin session expires, the middleware redirects to /login/.
-      // With default redirect:'follow', fetch would silently follow the
-      // redirect and try to parse the login page HTML as JSON. Instead,
-      // we catch redirects explicitly and show a meaningful message.
       var r = await fetch('/admin/settings/github-check/', {
         headers: { 'Accept': 'application/json' },
         credentials: 'same-origin',
@@ -557,9 +555,6 @@
       }
 
       // ── Check Content-Type before parsing JSON ────────────────
-      // If PHP outputs warnings/errors before the JSON, the body is
-      // HTML despite HTTP 200. Reading the body as text first would
-      // consume it, so check the header before touching the body.
       var checkContentType = (r.headers.get('content-type') || '').toLowerCase();
       if (!checkContentType.includes('application/json') && !checkContentType.includes('text/json')) {
         invalidateCache();
@@ -638,9 +633,6 @@
       });
 
       // ── Handle non-JSON responses ────────────────────────────────
-      // If the server returns HTML (PHP crash, redirect to login, etc.),
-      // show the HTTP status and a body preview instead of failing with
-      // a cryptic "Unexpected token" JSON parse error.
       var contentType = (r.headers.get('content-type') || '').toLowerCase();
       if (!contentType.includes('application/json') && !contentType.includes('text/json')) {
         var bodyPreview = await r.text().then(function (t) { return t.slice(0, 500); }).catch(function () { return '(unable to read body)'; });
@@ -711,7 +703,7 @@
   }
 
   // ══════════════════════════════════════════════════════════════════
-  //  WEBHOOK AUTO-UPDATE
+  //  WEBHOOK STATUS (notifications only — never auto-applies)
   // ══════════════════════════════════════════════════════════════════
 
   var whStatusChip  = document.getElementById('wh-status-chip');
@@ -798,7 +790,7 @@
 
   whClearBtn.addEventListener('click', function () {
     if (whClearBtn.disabled) return;
-    if (!confirm('Clear the webhook secret? GitHub will no longer be able to trigger auto-updates.')) return;
+    if (!confirm('Clear the webhook secret? GitHub will no longer be able to notify this endpoint.')) return;
 
     var body = new URLSearchParams();
     body.set('action', 'clear');
@@ -817,7 +809,6 @@
     })
     .catch(function () {
       // Even on network error, the server-side clear may have succeeded
-      // (the redirect happened before the fetch response). Reload to sync.
       window.location.reload();
     });
   });

@@ -40,9 +40,27 @@ CREATE TABLE `users` (
   `created_at`    DATETIME        NOT NULL DEFAULT CURRENT_TIMESTAMP,
   `updated_at`    DATETIME        NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
   `last_login_at` DATETIME        DEFAULT NULL,
+  `email_verified_at` DATETIME    DEFAULT NULL,
   PRIMARY KEY (`id`),
   UNIQUE KEY `uniq_username` (`username`),
   UNIQUE KEY `uniq_email` (`email`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+-- ─── Email verification tokens (single-use, hashed at rest) ──────────
+DROP TABLE IF EXISTS `email_verifications`;
+CREATE TABLE `email_verifications` (
+  `id`         CHAR(36)    NOT NULL,
+  `user_id`    CHAR(36)    NOT NULL,
+  `token_hash` CHAR(64)    NOT NULL,
+  `expires_at` DATETIME    NOT NULL,
+  `used`       TINYINT(1)  NOT NULL DEFAULT 0,
+  `created_at` DATETIME    NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  PRIMARY KEY (`id`),
+  UNIQUE KEY `uniq_token_hash` (`token_hash`),
+  KEY `idx_user` (`user_id`),
+  KEY `idx_expires` (`expires_at`),
+  CONSTRAINT `fk_email_verifications_user` FOREIGN KEY (`user_id`)
+    REFERENCES `users`(`id`) ON DELETE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 -- ─── Sessions (server-side auth tokens) ──────────────────────────────

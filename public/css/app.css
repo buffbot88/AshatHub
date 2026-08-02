@@ -651,6 +651,14 @@ a, button {
   padding: 16px 22px;
   background: var(--bg-soft);
 }
+.chat-meta-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin-top: 8px;
+  padding: 0 2px;
+}
 .chat-input-wrapper {
   display: flex;
   gap: 10px;
@@ -1022,6 +1030,25 @@ a, button {
   border: 1px solid var(--line);
   border-radius: 6px;
   overflow: hidden;
+  background: rgba(255, 122, 69, 0.05);
+}
+.files-consent-card .spec-consent-actions .files-consent-yes {
+  background: var(--accent);
+  border-color: transparent;
+  color: var(--accent-ink);
+  font-weight: 600;
+}
+.files-consent-card .spec-consent-actions .files-consent-yes:hover {
+  background: var(--accent-hover);
+}
+.files-consent-card .spec-consent-actions .files-consent-no {
+  background: transparent;
+  border-color: var(--line);
+  color: var(--text-mute);
+}
+.files-consent-card .spec-consent-actions .files-consent-no:hover {
+  border-color: var(--text-mute);
+  color: var(--text);
 }
 .fc-file {
   display: flex;
@@ -1114,12 +1141,108 @@ a, button {
 }
 
 /* ── Chat project file manager (right-pane tree) ──────────────── */
-#chat-file-tree label:hover {
-  background: var(--surface-2);
+.fm-toolbar-primary {
+  font-size: 11px;
+  padding: 6px 12px;
+  color: var(--text-soft);
+  border-color: var(--line);
 }
+.fm-toolbar-primary:hover {
+  border-color: var(--accent);
+  color: var(--accent);
+  background: var(--accent-soft);
+}
+.fm-toolbar-sep {
+  width: 1px;
+  height: 18px;
+  background: var(--line);
+  flex-shrink: 0;
+}
+.fm-toolbar-mini {
+  width: 26px;
+  height: 26px;
+  padding: 0;
+  font-size: 11px;
+  line-height: 1;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--text-mute);
+}
+.fm-toolbar-mini:hover {
+  color: var(--accent);
+  border-color: var(--accent);
+  background: var(--accent-soft);
+}
+.fm-toolbar-danger:hover {
+  color: var(--err);
+  border-color: var(--err);
+  background: rgba(255, 107, 107, 0.08);
+}
+.fm-toolbar-mini.active {
+  color: var(--accent);
+  border-color: rgba(255, 122, 69, 0.5);
+  background: var(--accent-soft);
+}
+
 #chat-file-tree .fm-check {
   width: 12px;
   height: 12px;
+  accent-color: var(--accent);
+  flex-shrink: 0;
+}
+#chat-file-tree .fm-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 3px 6px;
+  border-radius: 6px;
+  cursor: pointer;
+}
+#chat-file-tree .fm-row:hover {
+  background: var(--surface-2);
+}
+#chat-file-tree .fm-row.fm-folder {
+  color: var(--text-soft);
+}
+#chat-file-tree .fm-row.fm-file {
+  color: var(--gold-muted);
+}
+#chat-file-tree .fm-row .fm-name {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+#chat-file-tree .fm-row .fm-actions {
+  display: none;
+  align-items: center;
+  gap: 2px;
+  flex-shrink: 0;
+}
+#chat-file-tree .fm-row:hover .fm-actions {
+  display: inline-flex;
+}
+#chat-file-tree .fm-row .fm-actions button {
+  background: none;
+  border: none;
+  cursor: pointer;
+  padding: 2px 4px;
+  font-size: 11px;
+  line-height: 1;
+  border-radius: 4px;
+  color: var(--text-dim);
+  transition: color .12s ease, background-color .12s ease;
+}
+#chat-file-tree .fm-row .fm-actions button:hover {
+  background: var(--surface-3);
+}
+#chat-file-tree .fm-row .fm-actions .fm-del {
+  color: var(--err);
+}
+#chat-file-tree .fm-row .fm-actions .fm-open {
+  color: var(--accent);
 }
 .fallback-editor {
   width: 100%;

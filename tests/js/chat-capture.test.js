@@ -97,6 +97,15 @@ eq('iteration resolves generic HTML capture to the only known HTML file',
 eq('iteration uses a named existing path mentioned near the block',
   captureFilesFromContent('Update `src/main.js` with this change.\n\n```javascript\nconsole.log(2);\n```', [{ path: 'src/main.js' }, { path: 'src/other.js' }]),
   [{ path: 'src/main.js', content: 'console.log(2);', language: 'javascript', action: 'update' }]);
+eq('debug reply maps bare basename to the real project file',
+  captureFilesFromContent('Fix the popup bug. Update `script.js`:\n\n```javascript\nconsole.log(3);\n```', [{ path: 'src/character-creation/script.js' }]),
+  [{ path: 'src/character-creation/script.js', content: 'console.log(3);', language: 'javascript', action: 'update' }]);
+eq('bare basename without a unique match stays a new file',
+  captureFilesFromContent('Here is the new page.\n\n```javascript\nconsole.log(4);\n```', [{ path: 'src/character-creation/script.js' }]),
+  [{ path: 'file.js', content: 'console.log(4);', language: 'javascript' }]);
+eq('create cue does not map bare basename onto an existing file',
+  captureFilesFromContent('Create a new helper for the tooling.\n\n**main.js**\n\n```javascript\nconsole.log(5);\n```', [{ path: 'src/old/main.js' }]),
+  [{ path: 'main.js', content: 'console.log(5);', language: 'javascript' }]);
 eq('ambiguous generic iteration is not mapped to the wrong same-extension file',
   captureFilesFromContent('The design needs work.\n\n```html\n<section>New page</section>\n```', [{ path: 'src/index.html' }, { path: 'src/about.html' }]),
   [{ path: 'file.html', content: '<section>New page</section>', language: 'html' }]);

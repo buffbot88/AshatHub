@@ -46,17 +46,33 @@ final class ApiController
     public function context(RequestContext $ctx): void
     {
         $userId = (string) $ctx->user()['id'];
-        $files  = RepositoryRegistry::file()->allForUser($userId);
 
-        // Format files: keep path, language, generated, modified_at
+        // Format files: keep path, language, generated, modified_at, and a
+        // bounded content excerpt so the Chat AI can actually debug the
+        // user's real code (not just file names). Content is capped per file
+        // and in total so the model context stays provider-friendly; a
+        // single query fetches rows (including content) to avoid N+1.
+        $repo = RepositoryRegistry::file();
+        $contentBudget = 6000;
+        $spent = 0;
         $formattedFiles = [];
-        foreach ($files as $f) {
+        foreach ($repo->allWithContent($userId) as $f) {
+            $excerpt = null;
+            if ($spent < $contentBudget) {
+                $raw = (string) ($f['content'] ?? '');
+                if ($raw !== '') {
+                    $maxForFile = min(1500, $contentBudget - $spent);
+                    $excerpt = strlen($raw) > $maxForFile ? substr($raw, 0, $maxForFile) . "\n…" : $raw;
+                    $spent += strlen($excerpt);
+                }
+            }
             $formattedFiles[] = [
                 'id'          => $f['id'],
                 'path'        => $f['path'],
-                'language'    => $f['language'],
+                'language'    => $f['language'] ?? '',
                 'generated'   => !empty($f['generated']),
                 'modified_at' => $f['modified_at'] ?? $f['created_at'] ?? null,
+                'content'     => $excerpt,
             ];
         }
 

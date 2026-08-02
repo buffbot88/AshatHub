@@ -120,6 +120,16 @@
       '  the files into their Project Files (the right-pane card). If they are',
       '  not ready, wait — never generate files unprompted.',
       '',
+      'DEBUGGING PROTOCOL (when the user reports a bug, error, or glitch):',
+      '- The Project Context message lists the user\'s ACTUAL files. Use those exact',
+      '  paths — never invent generic names like main.js or index.html unless that',
+      '  exact path exists in the list.',
+      '- Read the content excerpts in Project Context and diagnose the real code.',
+      '  If you need the full file, ask the user to open it in the editor or paste it.',
+      '- When proposing a fix, present it as an UPDATE to the existing file path.',
+      '  Label the code block with the exact existing path and say "Update" in prose.',
+      '- Never create new files for a debugging fix unless the fix genuinely needs one.',
+      '',
       'CODE LABELING FORMAT (when the user explicitly asks you to draft code in chat):',
       '- ALWAYS present the complete file structure FIRST under a "## File Structure"',
       '  heading, one bullet per path (e.g. "- src/index.html"). Plan the structure',
@@ -130,9 +140,10 @@
       '  filename in prose, never use a numbered "1." list for filenames, and never',
       '  leave a code block unlabeled. The app reads those labels to offer',
       '  "write (file)" actions.',
-      '- For an iteration, treat the Project Files list as authoritative. Say whether',
-      '  each change is an UPDATE to an existing path, a new file, or a REMOVE action.',
-      '  Use the exact existing path for updates, even when only a small section changes.',
+      '- For an iteration or debugging fix, treat the Project Files list as',
+      '  authoritative. Say whether each change is an UPDATE to an existing path,',
+      '  a new file, or a REMOVE action. Use the EXACT existing path for updates —',
+      '  e.g. `src/character-creation/script.js`, not a bare `main.js`.',
       '- Put removals in a clear "## Files to Remove" section using exact paths, and',
       '  never suggest deleting a file merely because it was not included in the reply.',
     ].join('\n'),
@@ -425,16 +436,23 @@
 
     var lines = [
       '[Project Context — Current Workspace State]',
-      'The user you are helping has the following existing files in their Project Files:',
+      'The user you are helping has the following existing files in their Project Files.',
+      'When debugging or iterating, reference these EXACT paths and read the code',
+      'below — never invent generic filenames (e.g. main.js) that are not listed.',
       '',
       '📁 **Files** (' + ctx.stats.files + ' total):',
     ];
-    // Include the complete path inventory (metadata only) so iteration
-    // responses can target any existing file, not just the first six.
+    // Include the complete path inventory plus bounded content excerpts so
+    // the AI can actually diagnose the user's real code.
     var files = (ctx.files || []).slice(0, 120);
     for (var k = 0; k < files.length; k++) {
       var f = files[k];
       lines.push('  - ' + f.path + (f.generated ? ' (generated)' : ''));
+      if (f.content) {
+        lines.push('      ```' + (f.language || '') + '\n' +
+          String(f.content).replace(/```/g, '``\u200b`') +
+          '\n      ```');
+      }
     }
     if (ctx.stats.files > files.length) {
       lines.push('  ... and ' + (ctx.stats.files - files.length) + ' more files');
@@ -442,8 +460,9 @@
     lines.push('');
 
     lines.push('[End of Project Context]');
-    lines.push('Use this context to build on the user\'s existing work. Suggest improvements,');
-    lines.push('extensions, or new features that fit naturally with what they have already created.');
+    lines.push('Use this context to build on the user\'s existing work. When they report',
+      'a bug, find the fault in the excerpted code and propose an UPDATE to that',
+      'exact file path. Ask for the full file only when the excerpt is truncated.');
 
     return {
       role: 'system',
@@ -1144,7 +1163,31 @@
 
   /** Resolve a generic capture name to an existing project file when possible. */
   function resolveKnownCapturePath(content, block, path, lang, known, langExt) {
-    if (!known.length || !/^file(?:-\d+)?\./i.test(path)) return path;
+    if (!known.length) return path;
+
+    // The AI often labels a debugging block with a bare basename (e.g.
+    // `script.js`) while the project stores it under a folder (e.g.
+    // `src/character-creation/script.js`). If a block mentions a path that
+    // is NOT the generic file.ext fallback but a known file shares that
+    // exact basename, treat it as an update to the real file.
+    if (!/^file(?:-\d+)?\./i.test(path)) {
+      var base = path.split('/').pop().toLowerCase();
+      var baseMatches = known.filter(function (candidate) {
+        return candidate.split('/').pop().toLowerCase() === base;
+      });
+      if (baseMatches.length === 1) {
+        var blockIdx = content.indexOf(block);
+        var beforeStr = content.slice(0, blockIdx).slice(-600);
+        var createCue = /\b(?:new|create|creating|add|adding|initial|scaffold|skeleton)\b/i.test(beforeStr);
+        var debugCue = !createCue && (
+          /\b(?:bug|error|issue|fix|broken|glitch|popup|debug|not working|problem|update|edit|modify|replace|change)\b/i.test(beforeStr)
+          || /\b(?:bug|error|issue|fix|broken|debug|update|edit|modify|replace)\b/i.test(path)
+        );
+        if (debugCue) return baseMatches[0];
+      }
+    }
+
+    if (!/^file(?:-\d+)?\./i.test(path)) return path;
     var ext = langExt[lang] || path.split('.').pop().toLowerCase();
     var candidates = known.filter(function (candidate) {
       return candidate.split('.').pop().toLowerCase() === ext;
@@ -1579,8 +1622,25 @@
    * only when the user explicitly says yes does it hand off to the
    * coding agent (runBuildStream) to generate the project files.
    */
+  /** Find the stored assistant message carrying this spec so decisions persist. */
+  function specMessage() {
+    var conv = getActiveConversation();
+    if (!conv || !conv.messages) return null;
+    for (var i = conv.messages.length - 1; i >= 0; i--) {
+      if (conv.messages[i].role === 'assistant' && extractSpec(conv.messages[i].content)) {
+        return conv.messages[i];
+      }
+    }
+    return null;
+  }
+
   function appendSpecConsentCard(spec) {
     if (!spec || !messagesEl) return;
+
+    // A card that was already answered (Yes/No) stays hidden, even after
+    // a page refresh re-renders the conversation.
+    var specMsg = specMessage();
+    if (specMsg && specMsg.specDecision) return;
 
     var bubbles = messagesEl.querySelectorAll('.chat-bubble.assistant');
     var bubble = bubbles.length ? bubbles[bubbles.length - 1] : null;
@@ -1607,12 +1667,16 @@
     var noBtn  = card.querySelector('.spec-consent-no');
 
     yesBtn.addEventListener('click', function () {
-      yesBtn.disabled = true;
-      yesBtn.textContent = 'Generating...';
-      generateFilesInChat(spec, yesBtn);
+      // The card disappears on approval; the gen-status-bubble below the
+      // reply carries progress and any retry guidance. The decision is
+      // persisted so a refresh does not show the card again.
+      if (specMsg) { specMsg.specDecision = 'yes'; saveConversations(); }
+      if (card.parentNode) card.parentNode.removeChild(card);
+      generateFilesInChat(spec);
     });
 
     noBtn.addEventListener('click', function () {
+      if (specMsg) { specMsg.specDecision = 'no'; saveConversations(); }
       if (card.parentNode) card.parentNode.removeChild(card);
       ashatToast('No problem — just say the word when you want it built.', 'ok');
     });
@@ -1631,7 +1695,7 @@
    * /api/files/ (auth-open: Members, Pro, Admin). Only runs after the
    * consent-card click, so nothing is stored without explicit agreement.
    */
-  async function generateFilesInChat(spec, yesBtn) {
+  async function generateFilesInChat(spec) {
     var status = appendGenStatusBubble('Generating project files…');
     try {
       var agent = window.ASHAT && window.ASHAT.agent;
@@ -1641,7 +1705,6 @@
       if (!agent.getLocalConfig || !agent.getLocalConfig()) {
         status.className = 'gen-status-bubble err';
         status.textContent = '⚠ Chat is connected, but file generation runs in your browser — add a provider + API key in Account → API Settings (keys stay on your device).';
-        if (yesBtn) { yesBtn.disabled = false; yesBtn.textContent = 'Yes — generate files'; }
         return;
       }
 
@@ -1677,16 +1740,11 @@
         : '⚠ ' + saved + ' of ' + files.length + ' file(s) saved' +
           (quotaHit ? ' — the 150 MB storage quota was reached. Delete files to free space, then try again to retry the missing files.' : ' — some files failed to save. Try again to retry the missing files.');
       if (saved === files.length) {
-        finishConsentCard(yesBtn, '✓ ' + saved + ' file(s) written');
         ashatToast('Generated ' + saved + ' file(s) into your Project Files.', 'ok');
-      } else if (yesBtn) {
-        yesBtn.disabled = false;
-        yesBtn.textContent = 'Yes — generate files';
       }
     } catch (err) {
       status.className = 'gen-status-bubble err';
       status.textContent = '⚠ ' + (err && err.message ? err.message : 'Generation failed.');
-      if (yesBtn) { yesBtn.disabled = false; yesBtn.textContent = 'Yes — generate files'; }
     }
   }
 
@@ -2347,6 +2405,7 @@
   var fmAllSelected = false;
   var chatMonacoEd = null;
   var activeFilePath = null;
+  var fmBulkStatus = null;
 
   function fmFormatBytes(n) {
     if (!n && n !== 0) return '0 B';
@@ -2431,20 +2490,20 @@
     function makeRow(node, indent) {
       var label = node.type === 'folder' ? node.name + '/' : node.name;
       var row = document.createElement('div');
-      row.style.cssText = 'display:flex;align-items:center;gap:6px;padding:3px 6px;border-radius:6px;cursor:pointer;margin-left:' + indent + 'px;';
-      row.style.color = node.type === 'folder' ? 'var(--text-soft)' : 'var(--gold-muted)';
+      row.className = 'fm-row ' + (node.type === 'folder' ? 'fm-folder' : 'fm-file');
+      row.style.marginLeft = indent + 'px';
       row.style.fontSize = '11px';
       row.title = node.path;
 
       var cb = document.createElement('input');
       cb.type = 'checkbox';
       cb.className = 'fm-check';
-      cb.style.cssText = 'accent-color:var(--accent);cursor:pointer;flex-shrink:0;';
       cb.checked = !!fmSelected[node.path];
       cb.addEventListener('click', function (e) { e.stopPropagation(); });
       cb.addEventListener('change', function () {
         if (cb.checked) fmSelected[node.path] = true;
         else delete fmSelected[node.path];
+        updateFmBulkStatus();
       });
       row.appendChild(cb);
 
@@ -2454,18 +2513,66 @@
       row.appendChild(icon);
 
       var name = document.createElement('span');
+      name.className = 'fm-name';
       name.textContent = label;
-      name.style.cssText = 'overflow:hidden;text-overflow:ellipsis;white-space:nowrap;';
       row.appendChild(name);
 
-      // Clicking a file row (not the checkbox) opens it in the editor.
+      // Hover-reveal quick actions: open (files only) and delete.
       if (node.type === 'file') {
-        row.addEventListener('click', function (e) {
-          if (e.target === cb) return;
+        var actions = document.createElement('span');
+        actions.className = 'fm-actions';
+
+        var openBtn = document.createElement('button');
+        openBtn.className = 'fm-open';
+        openBtn.title = 'Open in editor';
+        openBtn.textContent = '✎';
+        openBtn.addEventListener('click', function (e) {
+          e.stopPropagation();
           openFileInEditor(node.id, node.path);
         });
+        actions.appendChild(openBtn);
+
+        var delBtn = document.createElement('button');
+        delBtn.className = 'fm-del';
+        delBtn.title = 'Delete file';
+        delBtn.textContent = '×';
+        delBtn.addEventListener('click', function (e) {
+          e.stopPropagation();
+          if (!confirm('Delete ' + node.path + '?')) return;
+          ashatFetch('/api/files/' + encodeURIComponent(node.id), { method: 'DELETE' })
+            .then(function () {
+              delete fmSelected[node.path];
+              updateFmBulkStatus();
+              ashatToast('Deleted ' + node.path, 'ok');
+              loadFileTree();
+            })
+            .catch(function () { ashatToast('Delete failed.', 'err'); });
+        });
+        actions.appendChild(delBtn);
+
+        row.appendChild(actions);
+        row.addEventListener('click', function (e) {
+          if (e.target === cb || e.target.closest('.fm-actions')) return;
+          openFileInEditor(node.id, node.path);
+        });
+      } else {
+        // Folders keep the old toggle affordance but nothing else.
+        row.addEventListener('click', function () {});
       }
       return row;
+    }
+
+    /** Keep the small 'N selected' hint under the toolbar in sync. */
+    function updateFmBulkStatus() {
+      if (!fmBulkStatus) return;
+      var n = Object.keys(fmSelected).length;
+      if (n > 0) {
+        fmBulkStatus.style.display = '';
+        fmBulkStatus.textContent = n + ' selected';
+      } else {
+        fmBulkStatus.style.display = 'none';
+        fmBulkStatus.textContent = '';
+      }
     }
 
     function renderNode(node, parentEl, depth) {
@@ -2630,6 +2737,8 @@
         } else {
           fmSelected = {};
         }
+        btnFileSelectAll.classList.toggle('active', fmAllSelected);
+        updateFmBulkStatus();
         renderFileTree();
       });
     }
@@ -2653,6 +2762,9 @@
         Promise.all(promises)
           .then(function () {
             fmSelected = {};
+            fmAllSelected = false;
+            if (btnFileSelectAll) btnFileSelectAll.classList.remove('active');
+            updateFmBulkStatus();
             ashatToast('Deleted.', 'ok');
             loadFileTree();
           })
@@ -2664,6 +2776,7 @@
     }
     if (btnEditorSave) btnEditorSave.addEventListener('click', saveEditorFile);
     if (btnEditorClose) btnEditorClose.addEventListener('click', closeFileEditor);
+    fmBulkStatus = document.querySelector('.fm-bulk-status');
   }
 
   // ══════════════════════════════════════════════════════════════════

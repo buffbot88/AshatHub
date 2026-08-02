@@ -18,6 +18,9 @@ interface FileRepository
     /** Find a file by id (auth-scoped to user). */
     public function find(string $id, string $userId): ?array;
 
+    /** List all files for a user including full content (single query). */
+    public function allWithContent(string $userId): array;
+
     /** Find a file by user + path. */
     public function findByPath(string $userId, string $path): ?array;
 

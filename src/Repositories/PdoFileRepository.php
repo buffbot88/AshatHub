@@ -37,6 +37,14 @@ final class PdoFileRepository implements FileRepository
         );
     }
 
+    public function allWithContent(string $userId): array
+    {
+        return $this->db->fetchAll(
+            "SELECT * FROM files WHERE user_id = ? ORDER BY path ASC",
+            [$userId]
+        );
+    }
+
     public function findByPath(string $userId, string $path): ?array
     {
         return $this->db->fetchOne(

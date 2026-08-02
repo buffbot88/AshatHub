@@ -68,9 +68,9 @@
             <span id="send-spinner" class="hidden" style="width: 12px; height: 12px; border: 2px solid var(--accent-ink); border-top-color: transparent; border-radius: 50%; animation: spin 0.7s linear infinite;"></span>
           </button>
         </form>
-        <div class="flex items-center justify-between mt-2">
-          <span class="text-[11px] font-mono" style="color: var(--gold-muted);">AI Chat · OpenAI compatible</span>
-          <span id="chat-token-count" class="text-[11px] font-mono" style="color: var(--gold-muted);"></span>
+        <div class="chat-meta-bar">
+          <span class="text-[11px] font-mono" style="color: var(--text-dim);">AI Chat · OpenAI compatible</span>
+          <span id="chat-token-count" class="text-[11px] font-mono" style="color: var(--text-dim); opacity: 0.85;"></span>
         </div>
       </div>
     </div>
@@ -84,11 +84,16 @@
           <span id="file-usage" class="text-[10px] font-mono" style="color: var(--gold-muted);"></span>
         </div>
         <div class="text-[11px] font-mono mb-3" style="color: var(--gold-muted);">Click a file to open it in the editor</div>
-        <div class="flex flex-wrap gap-1.5 mb-3">
-          <button id="btn-file-upload" class="btn-outline" style="font-size: 11px; padding: 6px 12px;">Upload</button>
-          <button id="btn-file-download" class="btn-outline" style="font-size: 11px; padding: 6px 12px;">Download</button>
-          <button id="btn-file-select-all" class="btn-outline" style="font-size: 11px; padding: 6px 12px;">Select all</button>
-          <button id="btn-file-delete" class="btn-outline" style="font-size: 11px; padding: 6px 12px; color: var(--gold-err);">Delete</button>
+        <div class="flex items-center gap-1.5 mb-1.5">
+          <button id="btn-file-upload" class="btn-outline fm-toolbar-primary" style="font-size: 11px; padding: 6px 12px;">Upload</button>
+          <button id="btn-file-download" class="btn-outline fm-toolbar-primary" style="font-size: 11px; padding: 6px 12px;">Download</button>
+          <span class="fm-toolbar-sep"></span>
+          <button id="btn-file-select-all" class="btn-outline fm-toolbar-mini" title="Select all files" aria-label="Select all files">✓</button>
+          <button id="btn-file-delete" class="btn-outline fm-toolbar-mini fm-toolbar-danger" title="Delete selected" aria-label="Delete selected">×</button>
+        </div>
+        <div class="flex items-center justify-between mb-3">
+          <span class="text-[10px] font-mono" style="color: var(--text-dim);">Select all to enable bulk delete</span>
+          <span class="fm-bulk-status text-[10px] font-mono" style="color: var(--text-dim); display: none;">0 selected</span>
         </div>
         <input type="file" id="file-zip-input" accept=".zip" style="display: none;">
         <div id="chat-file-tree" style="max-height: 240px; overflow-y: auto; font-size: 12px; font-family: var(--font-mono);"></div>

@@ -57,6 +57,13 @@ final class InMemoryFileRepository implements FileRepository
         return $results;
     }
 
+    public function allWithContent(string $userId): array
+    {
+        return array_values(array_filter($this->rows, function (array $r) use ($userId): bool {
+            return ($r['user_id'] ?? '') === $userId;
+        }));
+    }
+
     public function find(string $id, string $userId): ?array
     {
         $row = $this->rows[$id] ?? null;

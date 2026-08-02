@@ -491,7 +491,8 @@ Server → Client:
 - **Include edge cases.** "What happens when the server restarts?" "What if both players submit a move at the exact same millisecond?" Surface these before the AI has to guess.
 - **Use concrete names.** Instead of "a database table for users", write "a `users` table with columns `id`, `email`, `created_at`."
 - **Reference existing code.** If this project extends or integrates with something, link to it or describe the interface.
-- **Iterate on the spec.** Don''t try to write the perfect spec in one pass. Write a draft, run a build, review the output, then refine the spec and rebuild. The spec evolves alongside the code.
+- **Chat never writes without consent.** In Chat, the AI refines your spec but never emits code on its own — when the spec is ready, click **Yes — generate files** on the consent card to write the code into your Project Files (150 MB per account), where you can open and edit it anytime.
+- **Iterate on the spec.** Don''t try to write the perfect spec in one pass. Start in Chat, refine the spec with the AI, generate the files, review them in the editor, then refine the spec again. The spec evolves alongside the code.
 
 ## What happens if your spec is too short?
 

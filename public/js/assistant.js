@@ -1,6 +1,6 @@
 /* ═══════════════════════════════════════════════════════════════════════
    ASHAT Hub — Chat page module (v2 · ChatGPT-like)
-   Handles SSE streaming chat with BrainStem for spec brainstorming.
+   Handles SSE streaming chat with Ashat for spec brainstorming.
    Features:
    - Multi-conversation management (CRUD) persisted to localStorage
    - Markdown rendering in chat bubbles (code blocks, lists, etc.)
@@ -115,9 +115,11 @@
   };
 
   var GREETING = [
-    'Hi! I\'m your **AI software architect**. I\'ll help you brainstorm, plan, and craft a detailed spec for your project.',
+    'Hi! I\'m **Ashat**, your AI software architect. I\'ll help you brainstorm, plan, and craft a detailed spec for your project.',
     '',
-    'Tell me what you want to build — describe your idea in a sentence or two, and I\'ll guide you through creating a structured specification that the coding agent can use.',
+    'Tell me what you want to build — describe your idea in a sentence or two, and I\'ll guide you through creating a structured specification.',
+    '',
+    'I won\'t write any code on my own: when your spec is ready, I\'ll ask first — then generate the files into your project folder, where you can open and edit them anytime.',
     '',
     'For example:',
     '- *"I want to build a real-time chat app with rooms"*',
@@ -956,7 +958,7 @@
     var div = document.createElement('div');
     div.className = 'chat-bubble ' + (role === 'user' ? 'user' : 'assistant');
     var icon = role === 'user' ? '👤' : '🧠';
-    var name = role === 'user' ? 'You' : 'BrainStem';
+    var name = role === 'user' ? 'You' : 'Ashat';
     var avatarBg = role === 'user'
       ? 'background: rgba(255,215,0,0.1);'
       : 'background: rgba(184,134,11,0.25);';
@@ -986,7 +988,7 @@
     div.innerHTML =
       '<div class="chat-bubble-avatar" style="background: rgba(184,134,11,0.25);">🧠</div>' +
       '<div class="chat-bubble-body">' +
-        '<div class="bubble-name">BrainStem</div>' +
+        '<div class="bubble-name">Ashat</div>' +
         '<div class="chat-bubble-content"><div class="typing-indicator"><span></span><span></span><span></span></div></div>' +
       '</div>';
     messagesEl.appendChild(div);
@@ -1102,7 +1104,7 @@
       }
       if (!agent.getLocalConfig || !agent.getLocalConfig()) {
         status.className = 'gen-status-bubble err';
-        status.textContent = '⚠ Chat works via BrainStem, but file generation runs in your browser — add a provider + API key in Account → API Settings (keys stay on your device).';
+        status.textContent = '⚠ Chat is connected, but file generation runs in your browser — add a provider + API key in Account → API Settings (keys stay on your device).';
         if (yesBtn) { yesBtn.disabled = false; yesBtn.textContent = 'Yes — generate files'; }
         return;
       }
@@ -1201,7 +1203,7 @@
     var msgs = conv.messages.filter(function (m) { return m.role !== 'system'; });
     for (var i = 0; i < msgs.length; i++) {
       var m = msgs[i];
-      var role = m.role === 'user' ? '👤 You' : '🤖 BrainStem';
+      var role = m.role === 'user' ? '👤 You' : '🤖 Ashat';
       lines.push('## ' + role);
       lines.push('');
       lines.push(stripMarkers(m.content || '').trim());
@@ -1234,13 +1236,13 @@
     div.innerHTML =
       '<div class="chat-bubble-avatar" style="background: rgba(184,134,11,0.25);">🧠</div>' +
       '<div class="chat-bubble-body">' +
-        '<div class="bubble-name">BrainStem</div>' +
+        '<div class="bubble-name">Ashat</div>' +
         '<div class="chat-bubble-content">' +
           /* Collapsible thinking frame */
           '<div class="thinking-frame">' +
             '<button class="thinking-header">' +
               '<span class="thinking-arrow expanded">▶</span>' +
-              '<span class="thinking-label">Thinking...</span>' +
+              '<span class="thinking-label">Awaiting response...</span>' +
               '<span class="thinking-dot"></span>' +
             '</button>' +
             '<div class="thinking-content expanded">' +
@@ -1315,7 +1317,7 @@
     statusIcon.style.color = 'var(--gold-ok)';
 
     // Update label
-    bubble.thinkingLabel.textContent = 'BrainStem finished reasoning';
+    bubble.thinkingLabel.textContent = 'Ashat responded';
 
     if (finalContent) {
       // Strip marker tags for the rendered markdown so users don't see raw <!--SPEC--> tags
@@ -1420,7 +1422,20 @@
             try {
               var parsed = JSON.parse(eventData);
               var delta = parsed.choices && parsed.choices[0] && parsed.choices[0].delta;
+              if (delta && (delta.reasoning_content || delta.reasoning)) {
+                // Thinking model (o-series / R1 style) — flip the label
+                // to "Thinking..." and show reasoning as it streams.
+                if (bubble.thinkingLabel) bubble.thinkingLabel.textContent = 'Thinking...';
+                var reasoning = delta.reasoning_content || delta.reasoning || '';
+                if (reasoning) bubble.thinkingContent.textContent = reasoning;
+                // Ensure cursor is at the end
+                if (bubble.streamingCursor && bubble.streamingCursor.parentNode) {
+                  bubble.streamingCursor.parentNode.appendChild(bubble.streamingCursor);
+                }
+              }
               if (delta && delta.content) {
+                // Non-thinking models only stream content — the label
+                // stays "Awaiting response..." for them.
                 fullContent += delta.content;
                 // Show raw tokens in the thinking content area
                 bubble.thinkingContent.textContent = fullContent;
@@ -1486,7 +1501,7 @@
         }
         statusIcon.textContent = '✓';
         statusIcon.style.color = 'var(--gold-ok)';
-        bubble.thinkingLabel.textContent = 'BrainStem responded';
+        bubble.thinkingLabel.textContent = 'Ashat responded';
 
         // Strip markers from rendered markdown
         var cleanReply = stripMarkers(reply);

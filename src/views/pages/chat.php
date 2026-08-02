@@ -43,7 +43,7 @@
         <div id="chat-empty-state" class="chat-empty-state">
           <div class="empty-icon" style="color: var(--text-mute);"><svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 11.5a8.5 8.5 0 0 1-12.6 7.4L3 21l2.1-5.4A8.5 8.5 0 1 1 21 11.5z"/></svg></div>
           <h3>Start a conversation</h3>
-          <p>Click "New Chat" to begin brainstorming your project. I'll help you refine ideas into a solid build specification.</p>
+          <p>Click "New Chat" to begin brainstorming your project. I'll help you refine ideas into a solid spec — and I never write code without asking you first. When your spec is ready, you'll get a consent card; only clicking "Yes — generate files" writes into your Project Files, where you can view or edit them anytime.</p>
         </div>
       </div>
 
@@ -83,6 +83,7 @@
           <div class="label-gold">Project Files</div>
           <span id="file-usage" class="text-[9px] font-mono" style="color: var(--gold-dim);"></span>
         </div>
+        <div class="text-[10px] font-mono mb-3" style="color: var(--gold-dim);">Click a file to open it in the editor</div>
         <div class="flex flex-wrap gap-1.5 mb-3">
           <button id="btn-file-upload" class="btn-outline" style="font-size: 10px; padding: 4px 10px;">Upload</button>
           <button id="btn-file-download" class="btn-outline" style="font-size: 10px; padding: 4px 10px;">Download</button>
@@ -108,10 +109,11 @@
       <div style="background: rgba(255,215,0,0.04); border: 1px solid var(--gold-line); border-radius: var(--gold-radius-xl); padding: 16px;">
         <div class="label-gold mb-3">Tips</div>
         <ul class="text-[11px]" style="color: var(--gold-muted); line-height: 1.8;">
-          <li>• Describe your idea in detail</li>
-          <li>• I'll ask clarifying questions</li>
-          <li>• When ready, a spec appears →</li>
-          <li>• Click "→ Planner" to build</li>
+          <li>• Describe your idea in detail — I'll help refine it into a spec</li>
+          <li>• I never write code on my own — you'll get a consent card first</li>
+          <li>• Click "Yes — generate files" to write them into your project</li>
+          <li>• Open files from Project Files to view or edit them here</li>
+          <li>• Export saves the conversation as Markdown anytime</li>
         </ul>
       </div>
     </div>

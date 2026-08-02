@@ -4,6 +4,23 @@
 
 A browser-based AI coding platform — **PHP 8.1+** with **MySQL/MariaDB** via **PDO**. Server-rendered vanilla PHP with Tailwind CDN + vanilla JS. No build step, no bundler, no Composer dependencies.
 
+## VOWS — Developer Contract (read first)
+
+`VOWS.md` (repo root) is the **binding contract** for every agent working in this repo — including this one. It overrides convenience: no shortcuts, no assumptions, no scaffolds/AI slop, think rarely but with full context, and ask before implementing. Full text lives in `VOWS.md`; the enforceable summary:
+
+1. Never rationalize for more than a quick moment without asking user.
+2. Never attempt shortcuts.
+3. Never hallucinate, assume, or decide without asking user for consent.
+4. Never create scaffolds/mock/boilerplates/AI Slop/or underbuild.
+5. Think rarely and on a budget: mechanical work (searches, lints, single-file edits, test runs) acts immediately with zero deliberation; anything warranting planning gets exactly ONE deliberate pass, visible as a written plan — never silent reasoning loops, repeated re-reads, or same-model re-derivations.
+6. Gather ALL context first, then plan with the best reasoning path available: file-picker + code-searcher in parallel, read every file the change touches (symbols, current behavior, conventions, tests), produce a solid build plan in the standard format (goal → files to touch with why → change list → risks → validation) — via a Thinker agent when one is available, otherwise by planning directly with an adversarial review before the plan reaches the user.
+7. Must ask the user if they approve of the build plan before implementing.
+8. Docstrings can be NO LONGER than 1 or 2 sentences.
+
+Vow 8 is **machine-enforced** by `tests/Core/VowDocblockTest.php`, which scans `src/` + `public/` and fails the suite on any `.php`/`.js` docblock whose prose exceeds 2 sentences. VOWS.md is the canonical text — if it ever changes, update these mirrors in `AGENTS.md` and here.
+
+**BUILD PROTOCOL** — Mechanical work acts immediately. Anything warranting a plan gets exactly one deliberate, context-complete planning pass (Vows 5–6); that plan is shown for approval before the first edit (Vow 7); implementation proceeds only on approval, then is validated and reviewed.
+
 Key code locations:
 - **`src/Core/`** — Framework: Router, Database (PDO), Session, View, RequestContext, AuthService, ConfigBag, StaticFileServer
 - **`src/Controllers/`** — 15 controllers (Home, Auth, Studio, Docs, Community, Account, Admin, Api, Chat, ChatPage, Builds, Files, Specs, Support, Error) + `FormRequests/`
@@ -21,7 +38,7 @@ Key code locations:
 | Command | Purpose |
 |---|---|
 | `php -S localhost:8000 router.php` | Built-in dev server |
-| `php phpunit.phar` | Run all PHP tests (17 test files; phar lives in repo root, gitignored — get it with `curl -L -o phpunit.phar https://phar.phpunit.de/phpunit-10.5.phar`) |
+| `php phpunit.phar` | Run all PHP tests (20 test files; phar lives in repo root, gitignored — get it with `curl -L -o phpunit.phar https://phar.phpunit.de/phpunit-10.5.phar`) |
 | `node tests/js/agent-extract.test.js` | Run the agent.js JS unit tests (JSON extraction + localStorage helpers) |
 | `mysql -u root -p < db/schema.sql` | Full-access DB install |
 | `mysql -u root -p < db/spec-language.sql` | Existing-DB migration: adds `specs.language` (idempotent, guarded) |
@@ -79,7 +96,8 @@ No package.json or composer.json — **zero dependencies**.
   whenever `tailwind.config.js` or the color tokens in `header.php` change
 
 ### Testing
-- PHPUnit 10.5 in `phpunit.xml.dist` (run: `php phpunit.phar` — 526 tests, 965 assertions, green)
+- PHPUnit 10.5 in `phpunit.xml.dist` (run: `php phpunit.phar` — 527 tests, 966 assertions, green; 1 pre-existing skip)
+- **Vow 8 is enforced**: `tests/Core/VowDocblockTest.php` scans every `.php`/`.js` under `src/` + `public/`, parses `/** */` docblocks, and fails if any prose exceeds 2 sentences. The counter is deliberately fair: it strips `@annotation` lines, banner-art lines, numbered-list markers, and neutralizes abbreviations (`e.g.`, `etc.`) + decimals before counting sentence ends — so keep docblocks to 1–2 crisp sentences and the suite stays green.
 - Tests bootstrap from `tests/bootstrap.php` (minimal — no session, no DB)
 - FakeContext + InMemoryRepositories = no database needed
 - **Golden rule**: `FakeContext::assertCsrf()` must call `$this->jsonResponse()`
@@ -135,7 +153,7 @@ No package.json or composer.json — **zero dependencies**.
 - **Refresh restore**: `ashat.fm.state` reopens the persisted file (expanding collapsed ancestors), restores page scroll + Monaco scroll (`monacoPendingScrollTop` applies AFTER the content replay because `setValue` resets scroll). Saved on open/rename/delete, debounced on scroll, flushed on `pagehide`.
 
 - **Chat page (`/chat`, `ChatPageController`)** — standalone Spec Chat. Left: conversation sidebar (localStorage `ashat.chats`); center: chat + input, and a **file editor panel** (`#chat-file-editor`) that replaces the chat when a project file is clicked (Monaco loaded lazily from the CDN — `__chatMonacoReady`/`__chatMonaco`; textarea fallback if the CDN never arrives; Save via `POST /api/files/`, ← Chat restores the conversation). Right pane: **Project Files** card (tree + Upload/Download/Select all/Delete + usage meter) + **Spec Versions** timeline + **Tips**. The chat File Manager renders rows with `textContent` (XSS-safe) and folder markers share the same prefix semantics as the IDE.
-- **Chat behaviors**: `init()` lands on the home/empty state (never auto-creates or auto-opens a conversation); Export downloads `ChatHistory-YYYY-MM-DD.md` (Markdown, `stripMarkers()`-cleaned, no JSON dump). Generated Spec + Project Context cards were removed — `setSpec()`/`sendToPlanner()`/Copy/Planner bindings are null-guarded.
+- **Chat behaviors**: `init()` lands on the home/empty state (never auto-creates or auto-opens a conversation); Export downloads `ChatHistory-YYYY-MM-DD.md` (Markdown, `stripMarkers()`-cleaned, no JSON dump). Generated Spec + Project Context cards were removed — `setSpec()`/`sendToPlanner()`/Copy/Planner bindings are null-guarded. The right-pane **Tips** card and the empty-state paragraph teach the consent-first flow — the chat never writes code without the consent card, files land in Project Files, and clicking a file opens it in the editor.
 - **Code consent (chat AI never writes code)**: the SYSTEM_PROMPT in `assistant.js` enforces a CODE CONSENT POLICY — the chat AI does NOT emit code files or inline HTML/CSS/JS previews (the old `<!--PREVIEW-->` live-preview mechanism was removed). When a spec (`<!--SPEC-->`) is detected, `appendSpecConsentCard()` renders a consent card on the last assistant bubble asking whether to generate the files; only clicking **Yes — generate files** runs `generateFilesInChat()`, which drives the coding agent (`window.ASHAT.agent.runBuildStream`) and writes the resulting files straight into the user's project folder via `POST /api/files/` (auth-open — works for **Member, Pro, and Admin alike**; the IDE/Planner stays Pro/Admin-gated). A `gen-status-bubble` shows progress; nothing is ever stored without the consent-card click. "Not yet" just dismisses the card. No role gate on the chat: the only gated surface is `/ide/*`.
 
 ### Maintenance Mode

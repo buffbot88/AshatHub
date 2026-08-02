@@ -9,6 +9,14 @@ The version displayed in the UI comes from `APP_VERSION` in `config/bootstrap.ph
 
 ## [v5.7] — 2026-08-02
 
+### Docs
+
+- **Agent operating rules** — new repo-root `AGENTS.md` documents the binding
+  **VOWS developer contract** (8 vows + Build Protocol) plus enforcement notes
+  for future AI agents; `knowledge.md` gained a "VOWS — Developer Contract
+  (read first)" section and Vow 8 enforcement details. Test counts refreshed
+  (20 test files, 527 tests / 966 assertions).
+
 ### Added
 
 - **Chat page — Project File Manager** (right pane of `/chat`)

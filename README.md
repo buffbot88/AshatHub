@@ -2,6 +2,8 @@
 
 A browser-based AI coding platform, rewritten from the original React SPA into **vanilla PHP + PDO + MySQL** with a clean "Midnight Protocol" redesign.
 
+**[Changelog](CHANGELOG.md) · [License](LICENSE)**
+
 ---
 
 ## Stack
@@ -46,7 +48,9 @@ No build step. No bundler. Drop the folder on a PHP-capable host and run.
 ├── router.php             ← Built-in PHP server fallback
 ├── .htaccess              ← Apache rules for shared-hosting / flat deploy
 ├── index.php              ← Entry point when project is in webroot
-└── README.md              ← This file
+├── README.md              ← This file
+├── CHANGELOG.md           ← Release history (Keep a Changelog format)
+└── LICENSE                ← Apache License 2.0
 ```
 
 ## Setup

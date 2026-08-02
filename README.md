@@ -39,10 +39,9 @@ No build step. No bundler. Drop the folder on a PHP-capable host and run.
 │   ├── bootstrap.php      ← Boot sequence + all APP_*/DB_*/SESSION_* constants
 │   └── server_config.json ← Live config for shared hosts (not a dotfile, gitignored)
 ├── db/
-│   ├── schema.sql           ← MySQL schema + seed data (full-access setup)
+│   ├── schema.sql             ← MySQL schema + seed data (full-access setup)
 │   ├── schema-tables-only.sql ← tables + seeds only (shared-hosting setup)
-│   ├── drop-specs-builds.sql ← Migration: drops dormant specs/builds tables + files.build_id/build_phase
-│   └── sve-rename.sql       ← Migration: System Update Engine → System Validation Engine
+│   └── docs-chat-studio-seed.sql ← fresh Chat Studio docs articles seed
 ├── router.php             ← Built-in PHP server fallback
 ├── .htaccess              ← Apache rules for shared-hosting / flat deploy
 ├── index.php              ← Entry point when project is in webroot

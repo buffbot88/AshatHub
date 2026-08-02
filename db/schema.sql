@@ -65,8 +65,8 @@ CREATE TABLE IF NOT EXISTS `api_configs` (
   CONSTRAINT `fk_api_user` FOREIGN KEY (`user_id`) REFERENCES `users`(`id`) ON DELETE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
--- ─── Specs (removed — Chat-only purge; see db/drop-specs-builds.sql) ──
--- ─── Builds (removed — Chat-only purge; see db/drop-specs-builds.sql) ──
+-- ─── Specs (removed — Chat-only purge) ──────────────────────────────
+-- ─── Builds (removed — Chat-only purge) ─────────────────────────────
 
 -- ─── Files (project file tree, per user) ─────────────────────────────
 CREATE TABLE IF NOT EXISTS `files` (

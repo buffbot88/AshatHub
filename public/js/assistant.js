@@ -111,6 +111,17 @@
       '- If they say yes, the app shows a consent prompt; the coding agent then writes',
       '  the files into their Project Files (the right-pane card). If they are',
       '  not ready, wait — never generate files unprompted.',
+      '',
+      'CODE LABELING FORMAT (when the user explicitly asks you to draft code in chat):',
+      '- ALWAYS present the complete file structure FIRST under a "## File Structure"',
+      '  heading, one bullet per path (e.g. "- src/index.html"). Plan the structure',
+      '  before writing any code.',
+      '- Then give ONE code block per file, in that same order.',
+      '- Put the exact target filename on its OWN line DIRECTLY ABOVE each code block,',
+      '  in backticks or bold — like `index.html` or **src/App.js**. Never bury the',
+      '  filename in prose, never use a numbered "1." list for filenames, and never',
+      '  leave a code block unlabeled. The app reads those labels to offer',
+      '  "write (file)" actions.',
     ].join('\n'),
   };
 
@@ -976,42 +987,107 @@
    * filename for each so raw code dumps become "write (file)" actions
    * instead of rendered HTML/JS in the chat.
    */
+  /** Pull file paths out of a `## File Structure` (or bold) section so
+   *  unlabeled code blocks can inherit names positionally. */
+  function extractStructurePaths(content) {
+    var m = content.match(/##+\s*(?:File Structure|Project Structure|Files)[^\n]*\n([\s\S]*?)(?=\n##|\n<!--|$)/i);
+    var section = m ? m[1] : '';
+    if (!m) {
+      m = content.match(/\*\*(?:File Structure|Project Structure|Files)\*\*[^\n]*\n([\s\S]*?)(?=\n\*\*|\n##|\n<!--|$)/i);
+      section = m ? m[1] : '';
+    }
+    var paths = [];
+    var re = /^\s*(?:[-*•]|\d+[.)])\s+`?([A-Za-z0-9_./-]+\.[A-Za-z0-9]+)`?\s*$/gm;
+    var mm;
+    while ((mm = re.exec(section)) !== null) {
+      if (paths.indexOf(mm[1]) === -1) paths.push(mm[1]);
+    }
+    return paths;
+  }
+
   function captureFilesFromContent(content) {
     var files = [];
     var blocks = content.match(/```([^\n]*)\n([\s\S]*?)```/g) || [];
+    var structure = extractStructurePaths(content);
+    var used = {};
+    var LANG_EXT = { html: 'html', css: 'css', js: 'js', javascript: 'js', ts: 'ts', typescript: 'ts', php: 'php', py: 'py', python: 'py', json: 'json', md: 'md', markdown: 'md', sql: 'sql', java: 'java', go: 'go', rb: 'rb', ruby: 'rb', sh: 'sh', bash: 'sh', yaml: 'yml', yml: 'yml', xml: 'xml', txt: 'txt' };
     for (var b = 0; b < blocks.length; b++) {
       var m = blocks[b].match(/^```([^\n]*)\n([\s\S]*?)```$/);
       if (!m) continue;
-      var lang = (m[1] || '').trim().toLowerCase();
+      var info = (m[1] || '').trim();
+      var lang = info.split(/\s+/)[0].toLowerCase();
       var code = m[2];
       if (!code.trim()) continue;
       // Strip trailing newline so saved files don't carry an extra \n
       code = code.replace(/\n$/, '');
-      var path = inferFilePath(content, blocks[b], lang);
+      var path = inferFilePath(content, blocks[b]);
+      // Fence info may carry an explicit path: ```python src/lib/util.py
+      if (!path) {
+        var infoPath = info.match(/(?:^|\s)([A-Za-z0-9_./-]+\.[A-Za-z0-9]+)\s*$/);
+        if (infoPath) path = infoPath[1];
+      }
+      // Positional fallback: unlabeled block inherits the structure path
+      if (!path && structure.length) {
+        path = structure[b] || null;
+      }
+      if (!path) {
+        path = 'file.' + (LANG_EXT[lang] || 'txt');
+      }
+      path = uniquePath(path, used);
       files.push({ path: path, content: code, language: lang || null });
     }
     return files;
   }
 
-  /** Best-effort filename inference from surrounding text (backticks or
-   *  code-fence prefix), falling back to a language-based default. */
-  function inferFilePath(content, block, lang) {
+  /** Ensure captured paths are unique (file.html, file-2.html, ...). */
+  function uniquePath(path, used) {
+    var base = path;
+    var n = 2;
+    while (used[path]) {
+      var dot = base.lastIndexOf('.');
+      path = dot > 0 ? base.slice(0, dot) + '-' + n + base.slice(dot) : base + '-' + n;
+      n++;
+    }
+    used[path] = true;
+    return path;
+  }
+
+  /** Best-effort filename inference from text around a code block:
+   *  bold headers, headings, parenthetical labels, backticks, bullets,
+   *  or a bare filename line. Returns null when nothing is found. */
+  function inferFilePath(content, block) {
     var idx = content.indexOf(block);
-    var before = idx >= 0 ? content.slice(0, idx) : '';
-    var after = idx >= 0 ? content.slice(idx + block.length) : '';
-    // Bold filename header like **index.html** (most common in dumps)
-    var m = before.match(/\*\*([^\*\n]+\.[A-Za-z0-9]+)\*\*\s*$/);
+    if (idx < 0) return null;
+    var before = content.slice(0, idx);
+    var after = content.slice(idx + block.length);
+    // Grab the last 3 lines before the block (labels can sit a line above)
+    var lines = before.split('\n').slice(-3).join('\n');
+    var m;
+    // Bold filename header like **index.html** or **File: index.html**
+    m = lines.match(/\*\*\s*(?:File:\s*)?([A-Za-z0-9_./-]+\.[A-Za-z0-9]+)\s*\*\*[\s:：]*$/);
+    if (m) return m[1];
+    // Heading like ### index.html or ## File: index.html
+    m = lines.match(/(?:^|\n)#{1,6}\s+(?:File:\s*)?([A-Za-z0-9_./-]+\.[A-Za-z0-9]+)[\s:：]*$/m);
+    if (m) return m[1];
+    // Parenthetical label like HTML (index.html) or (index.html)
+    m = lines.match(/\(([A-Za-z0-9_./-]+\.[A-Za-z0-9]+)\)[\s:：]*$/m);
     if (m) return m[1];
     // Backticked path like `src/index.html`
-    m = before.match(/`([^`\n]+\.[A-Za-z0-9]+)`\s*$/);
+    m = lines.match(/`([A-Za-z0-9_./-]+\.[A-Za-z0-9]+)`[\s:：]*$/m);
     if (m) return m[1];
-    m = after.match(/^\s*`([^`\n]+\.[A-Za-z0-9]+)`/);
+    // File:/filename:/path: label
+    m = lines.match(/(?:^|\n)(?:File|Filename|Path)\s*[:：]\s*`?([A-Za-z0-9_./-]+\.[A-Za-z0-9]+)`?[\s:：]*$/im);
+    if (m) return m[1];
+    // Bullet or numbered item like - index.html or 1. index.html
+    m = lines.match(/(?:^|\n)\s*(?:[-*•]|\d+[.)])\s+([A-Za-z0-9_./-]+\.[A-Za-z0-9]+)[\s:：]*$/m);
     if (m) return m[1];
     // Bare filename line like index.html
-    m = before.match(/^([A-Za-z0-9_./-]+\.[A-Za-z0-9]+)$/m);
+    m = lines.match(/(?:^|\n)([A-Za-z0-9_./-]+\.[A-Za-z0-9]+)[\s:：]*$/m);
     if (m) return m[1];
-    var ext = ({ html: 'html', css: 'css', js: 'js', javascript: 'js', ts: 'ts', typescript: 'ts', php: 'php', py: 'py', python: 'py', json: 'json', md: 'md', markdown: 'md', sql: 'sql', java: 'java', go: 'go', rb: 'rb', ruby: 'rb', sh: 'sh', bash: 'sh', yaml: 'yml', yml: 'yml', xml: 'xml', txt: 'txt' })[lang] || 'txt';
-    return 'file.' + ext;
+    // Backticked path on its own line right after the block
+    m = after.match(/^\s*`([A-Za-z0-9_./-]+\.[A-Za-z0-9]+)`/);
+    if (m) return m[1];
+    return null;
   }
 
   /** Remove fenced code blocks from content but leave a short note so

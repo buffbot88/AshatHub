@@ -41,8 +41,7 @@ Key code locations:
 | `php phpunit.phar` | Run all PHP tests (17 test files; phar lives in repo root, gitignored — get it with `curl -L -o phpunit.phar https://phar.phpunit.de/phpunit-10.5.phar`) |
 | `node tests/js/agent-extract.test.js` | Run the agent.js JS unit tests (JSON extraction + prompt building) |
 | `mysql -u root -p < db/schema.sql` | Full-access DB install |
-| `mysql -u root -p < db/drop-specs-builds.sql` | Existing-DB migration: drops dormant `specs`/`builds` tables + `files.build_id`/`build_phase` (idempotent, guarded) |
-| `mysql -u root -p < db/sve-rename.sql` | Existing-DB migration: System Update Engine → System Validation Engine |
+| `mysql -u root -p < db/docs-chat-studio-seed.sql` | Fresh Chat Studio docs seed (for an emptied `docs_articles` table) |
 
 No package.json or composer.json — **zero dependencies**.
 
@@ -119,7 +118,7 @@ No package.json or composer.json — **zero dependencies**.
 
 ### Chat / Project Files (the single development surface)
 - **Chat (`/chat`) is the main way to develop**: brainstorm, refine a spec, then generate files into the user's one project repo via the consent card. The IDE (`/ide/*`) was removed — `StudioController`, `studio.php` routes, `studio.js`, and the studio views/partial are gone. Don't reintroduce them.
-- **The Specs + Builds backend was purged** — `/api/specs` and `/api/builds` (controllers, repos, model, `specs`/`builds` tables, `files.build_id`/`build_phase`) are gone; Chat is the only dev surface. Existing installs run `db/drop-specs-builds.sql`. `ApiController::context()` now returns files only, and `agent.js` has a single build driver: `runBuildStream` (no plan phase — the consent card is the only gate).
+- **The Specs + Builds backend was purged** — `/api/specs` and `/api/builds` (controllers, repos, model, `specs`/`builds` tables, `files.build_id`/`build_phase`) are gone; Chat is the only dev surface. `ApiController::context()` now returns files only, and `agent.js` has a single build driver: `runBuildStream` (no plan phase — the consent card is the only gate). The `drop-specs-builds.sql` migration was removed after applying.
 
 #### Project Files (chat right pane — File Manager)
 - **Recursive tree**: rendered client-side in `assistant.js` (folders-first, natural sort). Clicking a file opens it in the Monaco editor panel.

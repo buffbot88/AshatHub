@@ -43,6 +43,7 @@ class RequestContext
     protected array $serverData = [];
     protected array $jsonData = [];
     protected bool $jsonParsed = false;
+    protected array $fileData = [];
 
     // ── View ──────────────────────────────────────────────────────
     protected bool $viewRendered = false;
@@ -69,6 +70,7 @@ class RequestContext
         $ctx = new static();
         $ctx->postData   = $_POST;
         $ctx->serverData = $_SERVER;
+        $ctx->fileData   = $_FILES;
         return $ctx;
     }
 
@@ -333,6 +335,18 @@ class RequestContext
         return $this->serverData[$key] ?? $default;
     }
 
+    /**
+     * Get an uploaded file array (as found in $_FILES) for a field name,
+     * or null if the field wasn't part of a multipart upload.
+     *
+     * @return array{name?: string, full_path?: string, type?: string, tmp_name?: string, error?: int, size?: int}|null
+     */
+    public function file(string $key): ?array
+    {
+        $f = $this->fileData[$key] ?? null;
+        return is_array($f) ? $f : null;
+    }
+
     // ── Response (replaces Response::redirect() / Response::json()) ─
 
     /**
@@ -376,6 +390,28 @@ class RequestContext
         // capture + throw; the real exit() only runs on real requests or
         // if a test constructs a raw RequestContext (then it throws).
         \Core\Responder::terminate('RequestContext::jsonResponse');
+    }
+
+    /**
+     * Stream a binary download (e.g. a .zip export). Sets download
+     * headers, echoes raw bytes, then terminates via the Responder seam
+     * (same pattern as jsonResponse).
+     */
+    public function binaryResponse(string $data, string $filename, string $mime = 'application/octet-stream'): never
+    {
+        $this->responded = true;
+
+        if (ob_get_level() > 0) {
+            ob_clean();
+        }
+
+        http_response_code(200);
+        header('Content-Type: ' . $mime);
+        header('Content-Disposition: attachment; filename="' . addcslashes($filename, '"\\') . '"');
+        header('Content-Length: ' . strlen($data));
+        header('X-Content-Type-Options: nosniff');
+        echo $data;
+        \Core\Responder::terminate('RequestContext::binaryResponse');
     }
 
     /**

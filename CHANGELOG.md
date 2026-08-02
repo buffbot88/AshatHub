@@ -7,6 +7,63 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 The version displayed in the UI comes from `APP_VERSION` in `config/bootstrap.php`
 (`APP_VERSION_DISPLAY` = `v` + version).
 
+## [v5.7] — 2026-08-02
+
+### Added
+
+- **Chat page — Project File Manager** (right pane of `/chat`)
+  - Scrollable **file tree** (folders-first, natural sort) for the user's one
+    project repo, with a **usage meter** (`X MB / 150 MB`) under the card title
+  - **Upload** — import a `.zip` (multipart field `zip` → `POST /api/files/import`);
+    entries are sanitized (traversal / drive-letter / control-char rejection),
+    quota-checked on the *summed extracted bytes before any row is written*,
+    and upserted by path
+  - **Download** — export the whole project as
+    `project-YYYY-MM-DD-HHMMSS.zip` (`GET /api/files/export`, binary response)
+  - **Select all** toggle + per-row checkboxes; **Delete** removes selected files
+    (folders delete via prefix, descendants included)
+  - **Click-to-edit console**: opening a file swaps the chat panel for a
+    small Monaco editor (loaded lazily from the CDN, **textarea fallback** if
+    the CDN never arrives; language auto-detected from the extension), with
+    **Save** (quota-checked `POST /api/files/`) and a **← Chat** button that
+    restores the conversation exactly where it was
+- **Chat export as Markdown** — the Export button now downloads
+  `ChatHistory-YYYY-MM-DD.md` (local-date format): `# title`, export timestamp,
+  and `## 👤 You` / `## 🤖 BrainStem` sections, with `<!--SPEC-->`/`<!--PREVIEW-->`
+  markers stripped via the existing `stripMarkers()` helper
+- **`Core\ZipHelper`** — dependency-free ZIP create/extract via **zlib only**
+  (`gzdeflate`/`gzinflate`, no `ZipArchive` extension needed, shared-host safe):
+  deflate method 8 + stored method 0, CRC32 verification on extract, directory
+  entries skipped. Powers import/export and has its own test (`ZipHelperTest`)
+- **Per-user storage quota** — 150 MB per account, enforced in `FilesController`
+  on save (size delta) and import (all-entries pre-check before any write);
+  `FileRepository::totalBytes()` (`LENGTH(content)` in PDO, byte-accurate for
+  utf8mb4) added to the interface + both implementations
+- **Files API opened to ALL authenticated roles** (was `pro-or-admin`) — every
+  user gets one project repo to work in. The IDE File Manager (`/ide/files`)
+  stays Pro/Admin-gated
+- Tests: `tests/Core/ZipHelperTest.php` (create/extract round-trip) +
+  `totalBytes()` coverage in `InMemoryFileRepositoryTest`
+
+### Changed
+
+- **Chat opens on its home screen** — no more auto-creating a new conversation
+  or force-opening the most recent one on page load. `init()` lands on the
+  empty state ("Start a conversation"); typing a message or hitting
+  **+ New** starts a chat as before
+- **Right pane trimmed** — the **Generated Spec** card (preview + Copy/Send)
+  and the **Project Context** card were removed from `/chat`; the **Spec
+  Versions** timeline and **Tips** cards remain. `setSpec()`, `sendToPlanner()`,
+  and the Copy/Planner bindings are null-guarded so nothing breaks
+- **Files API route list** grew: `GET /api/files/export` and
+  `POST /api/files/import` (both registered before `/{id}`)
+
+### Removed
+
+- **Templates + Quick Start cards** (left pane of `/chat`) — and the now-dead
+  `TEMPLATES` object, `template-btn` handlers, `.quick-empty` buttons/bindings,
+  and template/quick-prompt CSS rules in `assistant.js` / `app.css`
+
 ## [v5.6] — 2026-08-01
 
 ### Changed

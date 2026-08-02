@@ -232,4 +232,14 @@ final class InMemoryFileRepository implements FileRepository
     {
         return ['c' => count($this->rows)];
     }
+
+    public function totalBytes(string $userId): int
+    {
+        $total = 0;
+        foreach ($this->rows as $r) {
+            if (($r['user_id'] ?? '') !== $userId) continue;
+            $total += strlen((string) ($r['content'] ?? ''));
+        }
+        return $total;
+    }
 }

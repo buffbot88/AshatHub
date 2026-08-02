@@ -12,7 +12,7 @@ A browser-based AI coding platform, rewritten from the original React SPA into *
 | Web server   | Apache (mod_rewrite **or** ErrorDocument) or PHP built-in (`php -S`) |
 | Database     | **MySQL 8 / MariaDB 10.5+** via **PDO** with prepared statements |
 | Front-end    | Server-rendered PHP with Tailwind Play CDN + vanilla JS         |
-| IDE          | Monaco Editor via AMD CDN (Studio only)                         |
+| IDE          | Monaco Editor via AMD CDN (Studio + Chat file editor)           |
 | Sessions     | Native PHP sessions (server-side, signed)                       |
 | Auth         | `password_hash()` + `password_verify()` + CSRF tokens           |
 
@@ -29,7 +29,7 @@ No build step. No bundler. Drop the folder on a PHP-capable host and run.
 │   ├── js/                ← Vanilla JS (app.js, agent.js, studio.js)
 │   └── assets/            ← logo, favicon
 ├── src/
-│   ├── Core/              ← Router, Database, Auth, View, Session (+ routes/*.php)
+│   ├── Core/              ← Router, Database, Auth, View, Session, ZipHelper (+ routes/*.php)
 │   ├── Models/            ← BuildPayload, ChatBackend
 │   ├── Controllers/       ← 15 controllers (Home, Auth, Community, Docs, Studio, Account, Admin, Api, Chat, ChatPage, Builds, Files, Specs, Support, Error)
 │   ├── Repositories/      ← PDO + InMemory data access (User, Session, Spec, Build, File, …)
@@ -194,7 +194,8 @@ If the home page returns a plain 500, three diagnostic paths ship with the proje
 | `/ide/planner`             | Planner           | Two-phase build: Plan → Approve → Generate |
 | `/ide/autonomy`            | Mission Control   | Phase tree + timeline                    |
 | `/ide/files`               | File Manager      | Recursive tree, context menu, rename/duplicate/delete, refresh-restore |
-| `/ide/spec-chat`           | Spec Chat         | AI-assisted project brainstorming        |
+| `/chat/`                   | Chat              | Spec brainstorming, Markdown export, project file manager + Monaco editor |
+| `/ide/spec-chat`           | Spec Chat         | AI-assisted project brainstorming (legacy) |
 | `/account/`                | Account           | Profile, stats                           |
 | `/account/active-users/`   | Active Users      | Recent sign-ins (admin)                  |
 | `/register/`               | Register          | New account                              |

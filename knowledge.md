@@ -9,7 +9,7 @@ Key code locations:
 - **`src/Controllers/`** — 15 controllers (Home, Auth, Studio, Docs, Community, Account, Admin, Api, Chat, ChatPage, Builds, Files, Specs, Support, Error) + `FormRequests/`
 - **`src/Repositories/`** — Data access layer: Pdo*Repository (production) + InMemory*Repository (tests). Access via `RepositoryRegistry`
 - **`src/views/`** — `layouts/` (header, footer) and `pages/` (one per route)
-- **`public/js/`** — Vanilla JS: `app.js` (ashatFetch, toasts), `agent.js` (Coding Agent — BYO-key LLM driver + localStorage generated-code store), `studio.js` (Planner + File Manager glue, context menu, keyboard nav, refresh-restore)
+- **`public/js/`** — Vanilla JS: `app.js` (ashatFetch, toasts), `agent.js` (Coding Agent — BYO-key LLM driver + localStorage generated-code store), `studio.js` (Planner + File Manager glue, context menu, keyboard nav, refresh-restore), `assistant.js` (Chat page — conversations, spec versions, Markdown export, chat File Manager + Monaco panel)
 - **`public/css/app.css`** — Custom "Plainspoken" design system (Newsreader serif + Inter + JetBrains Mono)
 - **`src/Data/`** — `LanguageOptions` (project language picker), `CategoryLabels` (ErrorPages lives in `src/Core/`)
 - **`config/`** — `bootstrap.php` (boot sequence + all `APP_*`/`DB_*`/`SESSION_*` constants), `server_config.json` (your live config — gitignored)
@@ -79,7 +79,7 @@ No package.json or composer.json — **zero dependencies**.
   whenever `tailwind.config.js` or the color tokens in `header.php` change
 
 ### Testing
-- PHPUnit 10.5 in `phpunit.xml.dist` (run: `php phpunit.phar` — 506 tests, 930 assertions, green)
+- PHPUnit 10.5 in `phpunit.xml.dist` (run: `php phpunit.phar` — 526 tests, 965 assertions, green)
 - Tests bootstrap from `tests/bootstrap.php` (minimal — no session, no DB)
 - FakeContext + InMemoryRepositories = no database needed
 - **Golden rule**: `FakeContext::assertCsrf()` must call `$this->jsonResponse()`
@@ -107,18 +107,22 @@ No package.json or composer.json — **zero dependencies**.
 #### File Manager (`/ide/files`)
 - **Recursive tree**: `src/lib/util.ts` renders nested (folders-first, natural sort) — built client-side in `studio.js` (`renderFileList`). Context menu (Open/Save/Rename/Duplicate/Delete) + keyboard nav (Enter, F2, Del, Ctrl+Enter, Ctrl+D, Shift+F10, arrows) are gated so Monaco keeps its own keys while focused.
 - **Empty folders are folder-marker rows**: a file row whose `path` ends with `/` (e.g. `assets/`) with empty content. Created via `POST /api/folders`; prefix semantics move/delete them with the folder.
-- **Files API** (all under `/api/files`, `pro-or-admin`):
+- **Files API** (all under `/api/files`, **`auth` middleware — all roles**, each user gets ONE project repo):
   | Route | Action |
   |---|---|
-  | `GET /api/files/` | list (metadata only) |
+  | `GET /api/files/` | list (metadata only) + `usage_bytes` + `quota_bytes` (150 MB) |
   | `GET /api/files/{id}` | row incl. content |
-  | `POST /api/files/` | save/upsert by path |
+  | `POST /api/files/` | save/upsert by path (quota: size-delta check) |
   | `POST /api/files/rename` | rename file OR folder prefix |
   | `POST /api/files/duplicate` | duplicate a file (`x (copy).ts`, `x (copy 2).ts`) |
+  | `GET /api/files/export` | whole-project `.zip` download (binary response) |
+  | `POST /api/files/import` | `.zip` upload (multipart `zip`) — sanitized, quota pre-checked, upserted |
   | `DELETE /api/files/{id}` | delete one file |
   | `DELETE /api/files/tree?path=` | delete folder + all descendants |
   | `POST /api/folders/` | create empty folder (marker row) |
-  - Static-suffix routes (`rename`, `duplicate`, `tree`) MUST be registered before `/{id}` — RouteCollection matches in registration order.
+  - Static-suffix routes (`export`, `import`, `rename`, `duplicate`, `tree`) MUST be registered before `/{id}` — RouteCollection matches in registration order.
+- **`Core\ZipHelper`** — dependency-free ZIP create/extract via **zlib only** (no `ZipArchive` extension required): deflate (8) + stored (0), CRC32 verified on extract, directory entries skipped. Used by `FilesController::importZip()` / `exportZip()`; entry names are returned raw and MUST be sanitized by the caller (`normalizePath` rejects traversal, `:` drive-letter segments, and control chars).
+- **Quota**: `FilesController::QUOTA_BYTES = 150 * 1024 * 1024`. Saves check the size delta; imports pre-check the summed extracted bytes of ALL entries before writing any row (a failed import never half-applies). `FileRepository::totalBytes(userId)` sums `LENGTH(content)` (PDO — bytes, correct for utf8mb4) / `strlen` (InMemory).
 - **`FileRepository` methods**: `deleteByPrefix(userId, prefix)` (auth-scoped, LIKE-wildcard escaped), `rename(userId, old, new)` (exact OR prefix move; collision check → `conflict`; nested-move guard; Pdo runs in a transaction), `duplicate(userId, path)` (auto `(copy N)` naming, dotfile-safe).
 - **localStorage state** (all keys `ashat.*`):
   | Key | Contents |
@@ -130,6 +134,9 @@ No package.json or composer.json — **zero dependencies**.
 - **agent.js sync helpers**: `removeFilesByPrefix`, `renameFilesByPrefix`, `duplicateFileLocal` keep browser-side content aligned with server metadata rows. Save/rename/delete ordering is server-first so a failed call never wipes local content.
 - **Refresh restore**: `ashat.fm.state` reopens the persisted file (expanding collapsed ancestors), restores page scroll + Monaco scroll (`monacoPendingScrollTop` applies AFTER the content replay because `setValue` resets scroll). Saved on open/rename/delete, debounced on scroll, flushed on `pagehide`.
 
+- **Chat page (`/chat`, `ChatPageController`)** — standalone Spec Chat. Left: conversation sidebar (localStorage `ashat.chats`); center: chat + input, and a **file editor panel** (`#chat-file-editor`) that replaces the chat when a project file is clicked (Monaco loaded lazily from the CDN — `__chatMonacoReady`/`__chatMonaco`; textarea fallback if the CDN never arrives; Save via `POST /api/files/`, ← Chat restores the conversation). Right pane: **Project Files** card (tree + Upload/Download/Select all/Delete + usage meter) + **Spec Versions** timeline + **Tips**. The chat File Manager renders rows with `textContent` (XSS-safe) and folder markers share the same prefix semantics as the IDE.
+- **Chat behaviors**: `init()` lands on the home/empty state (never auto-creates or auto-opens a conversation); Export downloads `ChatHistory-YYYY-MM-DD.md` (Markdown, `stripMarkers()`-cleaned, no JSON dump). Generated Spec + Project Context cards were removed — `setSpec()`/`sendToPlanner()`/Copy/Planner bindings are null-guarded.
+
 ### Maintenance Mode
 - Toggled via admin UI → writes `storage/maintenance.json`
 - Non-admin/static routes show maintenance.php view
@@ -139,8 +146,8 @@ No package.json or composer.json — **zero dependencies**.
 - **Script order matters for `defer`** — `app.js` (defines `ashatFetch`/`ashatToast`) is loaded with `defer` in `layouts/header.php` `<head>` so it runs BEFORE any page-body deferred script (`studio.js`/`agent.js` in `pages/studio.php`). Deferred scripts execute in **document order** — a footer copy would run after the IDE scripts and crash their load-time calls (`ReferenceError: ashatToast is not defined`). Don't move `app.js` to the footer or add `defer` scripts before it. `chat.php` deliberately loads `app.js`→`agent.js`→`assistant.js` sequentially without `defer`; keep its explicit `app.js` tag.
 - **PHP 8.1+ required** — uses `never` return type, `str_starts_with()`, `match`, named args
 - **File Manager folder markers**: an empty folder is a row whose path ends with `/`. Prefix semantics match it (`foo` ≡ `foo/`) for delete/rename — never render markers as files.
-- **Route order in `/api/files`**: `/rename`, `/duplicate`, `/tree` must precede `/{id}`, otherwise `tree` gets captured as an id.
-- **Config options for shared hosts** (when `.env` is blocked):
+- **Route order in `/api/files`**: `/export`, `/import`, `/rename`, `/duplicate`, `/tree` must precede `/{id}`, otherwise `tree` gets captured as an id.
+- **`ZipArchive` NOT guaranteed** — the `zip` PHP extension is often missing on shared hosts. Chat import/export uses `Core\ZipHelper` (pure PHP + zlib) instead; don't introduce `ZipArchive` dependencies.
   - `config/server_config.json` — primary config file (not a dotfile). Covers ALL settings. Loaded before `.env`, skips `.env` if present.
 - **No mod_rewrite needed** — `.htaccess` uses `ErrorDocument 404/403 /index.php` for shared hosts; `RedirectMatch 403` from mod_alias blocks private dirs
 - **`?__diag=1`** endpoint runs before bootstrap — use it to check PHP version and file existence on a fresh deploy

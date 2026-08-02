@@ -195,4 +195,13 @@ final class PdoFileRepository implements FileRepository
         $row = $this->db->fetchOne("SELECT COUNT(*) AS c FROM files");
         return $row ?: ['c' => 0];
     }
+
+    public function totalBytes(string $userId): int
+    {
+        $row = $this->db->fetchOne(
+            "SELECT COALESCE(SUM(LENGTH(content)), 0) AS total FROM files WHERE user_id = ?",
+            [$userId]
+        );
+        return (int) ($row['total'] ?? 0);
+    }
 }

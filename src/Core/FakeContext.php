@@ -107,6 +107,36 @@ class FakeContext extends RequestContext
         }
     }
 
+    // ── Override file() to support manual upload injection ──────────
+
+    /**
+     * Set an uploaded-file descriptor for testing (mirrors $_FILES entry).
+     * e.g. setFile('zip', ['tmp_name' => '/tmp/x.zip', 'error' => 0, 'size' => 10])
+     */
+    public function setFile(string $key, array $file): static
+    {
+        $this->fileData[$key] = $file;
+        return $this;
+    }
+
+    public function file(string $key): ?array
+    {
+        $f = $this->fileData[$key] ?? null;
+        return is_array($f) ? $f : null;
+    }
+
+    /** Captured binary download (set by binaryResponse). */
+    public ?string $lastBinaryData = null;
+    public string $lastBinaryFilename = '';
+
+    public function binaryResponse(string $data, string $filename, string $mime = 'application/octet-stream'): never
+    {
+        $this->responded = true;
+        $this->lastBinaryData = $data;
+        $this->lastBinaryFilename = $filename;
+        throw new \RuntimeException('FakeContext binary: ' . $filename);
+    }
+
     // ── Override jsonBody to support manual JSON injection ─────────
 
     /**

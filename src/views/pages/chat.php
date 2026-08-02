@@ -44,12 +44,19 @@
           <div class="empty-icon" style="color: var(--text-mute);"><svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 11.5a8.5 8.5 0 0 1-12.6 7.4L3 21l2.1-5.4A8.5 8.5 0 1 1 21 11.5z"/></svg></div>
           <h3>Start a conversation</h3>
           <p>Click "New Chat" to begin brainstorming your project. I'll help you refine ideas into a solid build specification.</p>
-          <div class="flex gap-2 mt-4">
-            <button class="btn-gold quick-empty" data-prompt="I want to build a real-time chat app with rooms" style="font-size: 11px; padding: 8px 16px;">Chat app</button>
-            <button class="btn-gold quick-empty" data-prompt="Build a REST API for a todo list with user authentication" style="font-size: 11px; padding: 8px 16px;">REST API</button>
-            <button class="btn-gold quick-empty" data-prompt="A CLI tool for batch resizing images" style="font-size: 11px; padding: 8px 16px;">CLI tool</button>
+        </div>
+      </div>
+
+      <!-- File editor panel — replaces the chat when a project file is opened -->
+      <div id="chat-file-editor" style="display: none; flex: 1; flex-direction: column; min-height: 0;">
+        <div class="flex items-center justify-between px-4 py-2" style="border-bottom: 1px solid var(--gold-line); background: var(--bg-soft);">
+          <div id="chat-file-editor-title" class="text-[11px] font-mono truncate" style="color: var(--gold-muted);"></div>
+          <div class="flex items-center gap-2">
+            <button id="btn-editor-save" class="btn-gold" style="font-size: 10px; padding: 4px 10px;">Save</button>
+            <button id="btn-editor-close" class="btn-outline" style="font-size: 10px; padding: 4px 10px;">← Chat</button>
           </div>
         </div>
+        <div id="monaco-chat-shell" style="flex: 1; min-height: 0; background: rgba(15,15,23,0.5);"></div>
       </div>
 
       <!-- Input area -->
@@ -58,7 +65,7 @@
           <textarea id="chat-input" class="chat-input" rows="1" placeholder="Describe your project idea... (Enter to send, Shift+Enter for new line)"></textarea>
           <button type="submit" id="btn-chat-send" class="btn-gold" style="font-size: 12px; padding: 10px 18px; white-space: nowrap; border-radius: 12px;">
             <span id="send-label">Send</span>
-            <span id="send-spinner" class="hidden" style="display: inline-block; width: 12px; height: 12px; border: 2px solid var(--accent-ink); border-top-color: transparent; border-radius: 50%; animation: spin 0.7s linear infinite;"></span>
+            <span id="send-spinner" class="hidden" style="width: 12px; height: 12px; border: 2px solid var(--accent-ink); border-top-color: transparent; border-radius: 50%; animation: spin 0.7s linear infinite;"></span>
           </button>
         </form>
         <div class="flex items-center justify-between mt-2">
@@ -68,21 +75,22 @@
       </div>
     </div>
 
-    <!-- ── Right: Spec preview ──────────────────────────────────────── -->
+    <!-- ── Right: Project files + spec versions + tips ─────────────── -->
     <div class="flex flex-col gap-5 p-5 overflow-y-auto" style="background: rgba(15, 15, 23, 0.3);">
-      <!-- Generated spec preview -->
-      <div style="flex: 1; background: rgba(15,15,23,0.4); border: 1px solid var(--gold-line); border-radius: var(--gold-radius-xl); padding: 18px; display: flex; flex-direction: column; min-height: 220px;">
-        <div class="flex items-center justify-between mb-4">
-          <div class="label-gold">Generated Spec</div>
-          <div class="flex gap-1">
-            <button id="btn-copy-spec" class="btn-outline" style="font-size: 11px; padding: 2px 8px;" disabled title="Copy spec">Copy</button>
-            <button id="btn-send-planner" class="btn-gold" style="font-size: 11px; padding: 2px 8px;" disabled title="Send spec to Planner">Send</button>
-          </div>
+      <!-- Project Files -->
+      <div style="background: rgba(15,15,23,0.4); border: 1px solid var(--gold-line); border-radius: var(--gold-radius-xl); padding: 16px;">
+        <div class="flex items-center justify-between mb-3">
+          <div class="label-gold">Project Files</div>
+          <span id="file-usage" class="text-[9px] font-mono" style="color: var(--gold-dim);"></span>
         </div>
-        <div id="spec-preview" class="flex-1 rounded-lg p-3 text-xs font-mono overflow-auto whitespace-pre-wrap"
-             style="background: rgba(10,10,15,0.6); border: 1px solid var(--gold-line); color: var(--gold-muted);">
-          Your spec will appear here after chatting. Click a quick prompt or describe your idea above.
+        <div class="flex flex-wrap gap-1.5 mb-3">
+          <button id="btn-file-upload" class="btn-outline" style="font-size: 10px; padding: 4px 10px;">Upload</button>
+          <button id="btn-file-download" class="btn-outline" style="font-size: 10px; padding: 4px 10px;">Download</button>
+          <button id="btn-file-select-all" class="btn-outline" style="font-size: 10px; padding: 4px 10px;">Select all</button>
+          <button id="btn-file-delete" class="btn-outline" style="font-size: 10px; padding: 4px 10px; color: var(--gold-err);">Delete</button>
         </div>
+        <input type="file" id="file-zip-input" accept=".zip" style="display: none;">
+        <div id="chat-file-tree" style="max-height: 240px; overflow-y: auto; font-size: 11px; font-family: var(--font-mono);"></div>
       </div>
 
       <!-- Spec Versions Timeline -->
@@ -93,23 +101,6 @@
         </div>
         <div id="version-timeline" class="version-timeline" style="max-height: 200px; overflow-y: auto;">
           <div style="color: var(--gold-dim); font-size: 11px; padding: 8px 0;">No versions yet — specs will appear here.</div>
-        </div>
-      </div>
-
-      <!-- Project Context -->
-      <div style="background: rgba(15,15,23,0.4); border: 1px solid var(--gold-line); border-radius: var(--gold-radius-xl); padding: 18px;">
-        <div class="flex items-center justify-between mb-4">
-          <div class="label-gold">Project Context</div>
-          <button id="btn-refresh-context" class="btn-outline" style="font-size: 9px; padding: 2px 8px;" title="Refresh project context">↻</button>
-        </div>
-        <div id="project-context-status" style="color: var(--gold-dim); font-size: 11px; line-height: 1.6;">
-          <span id="context-loading">Loading...</span>
-          <span id="context-loaded" class="hidden">
-            <span id="context-specs">0</span> specs ·
-            <span id="context-builds">0</span> builds ·
-            <span id="context-files">0</span> files
-          </span>
-          <span id="context-empty" class="hidden">No existing work — start fresh!</span>
         </div>
       </div>
 
@@ -133,6 +124,62 @@
 <script src="<?= e(asset('/js/app.js')) ?>"></script>
 <script src="<?= e(asset('/js/agent.js')) ?>"></script>
 <script src="<?= e(asset('/js/assistant.js')) ?>"></script>
+
+<!-- Monaco Editor CDN — loaded eagerly so the file editor is ready on demand.
+     Sets __chatMonacoReady + __chatMonaco (the monaco namespace). assistant.js
+     creates the editor lazily the first time a project file is opened. -->
+<script src="https://cdn.jsdelivr.net/npm/monaco-editor@0.45.0/min/vs/loader.min.js"></script>
+<script>
+(function () {
+  'use strict';
+  var attempts = 0;
+  var initTimer = setInterval(function () {
+    if (typeof require === 'undefined') {
+      if (++attempts > 50) { clearInterval(initTimer); window.__chatMonacoReady = false; }
+      return;
+    }
+    clearInterval(initTimer);
+    require.config({ paths: { vs: 'https://cdn.jsdelivr.net/npm/monaco-editor@0.45.0/min/vs' } });
+    require(['vs/editor/editor.main'], function () {
+      if (typeof monaco === 'undefined' || typeof monaco.editor === 'undefined') {
+        window.__chatMonacoReady = false;
+        return;
+      }
+      monaco.editor.defineTheme('ashat', {
+        base: 'vs-dark',
+        inherit: true,
+        rules: [
+          { token: 'comment', foreground: '6f6f7a', fontStyle: 'italic' },
+          { token: 'keyword', foreground: 'ff8a5c', fontStyle: 'bold' },
+          { token: 'string',  foreground: '9fd1a8' },
+          { token: 'number',  foreground: 'd4b06a' },
+          { token: 'type',    foreground: '7cc4e8' },
+          { token: 'function', foreground: 'ffa06e' },
+        ],
+        colors: {
+          'editor.background': '#0d0d0f',
+          'editor.foreground': '#e9e9ee',
+          'editor.lineHighlightBackground': '#1a1a20',
+          'editor.selectionBackground': '#ff7a4533',
+          'editorCursor.foreground': '#ff7a45',
+          'editorLineNumber.foreground': '#5c5c66',
+          'editorLineNumber.activeForeground': '#8f8f9a',
+          'editorWidget.background': '#17171b',
+          'editorWidget.border': '#2a2a31',
+          'input.background': '#1f1f25',
+          'input.border': '#2a2a31',
+          'scrollbarSlider.background': '#2a2a3144',
+          'scrollbarSlider.hoverBackground': '#2a2a3188',
+        }
+      });
+      window.__chatMonacoReady = true;
+      window.__chatMonaco = monaco;
+    }, function () {
+      window.__chatMonacoReady = false;
+    });
+  }, 200);
+})();
+</script>
 <script>
   window.ASHAT = window.ASHAT || {};
   window.ASHAT.accountUrl = '<?= e(asset('/account/')) ?>';

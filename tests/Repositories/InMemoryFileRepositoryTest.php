@@ -517,6 +517,34 @@ final class InMemoryFileRepositoryTest extends TestCase
         $this->assertSame(['c' => 0], $this->repo->countAll());
     }
 
+    // ── totalBytes() — per-user storage quota ─────────────────────
+
+    public function test_totalBytes_sums_content_length(): void
+    {
+        $this->repo->seed([$this->fileA, $this->fileB]);
+        $expected = strlen($this->fileA['content']) + strlen($this->fileB['content']);
+        $this->assertSame($expected, $this->repo->totalBytes('u1'));
+    }
+
+    public function test_totalBytes_ignores_other_users(): void
+    {
+        $fileOther = array_merge($this->fileA, ['id' => 'f4', 'user_id' => 'u2', 'content' => str_repeat('z', 1000)]);
+        $this->repo->seed([$this->fileA, $fileOther]);
+        $this->assertSame(strlen($this->fileA['content']), $this->repo->totalBytes('u1'));
+        $this->assertSame(1000, $this->repo->totalBytes('u2'));
+    }
+
+    public function test_totalBytes_zero_when_empty(): void
+    {
+        $this->assertSame(0, $this->repo->totalBytes('u1'));
+    }
+
+    public function test_totalBytes_counts_null_content_as_zero(): void
+    {
+        $this->repo->save('u1', 'meta.ts', null, 'typescript', false, null, null);
+        $this->assertSame(0, $this->repo->totalBytes('u1'));
+    }
+
     // ── Registry integration ───────────────────────────────────────
 
     public function test_registry_returns_file_repo(): void

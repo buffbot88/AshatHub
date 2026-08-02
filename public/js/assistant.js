@@ -1,13 +1,15 @@
 /* ═══════════════════════════════════════════════════════════════════════
-   ASHAT Hub — IDE Spec Chat module (v2 · ChatGPT-like)
+   ASHAT Hub — Chat page module (v2 · ChatGPT-like)
    Handles SSE streaming chat with BrainStem for spec brainstorming.
    Features:
    - Multi-conversation management (CRUD) persisted to localStorage
    - Markdown rendering in chat bubbles (code blocks, lists, etc.)
    - Typing indicator while AI is thinking
    - Token-optimized message context (summarizes older messages)
-   - Spec extraction from <!--SPEC--> markers with "Send to Planner"
-   - Export conversation as downloadable .json
+   - Spec extraction from <!--SPEC--> markers + version timeline
+   - Export conversation as downloadable ChatHistory-<date>.md
+   - Project File Manager: tree, zip upload/download, select-all, delete
+   - Click-to-open Monaco editor panel (textarea fallback) for editing files
    - Keyboard shortcuts (Enter send, Shift+Enter newline)
    - Auto-resize textarea
    ═══════════════════════════════════════════════════════════════════════ */
@@ -1119,9 +1121,11 @@
 
   function setSpec(spec, skipSave) {
     if (spec) {
-      specPreview.textContent = spec;
-      copyBtn.disabled = false;
-      plannerBtn.disabled = false;
+      // Update the spec preview card if it's present (removed from the
+      // current right-bar layout, but kept for future use)
+      if (specPreview) specPreview.textContent = spec;
+      if (copyBtn) copyBtn.disabled = false;
+      if (plannerBtn) plannerBtn.disabled = false;
 
       // Auto-save a version unless skipSave is set (e.g., when restoring)
       if (!skipSave) {
@@ -1132,9 +1136,9 @@
         renderVersionTimeline(saved ? saved.id : undefined);
       }
     } else {
-      specPreview.textContent = 'Your spec will appear here after chatting.';
-      copyBtn.disabled = true;
-      plannerBtn.disabled = true;
+      if (specPreview) specPreview.textContent = 'Your spec will appear here after chatting.';
+      if (copyBtn) copyBtn.disabled = true;
+      if (plannerBtn) plannerBtn.disabled = true;
     }
   }
 
@@ -1143,7 +1147,7 @@
   // ══════════════════════════════════════════════════════════════════
 
   async function sendToPlanner(spec) {
-    if (!spec) return;
+    if (!spec || !plannerBtn) return;
     try {
       plannerBtn.disabled = true;
       plannerBtn.textContent = 'Saving...';
@@ -1186,21 +1190,37 @@
   function exportConversation() {
     var conv = getActiveConversation();
     if (!conv) return;
-    var data = {
-      title: conv.title,
-      exported_at: new Date().toISOString(),
-      messages: conv.messages.filter(function (m) { return m.role !== 'system'; }),
-    };
-    var blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
+
+    var now = new Date();
+    var pad = function (n) { return n < 10 ? '0' + n : '' + n; };
+    var date = now.getFullYear() + '-' + pad(now.getMonth() + 1) + '-' + pad(now.getDate());
+
+    var lines = ['# ' + (conv.title || 'Chat'), ''];
+    lines.push('> Exported ' + now.toLocaleString() + ' from ASHAT Hub');
+    lines.push('');
+    lines.push('---');
+    lines.push('');
+
+    var msgs = conv.messages.filter(function (m) { return m.role !== 'system'; });
+    for (var i = 0; i < msgs.length; i++) {
+      var m = msgs[i];
+      var role = m.role === 'user' ? '👤 You' : '🤖 BrainStem';
+      lines.push('## ' + role);
+      lines.push('');
+      lines.push(stripMarkers(m.content || '').trim());
+      lines.push('');
+    }
+
+    var blob = new Blob([lines.join('\n')], { type: 'text/markdown' });
     var url = URL.createObjectURL(blob);
     var a = document.createElement('a');
     a.href = url;
-    a.download = 'ashat-chat-' + conv.title.slice(0, 30).replace(/[^a-zA-Z0-9]/g, '-') + '.json';
+    a.download = 'ChatHistory-' + date + '.md';
     document.body.appendChild(a);
     a.click();
     document.body.removeChild(a);
     URL.revokeObjectURL(url);
-    ashatToast('Conversation exported!', 'ok');
+    ashatToast('Exported ChatHistory-' + date + '.md', 'ok');
   }
 
   // ══════════════════════════════════════════════════════════════════
@@ -1610,14 +1630,343 @@
       if (isStreaming) sendSpinner.classList.remove('hidden');
       else sendSpinner.classList.add('hidden');
     }
-    document.querySelectorAll('.quick-empty').forEach(function (b) {
-      b.disabled = isStreaming;
-    });
   }
 
   function autoResizeInput() {
     input.style.height = 'auto';
     input.style.height = Math.min(input.scrollHeight, 150) + 'px';
+  }
+
+  // ══════════════════════════════════════════════════════════════════
+  //  PROJECT FILE MANAGER (right-pane tree + Monaco editor panel)
+  // ══════════════════════════════════════════════════════════════════
+
+  var fileTreeEl       = document.getElementById('chat-file-tree');
+  var fileUsageEl      = document.getElementById('file-usage');
+  var btnFileUpload    = document.getElementById('btn-file-upload');
+  var btnFileDownload  = document.getElementById('btn-file-download');
+  var btnFileSelectAll = document.getElementById('btn-file-select-all');
+  var btnFileDelete    = document.getElementById('btn-file-delete');
+  var fileZipInput     = document.getElementById('file-zip-input');
+  var chatFileEditor   = document.getElementById('chat-file-editor');
+  var chatEditorTitle  = document.getElementById('chat-file-editor-title');
+  var btnEditorSave    = document.getElementById('btn-editor-save');
+  var btnEditorClose   = document.getElementById('btn-editor-close');
+  var monacoChatShell  = document.getElementById('monaco-chat-shell');
+  var chatInputArea    = document.querySelector('.chat-input-area');
+
+  var fmFiles = [];
+  var fmSelected = {};
+  var fmAllSelected = false;
+  var chatMonacoEd = null;
+  var activeFilePath = null;
+
+  function fmFormatBytes(n) {
+    if (!n && n !== 0) return '0 B';
+    var units = ['B', 'KB', 'MB', 'GB'];
+    var i = 0;
+    while (n >= 1024 && i < units.length - 1) { n /= 1024; i++; }
+    return (i === 0 ? n : n.toFixed(1)) + ' ' + units[i];
+  }
+
+  async function loadFileTree() {
+    try {
+      var resp = await ashatFetch('/api/files/');
+      fmFiles = (resp && resp.files) || [];
+      if (fileUsageEl && resp) {
+        fileUsageEl.textContent = fmFormatBytes(resp.usage_bytes || 0) + ' / ' + fmFormatBytes(resp.quota_bytes || 0);
+      }
+      renderFileTree();
+    } catch (e) {
+      if (fileUsageEl) fileUsageEl.textContent = '';
+    }
+  }
+
+  /** Render the nested file tree (folders-first, natural sort). */
+  function renderFileTree() {
+    if (!fileTreeEl) return;
+    fileTreeEl.innerHTML = '';
+    if (!fmFiles.length) {
+      fileTreeEl.innerHTML = '<div style="color:var(--gold-dim);font-size:11px;padding:8px 0;">No files yet — upload a .zip to get started.</div>';
+      return;
+    }
+
+    // 1. Build the nested tree from the flat path list.
+    var root = { name: '', path: '', type: 'folder', children: [] };
+    var folderNodes = new Map();
+    folderNodes.set('', root);
+    function getFolder(path) {
+      var node = folderNodes.get(path);
+      if (!node) {
+        node = { name: path.split('/').pop() || path, path: path, type: 'folder', children: [] };
+        folderNodes.set(path, node);
+      }
+      return node;
+    }
+    function linkChain(segs) {
+      var cur = root, curPath = '';
+      segs.forEach(function (seg) {
+        curPath = curPath ? curPath + '/' + seg : seg;
+        var child = getFolder(curPath);
+        if (cur.children.indexOf(child) === -1) cur.children.push(child);
+        cur = child;
+      });
+      return cur;
+    }
+    fmFiles.forEach(function (f) {
+      var p = f.path || '';
+      if (p.length > 1 && p.endsWith('/')) { linkChain(p.slice(0, -1).split('/')); return; }
+      var segs = p.split('/');
+      var name = segs.pop();
+      linkChain(segs).children.push({ name: name, path: p, type: 'file', id: f.id });
+    });
+
+    // 2. Sort: folders first, then natural (numeric-aware) order.
+    function sortChildren(node) {
+      node.children.sort(function (a, b) {
+        if (a.type !== b.type) return a.type === 'folder' ? -1 : 1;
+        return a.name.localeCompare(b.name, undefined, { numeric: true });
+      });
+      node.children.forEach(function (c) { if (c.type === 'folder') sortChildren(c); });
+    }
+    sortChildren(root);
+
+    function makeRow(node, indent) {
+      var label = node.type === 'folder' ? node.name + '/' : node.name;
+      var row = document.createElement('div');
+      row.style.cssText = 'display:flex;align-items:center;gap:6px;padding:3px 6px;border-radius:6px;cursor:pointer;margin-left:' + indent + 'px;';
+      row.style.color = node.type === 'folder' ? 'var(--text-soft)' : 'var(--gold-muted)';
+      row.style.fontSize = '11px';
+      row.title = node.path;
+
+      var cb = document.createElement('input');
+      cb.type = 'checkbox';
+      cb.className = 'fm-check';
+      cb.style.cssText = 'accent-color:var(--accent);cursor:pointer;flex-shrink:0;';
+      cb.checked = !!fmSelected[node.path];
+      cb.addEventListener('click', function (e) { e.stopPropagation(); });
+      cb.addEventListener('change', function () {
+        if (cb.checked) fmSelected[node.path] = true;
+        else delete fmSelected[node.path];
+      });
+      row.appendChild(cb);
+
+      var icon = document.createElement('span');
+      icon.textContent = node.type === 'folder' ? '▸' : '·';
+      icon.style.cssText = 'color:var(--text-dim);flex-shrink:0;font-size:9px;width:8px;';
+      row.appendChild(icon);
+
+      var name = document.createElement('span');
+      name.textContent = label;
+      name.style.cssText = 'overflow:hidden;text-overflow:ellipsis;white-space:nowrap;';
+      row.appendChild(name);
+
+      // Clicking a file row (not the checkbox) opens it in the editor.
+      if (node.type === 'file') {
+        row.addEventListener('click', function (e) {
+          if (e.target === cb) return;
+          openFileInEditor(node.id, node.path);
+        });
+      }
+      return row;
+    }
+
+    function renderNode(node, parentEl, depth) {
+      if (node.path !== '') parentEl.appendChild(makeRow(node, depth * 14));
+      if (node.type === 'folder') {
+        node.children.forEach(function (c) { renderNode(c, parentEl, node.path === '' ? depth : depth + 1); });
+      }
+    }
+    renderNode(root, fileTreeEl, 0);
+  }
+
+  /** Lazy-create the Monaco editor (or a textarea fallback) in the chat shell. */
+  function ensureChatMonaco(cb) {
+    if (chatMonacoEd) return cb(chatMonacoEd);
+    var attempts = 0;
+    var timer = setInterval(function () {
+      if (window.__chatMonacoReady && window.__chatMonaco) {
+        clearInterval(timer);
+        try {
+          chatMonacoEd = window.__chatMonaco.editor.create(monacoChatShell, {
+            value: '',
+            language: 'plaintext',
+            theme: 'ashat',
+            fontSize: 13,
+            fontFamily: 'ui-monospace, "JetBrains Mono", Menlo, Consolas, monospace',
+            minimap: { enabled: false },
+            scrollBeyondLastLine: false,
+            automaticLayout: true,
+            wordWrap: 'on',
+            tabSize: 2,
+            renderWhitespace: 'selection',
+            lineNumbersMinChars: 3,
+            padding: { top: 12 },
+          });
+          cb(chatMonacoEd);
+        } catch (e) {
+          cb(null);
+        }
+        return;
+      }
+      if (++attempts > 50) {
+        clearInterval(timer);
+        // Monaco never arrived — fall back to a plain textarea.
+        monacoChatShell.innerHTML = '';
+        var ta = document.createElement('textarea');
+        ta.className = 'fallback-editor';
+        ta.style.cssText = 'width:100%;height:100%;resize:none;background:rgba(15,15,23,0.5);color:var(--text);font-family:var(--font-mono);font-size:12px;border:none;outline:none;padding:12px;';
+        monacoChatShell.appendChild(ta);
+        chatMonacoEd = {
+          _fallback: true,
+          getValue: function () { return ta.value; },
+          setValue: function (v) { ta.value = v; },
+        };
+        cb(chatMonacoEd);
+      }
+    }, 200);
+  }
+
+  var FM_LANG_MAP = {
+    ts: 'typescript', tsx: 'typescript', js: 'javascript', jsx: 'javascript',
+    py: 'python', rs: 'rust', go: 'go', java: 'java', rb: 'ruby',
+    php: 'php', cs: 'csharp', swift: 'swift',
+    html: 'html', htm: 'html', css: 'css', scss: 'scss', json: 'json',
+    yml: 'yaml', yaml: 'yaml', md: 'markdown', sql: 'sql',
+    sh: 'shell', bash: 'shell', toml: 'toml', xml: 'xml',
+    c: 'c', cpp: 'cpp', h: 'c', hpp: 'cpp',
+  };
+
+  /** Swap the chat panel for the Monaco editor and load a file. */
+  async function openFileInEditor(id, path) {
+    try {
+      var resp = await ashatFetch('/api/files/' + encodeURIComponent(id));
+      var file = resp && resp.file;
+      if (!file) return ashatToast('Could not load file.', 'err');
+      activeFilePath = path;
+      chatEditorTitle.textContent = path;
+
+      // Swap panels: hide chat messages + input, show editor.
+      messagesEl.style.display = 'none';
+      if (chatInputArea) chatInputArea.style.display = 'none';
+      chatFileEditor.style.display = 'flex';
+
+      ensureChatMonaco(function (ed) {
+        if (!ed) return;
+        ed.setValue(file.content || '');
+        if (!ed._fallback) {
+          var ext = (path.split('.').pop() || '').toLowerCase();
+          var lang = FM_LANG_MAP[ext] || 'plaintext';
+          try {
+            window.__chatMonaco.editor.setModelLanguage(ed.getModel(), lang);
+          } catch (_) {}
+        }
+      });
+    } catch (e) {
+      ashatToast('Could not load file.', 'err');
+    }
+  }
+
+  function saveEditorFile() {
+    if (!activeFilePath || !chatMonacoEd) return ashatToast('Open a file first.', 'warn');
+    var content = chatMonacoEd.getValue();
+    ashatFetch('/api/files/', {
+      method: 'POST',
+      body: { path: activeFilePath, content: content },
+    }).then(function () {
+      ashatToast('Saved ' + activeFilePath, 'ok');
+      loadFileTree();
+    }).catch(function (e) {
+      var msg = (e && e.payload && e.payload.error === 'quota_exceeded')
+        ? 'Storage quota exceeded (150 MB) — delete some files first.'
+        : 'Save failed.';
+      ashatToast(msg, 'err');
+    });
+  }
+
+  function closeFileEditor() {
+    activeFilePath = null;
+    chatFileEditor.style.display = 'none';
+    messagesEl.style.display = '';
+    if (chatInputArea) chatInputArea.style.display = '';
+  }
+
+  function bindFileManager() {
+    if (btnFileUpload && fileZipInput) {
+      btnFileUpload.addEventListener('click', function () { fileZipInput.click(); });
+      fileZipInput.addEventListener('change', function () {
+        var f = fileZipInput.files && fileZipInput.files[0];
+        if (!f) return;
+        var fd = new FormData();
+        fd.append('zip', f);
+        ashatFetch('/api/files/import', { method: 'POST', body: fd })
+          .then(function (resp) {
+            var skipped = resp && resp.skipped ? ' (' + resp.skipped + ' skipped)' : '';
+            ashatToast('Imported ' + (resp ? resp.imported : 0) + ' files' + skipped + '.', 'ok');
+            fileZipInput.value = '';
+            loadFileTree();
+          })
+          .catch(function (e) {
+            var msg = (e && e.payload && e.payload.error === 'quota_exceeded')
+              ? 'Import would exceed the 150 MB quota.'
+              : 'Import failed — is it a valid .zip?';
+            ashatToast(msg, 'err');
+            fileZipInput.value = '';
+          });
+      });
+    }
+    if (btnFileDownload) {
+      btnFileDownload.addEventListener('click', function () {
+        var a = document.createElement('a');
+        a.href = '/api/files/export';
+        a.download = 'project.zip';
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+      });
+    }
+    if (btnFileSelectAll) {
+      btnFileSelectAll.addEventListener('click', function () {
+        fmAllSelected = !fmAllSelected;
+        if (fmAllSelected) {
+          fmFiles.forEach(function (f) { fmSelected[f.path] = true; });
+        } else {
+          fmSelected = {};
+        }
+        renderFileTree();
+      });
+    }
+    if (btnFileDelete) {
+      btnFileDelete.addEventListener('click', function () {
+        var paths = Object.keys(fmSelected);
+        if (!paths.length) return ashatToast('Select files to delete first.', 'warn');
+        if (!confirm('Delete ' + paths.length + ' selected item(s)?')) return;
+        var promises = [];
+        paths.forEach(function (p) {
+          if (p.endsWith('/')) {
+            promises.push(ashatFetch('/api/files/tree?path=' + encodeURIComponent(p), { method: 'DELETE' }));
+          } else {
+            var f = null;
+            for (var i = 0; i < fmFiles.length; i++) {
+              if (fmFiles[i].path === p) { f = fmFiles[i]; break; }
+            }
+            if (f) promises.push(ashatFetch('/api/files/' + f.id, { method: 'DELETE' }));
+          }
+        });
+        Promise.all(promises)
+          .then(function () {
+            fmSelected = {};
+            ashatToast('Deleted.', 'ok');
+            loadFileTree();
+          })
+          .catch(function () {
+            ashatToast('Some deletions failed.', 'err');
+            loadFileTree();
+          });
+      });
+    }
+    if (btnEditorSave) btnEditorSave.addEventListener('click', saveEditorFile);
+    if (btnEditorClose) btnEditorClose.addEventListener('click', closeFileEditor);
   }
 
   // ══════════════════════════════════════════════════════════════════
@@ -1758,25 +2107,21 @@
 
   exportBtn.addEventListener('click', exportConversation);
 
-  copyBtn.addEventListener('click', function () {
-    if (specPreview.textContent) {
-      copyToClipboard(specPreview.textContent, copyBtn);
-    }
-  });
-
-  plannerBtn.addEventListener('click', function () {
-    if (specPreview.textContent && specPreview.textContent !== 'Your spec will appear here after chatting.') {
-      sendToPlanner(specPreview.textContent);
-    }
-  });
-
-  // Quick prompts (in the empty state)
-  document.querySelectorAll('.quick-empty').forEach(function (btn) {
-    btn.addEventListener('click', function () {
-      var prompt = btn.getAttribute('data-prompt') || btn.textContent.trim();
-      sendMessage(prompt);
+  if (copyBtn) {
+    copyBtn.addEventListener('click', function () {
+      if (specPreview && specPreview.textContent) {
+        copyToClipboard(specPreview.textContent, copyBtn);
+      }
     });
-  });
+  }
+
+  if (plannerBtn) {
+    plannerBtn.addEventListener('click', function () {
+      if (specPreview && specPreview.textContent && specPreview.textContent !== 'Your spec will appear here after chatting.') {
+        sendToPlanner(specPreview.textContent);
+      }
+    });
+  }
 
   // Refresh project context
   if (refreshCtxBtn) {
@@ -1858,42 +2203,23 @@
     loadConversations();
 
     // Ensure a valid session exists (1-hour expiry)
-    var session = ensureSession();
+    ensureSession();
 
-    // If active conversation is from an expired session, start fresh
-    var activeConv = getActiveConversation();
-    if (activeConv && isPastSession(activeConv)) {
-      // Keep the old conversation in the list but don't auto-activate it
-      // — user can still click to revisit past chats
-      activeId = null;
-    }
-
-    if (activeId && getActiveConversation()) {
-      renderMessages();
-    } else if (conversations.length > 0) {
-      // Pick the most recent conversation that's still within the session
-      var recent = null;
-      for (var i = 0; i < conversations.length; i++) {
-        if (!isPastSession(conversations[i])) {
-          recent = conversations[i]; break;
-        }
-      }
-      if (recent) {
-        activeId = recent.id;
-        saveConversations();
-        renderMessages();
-      } else {
-        createConversation();
-      }
-    } else {
-      createConversation();
-    }
+    // Show the chat home (empty state) on load — don't auto-start a new
+    // chat and don't auto-open a previous one. Users pick a conversation
+    // from the sidebar or hit "+ New" to begin.
+    activeId = null;
+    renderEmptyState();
 
     renderSidebar();
     if (messagesEl) messagesEl.scrollTop = messagesEl.scrollHeight;
 
     // Fetch project context for awareness
     fetchProjectContext();
+
+    // Load the per-user project file tree
+    loadFileTree();
+    bindFileManager();
   }
 
   init();

@@ -83,4 +83,10 @@ interface FileRepository
 
     /** Count all files across all users. Returns ['c' => int]. */
     public function countAll(): array;
+
+    /**
+     * Total content size (bytes) stored for a single user — used to
+     * enforce the per-account storage quota.
+     */
+    public function totalBytes(string $userId): int;
 }

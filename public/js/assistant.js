@@ -107,9 +107,9 @@
       '  is done by the coding agent, and ONLY after the user explicitly agrees to it.',
       '- When the spec is complete, ASK the user whether they want you to generate the',
       '  project files — for example: "Want me to generate these files into your',
-      '  project folder?" — then wait for their explicit approval.',
+      '  Project Files?" — then wait for their explicit approval.',
       '- If they say yes, the app shows a consent prompt; the coding agent then writes',
-      '  the files into their project folder (shown in the File Tree). If they are',
+      '  the files into their Project Files (the right-pane card). If they are',
       '  not ready, wait — never generate files unprompted.',
     ].join('\n'),
   };
@@ -119,7 +119,7 @@
     '',
     'Tell me what you want to build — describe your idea in a sentence or two, and I\'ll guide you through creating a structured specification.',
     '',
-    'I won\'t write any code on my own: when your spec is ready, I\'ll ask first — then generate the files into your project folder, where you can open and edit them anytime.',
+    'I won\'t write any code on my own — when your spec is ready, I\'ll ask first. Say "Yes — generate files" and they land in your Project Files, where you can open and edit them anytime.',
     '',
     'For example:',
     '- *"I want to build a real-time chat app with rooms"*',
@@ -1060,8 +1060,8 @@
     card.className = 'spec-consent-card';
     card.innerHTML =
       '<div class="spec-consent-title">Spec ready</div>' +
-      '<div class="spec-consent-text">Want me to generate these files into your project folder? ' +
-      'The coding agent writes them right here in the chat — nothing is saved until you say yes.</div>' +
+      '<div class="spec-consent-text">Want me to generate these files into your Project Files? ' +
+      'Nothing is saved until you say yes — then you can open and edit them right here in Chat.</div>' +
       '<div class="spec-consent-actions">' +
         '<button type="button" class="btn-gold spec-consent-yes" style="font-size:10px;padding:5px 12px;">Yes — generate files</button>' +
         '<button type="button" class="btn-outline spec-consent-no" style="font-size:10px;padding:5px 12px;">Not yet</button>' +
@@ -1091,7 +1091,7 @@
 
   /**
    * Run the coding agent (agent.js — already loaded on this page) to
-   * generate the project files into the user's project folder via
+   * generate the project files into the user's Project Files via
    * /api/files/ (auth-open: Members, Pro, Admin). Only runs after the
    * consent-card click, so nothing is stored without explicit agreement.
    */
@@ -1118,7 +1118,7 @@
       var files = (result && result.files) || [];
       if (!files.length) throw new Error('The agent returned no files. Try again or simplify the spec.');
 
-      status.textContent = 'Writing ' + files.length + ' file(s) into your project folder…';
+      status.textContent = 'Writing ' + files.length + ' file(s) into your Project Files…';
 
       var saved = 0;
       var quotaHit = false;
@@ -1137,12 +1137,12 @@
       loadFileTree();
       status.className = 'gen-status-bubble ' + (saved === files.length ? 'ok' : 'err');
       status.textContent = saved === files.length
-        ? '✅ ' + saved + ' file(s) generated into your project folder.'
+        ? '✅ ' + saved + ' file(s) generated into your Project Files.'
         : '⚠ ' + saved + ' of ' + files.length + ' file(s) saved' +
           (quotaHit ? ' — the 150 MB storage quota was reached. Delete files to free space, then try again to retry the missing files.' : ' — some files failed to save. Try again to retry the missing files.');
       if (saved === files.length) {
         finishConsentCard(yesBtn, '✓ ' + saved + ' file(s) written');
-        ashatToast('Generated ' + saved + ' file(s) into your project.', 'ok');
+        ashatToast('Generated ' + saved + ' file(s) into your Project Files.', 'ok');
       } else if (yesBtn) {
         yesBtn.disabled = false;
         yesBtn.textContent = 'Yes — generate files';

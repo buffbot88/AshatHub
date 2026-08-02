@@ -189,7 +189,7 @@ final class Router
         // ─── Domain Route Files ────────────────────────────────────
         $router = $this;
         $dir    = __DIR__ . '/routes';
-        foreach (['web.php', 'auth.php', 'studio.php', 'api.php', 'admin.php'] as $file) {
+        foreach (['web.php', 'auth.php', 'api.php', 'admin.php'] as $file) {
             $path = $dir . '/' . $file;
             if (is_file($path)) {
                 require $path;

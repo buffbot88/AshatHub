@@ -31,8 +31,8 @@
   <!-- Core JS helpers (ashatFetch / ashatToast / ASHAT.escapeHtml).
        Loaded with defer IN THE HEAD so it runs BEFORE any page-body
        deferred script: defer executes in document order, so a footer
-       copy would run after studio.js/agent.js and crash their load-time
-       calls (e.g. the IDE File Manager's ashatToast in loadFileList). -->
+       copy would run after the chat scripts and crash their load-time
+       calls (e.g. ashatToast in assistant.js). -->
   <script src="<?= e(asset('/js/app.js')) ?>" defer></script>
 
   <?php if (APP_ENV === 'production'): ?>

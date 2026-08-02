@@ -23,10 +23,10 @@ Vow 8 is **machine-enforced** by `tests/Core/VowDocblockTest.php`, which scans `
 
 Key code locations:
 - **`src/Core/`** — Framework: Router, Database (PDO), Session, View, RequestContext, AuthService, ConfigBag, StaticFileServer
-- **`src/Controllers/`** — 15 controllers (Home, Auth, Studio, Docs, Community, Account, Admin, Api, Chat, ChatPage, Builds, Files, Specs, Support, Error) + `FormRequests/`
+- **`src/Controllers/`** — 14 controllers (Home, Auth, Docs, Community, Account, Admin, Api, Chat, ChatPage, Builds, Files, Specs, Support, Error) + `FormRequests/`
 - **`src/Repositories/`** — Data access layer: Pdo*Repository (production) + InMemory*Repository (tests). Access via `RepositoryRegistry`
 - **`src/views/`** — `layouts/` (header, footer) and `pages/` (one per route)
-- **`public/js/`** — Vanilla JS: `app.js` (ashatFetch, toasts), `agent.js` (Coding Agent — BYO-key LLM driver + localStorage generated-code store), `studio.js` (Planner + File Manager glue, context menu, keyboard nav, refresh-restore), `assistant.js` (Chat page — conversations, spec versions, Markdown export, chat File Manager + Monaco panel)
+- **`public/js/`** — Vanilla JS: `app.js` (ashatFetch, toasts), `agent.js` (Coding Agent — BYO-key LLM driver + localStorage generated-code store), `assistant.js` (Chat page — conversations, spec versions, Markdown export, chat File Manager + Monaco panel)
 - **`public/css/app.css`** — Custom "Plainspoken" design system (Newsreader serif + Inter + JetBrains Mono)
 - **`src/Data/`** — `LanguageOptions` (project language picker), `CategoryLabels` (ErrorPages lives in `src/Core/`)
 - **`config/`** — `bootstrap.php` (boot sequence + all `APP_*`/`DB_*`/`SESSION_*` constants), `server_config.json` (your live config — gitignored)
@@ -49,7 +49,7 @@ No package.json or composer.json — **zero dependencies**.
 ## Key Conventions & Architecture
 
 ### Routing
-- Routes are declared in `src/Core/routes/*.php` (web.php, auth.php, studio.php, api.php, admin.php)
+- Routes are declared in `src/Core/routes/*.php` (web.php, auth.php, api.php, admin.php) — the IDE (`/ide/*`) was removed; Chat is the single development surface
 - Router uses `RouteCollection` with pattern matching (`/users/{id}/posts/{slug}` → regex)
 - Route groups nest prefixes and middleware stacks via `$router->group()`
 - Controllers receive `RequestContext $ctx` as first param
@@ -117,13 +117,12 @@ No package.json or composer.json — **zero dependencies**.
   single `ob_clean()` of the innermost buffer only.
 - JS unit tests in `tests/js/agent-extract.test.js` (node, no framework) — agent.js helpers via a small eval shim
 
-### Studio / IDE (Planner, Mission Control, File Manager)
-- **Routes** (`src/Core/routes/studio.php`): `/ide` (dashboard), `/ide/planner`, `/ide/autonomy` (Mission Control), `/ide/files` (File Manager)
-- **Planner is two-phase**: Build generates a plan ONLY (Phase 1); Approve & Generate Files runs the coding agent (Phase 2). The approved plan is passed to `runBuild`/`runBuildStream` as `opts.plan`.
-- **Project language picker**: `specs.language` VARCHAR(50), `''` = Auto. Dropdowns in the Planner + dashboard quick-spec; values from `src/Data/LanguageOptions.php`; `SpecsController` clamps to 50 chars; `buildUserMsg()` in agent.js injects an "IMPORTANT: Build this project in X" note into both phases.
+### Chat / Project Files (the single development surface)
+- **Chat (`/chat`) is the main way to develop**: brainstorm, refine a spec, then generate files into the user's one project repo via the consent card. The IDE (`/ide/*`) was removed — `StudioController`, `studio.php` routes, `studio.js`, and the studio views/partial are gone. Don't reintroduce them.
+- **Project language picker**: `specs.language` VARCHAR(50), `''` = Auto; values from `src/Data/LanguageOptions.php`; `SpecsController` clamps to 50 chars; `buildUserMsg()` in agent.js injects an "IMPORTANT: Build this project in X" note.
 
-#### File Manager (`/ide/files`)
-- **Recursive tree**: `src/lib/util.ts` renders nested (folders-first, natural sort) — built client-side in `studio.js` (`renderFileList`). Context menu (Open/Save/Rename/Duplicate/Delete) + keyboard nav (Enter, F2, Del, Ctrl+Enter, Ctrl+D, Shift+F10, arrows) are gated so Monaco keeps its own keys while focused.
+#### Project Files (chat right pane — File Manager)
+- **Recursive tree**: rendered client-side in `assistant.js` (folders-first, natural sort). Clicking a file opens it in the Monaco editor panel.
 - **Empty folders are folder-marker rows**: a file row whose `path` ends with `/` (e.g. `assets/`) with empty content. Created via `POST /api/folders`; prefix semantics move/delete them with the folder.
 - **Files API** (all under `/api/files`, **`auth` middleware — all roles**, each user gets ONE project repo):
   | Route | Action |
@@ -147,14 +146,11 @@ No package.json or composer.json — **zero dependencies**.
   |---|---|
   | `ashat.api` | BYO provider/key config (never sent to the server) |
   | `ashat.generated.<id>` | Agent-generated file content per build (server stores metadata only) |
-  | `ashat.fm.collapsed` | Collapsed folder paths — per-folder, survives re-renders + reloads |
-  | `ashat.fm.state` | Refresh-restore: open file + page/editor scroll positions |
-- **agent.js sync helpers**: `removeFilesByPrefix`, `renameFilesByPrefix`, `duplicateFileLocal` keep browser-side content aligned with server metadata rows. Save/rename/delete ordering is server-first so a failed call never wipes local content.
-- **Refresh restore**: `ashat.fm.state` reopens the persisted file (expanding collapsed ancestors), restores page scroll + Monaco scroll (`monacoPendingScrollTop` applies AFTER the content replay because `setValue` resets scroll). Saved on open/rename/delete, debounced on scroll, flushed on `pagehide`.
+- **agent.js localStorage helpers**: `saveGenerated`/`loadGenerated` and the prefix-sync helpers (`removeFilesByPrefix`, `renameFilesByPrefix`, `duplicateFileLocal`) still ship in `agent.js` and are covered by `tests/js/agent-extract.test.js`; the chat writes files server-first via `POST /api/files/` and doesn't call them.
 
-- **Chat page (`/chat`, `ChatPageController`)** — standalone Spec Chat. Left: conversation sidebar (localStorage `ashat.chats`); center: chat + input, and a **file editor panel** (`#chat-file-editor`) that replaces the chat when a project file is clicked (Monaco loaded lazily from the CDN — `__chatMonacoReady`/`__chatMonaco`; textarea fallback if the CDN never arrives; Save via `POST /api/files/`, ← Chat restores the conversation). Right pane: **Project Files** card (tree + Upload/Download/Select all/Delete + usage meter) + **Spec Versions** timeline + **Tips**. The chat File Manager renders rows with `textContent` (XSS-safe) and folder markers share the same prefix semantics as the IDE.
-- **Chat behaviors**: `init()` lands on the home/empty state (never auto-creates or auto-opens a conversation); Export downloads `ChatHistory-YYYY-MM-DD.md` (Markdown, `stripMarkers()`-cleaned, no JSON dump). Generated Spec + Project Context cards were removed — `setSpec()`/`sendToPlanner()`/Copy/Planner bindings are null-guarded. The right-pane **Tips** card and the empty-state paragraph teach the consent-first flow — the chat never writes code without the consent card, files land in Project Files, and clicking a file opens it in the editor.
-- **Code consent (chat AI never writes code)**: the SYSTEM_PROMPT in `assistant.js` enforces a CODE CONSENT POLICY — the chat AI does NOT emit code files or inline HTML/CSS/JS previews (the old `<!--PREVIEW-->` live-preview mechanism was removed). When a spec (`<!--SPEC-->`) is detected, `appendSpecConsentCard()` renders a consent card on the last assistant bubble asking whether to generate the files; only clicking **Yes — generate files** runs `generateFilesInChat()`, which drives the coding agent (`window.ASHAT.agent.runBuildStream`) and writes the resulting files straight into the user's project folder via `POST /api/files/` (auth-open — works for **Member, Pro, and Admin alike**; the IDE/Planner stays Pro/Admin-gated). A `gen-status-bubble` shows progress; nothing is ever stored without the consent-card click. "Not yet" just dismisses the card. No role gate on the chat: the only gated surface is `/ide/*`.
+- **Chat page (`/chat`, `ChatPageController`)** — standalone Spec Chat. Left: conversation sidebar (localStorage `ashat.chats`); center: chat + input, and a **file editor panel** (`#chat-file-editor`) that replaces the chat when a project file is clicked (Monaco loaded lazily from the CDN — `__chatMonacoReady`/`__chatMonaco`; textarea fallback if the CDN never arrives; Save via `POST /api/files/`, ← Chat restores the conversation). Right pane: **Project Files** card (tree + Upload/Download/Select all/Delete + usage meter) + **Spec Versions** timeline + **Tips**. The chat File Manager renders rows with `textContent` (XSS-safe) and folder markers share the same prefix semantics as files.
+- **Chat behaviors**: `init()` lands on the home/empty state (never auto-creates or auto-opens a conversation); Export downloads `ChatHistory-YYYY-MM-DD.md` (Markdown, `stripMarkers()`-cleaned, no JSON dump). Generated Spec + Project Context cards were removed — `setSpec()` now feeds the Spec Versions timeline + consent card. The right-pane **Tips** card and the empty-state paragraph teach the consent-first flow — the chat never writes code without the consent card, files land in Project Files, and clicking a file opens it in the editor.
+- **Code consent (chat AI never writes code)**: the SYSTEM_PROMPT in `assistant.js` enforces a CODE CONSENT POLICY — the chat AI does NOT emit code files or inline HTML/CSS/JS previews (the old `<!--PREVIEW-->` live-preview mechanism was removed). When a spec (`<!--SPEC-->`) is detected, `appendSpecConsentCard()` renders a consent card on the last assistant bubble asking whether to generate the files; only clicking **Yes — generate files** runs `generateFilesInChat()`, which drives the coding agent (`window.ASHAT.agent.runBuildStream`) and writes the resulting files straight into the user's Project Files via `POST /api/files/` (auth-open — works for **Member, Pro, and Admin alike**). A `gen-status-bubble` shows progress; nothing is ever stored without the consent-card click. "Not yet" just dismisses the card. Chat is the only dev surface — no role-gated IDE anymore.
 
 ### Maintenance Mode
 - Toggled via admin UI → writes `storage/maintenance.json`
@@ -162,7 +158,7 @@ No package.json or composer.json — **zero dependencies**.
 
 ## Gotchas
 
-- **Script order matters for `defer`** — `app.js` (defines `ashatFetch`/`ashatToast`) is loaded with `defer` in `layouts/header.php` `<head>` so it runs BEFORE any page-body deferred script (`studio.js`/`agent.js` in `pages/studio.php`). Deferred scripts execute in **document order** — a footer copy would run after the IDE scripts and crash their load-time calls (`ReferenceError: ashatToast is not defined`). Don't move `app.js` to the footer or add `defer` scripts before it. `chat.php` deliberately loads `app.js`→`agent.js`→`assistant.js` sequentially without `defer`; keep its explicit `app.js` tag.
+- **Script order matters for `defer`** — `app.js` (defines `ashatFetch`/`ashatToast`) is loaded with `defer` in `layouts/header.php` `<head>` so it runs BEFORE any page-body deferred script. Deferred scripts execute in **document order** — a footer copy would run after them and crash their load-time calls (`ReferenceError: ashatToast is not defined`). Don't move `app.js` to the footer or add `defer` scripts before it. `chat.php` deliberately loads `app.js`→`agent.js`→`assistant.js` sequentially without `defer`; keep its explicit `app.js` tag.
 - **PHP 8.1+ required** — uses `never` return type, `str_starts_with()`, `match`, named args
 - **File Manager folder markers**: an empty folder is a row whose path ends with `/`. Prefix semantics match it (`foo` ≡ `foo/`) for delete/rename — never render markers as files.
 - **Route order in `/api/files`**: `/export`, `/import`, `/rename`, `/duplicate`, `/tree` must precede `/{id}`, otherwise `tree` gets captured as an id.

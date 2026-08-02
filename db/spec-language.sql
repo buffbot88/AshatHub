@@ -3,7 +3,7 @@
 --
 -- The seed files (db/schema.sql, db/schema-tables-only.sql) already
 -- include `language VARCHAR(50) NOT NULL DEFAULT ''` — this file brings
--- EXISTING databases up to date so the Planner's language dropdown works.
+-- EXISTING databases up to date so the chat/agent language note works.
 --
 -- Run it like the other db scripts:
 --   mysql -u YOUR_USER -p YOUR_DB < db/spec-language.sql

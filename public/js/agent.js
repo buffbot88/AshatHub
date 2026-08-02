@@ -1,6 +1,6 @@
 /* ═══════════════════════════════════════════════════════════════════════
    ASHAT Hub — Coding Agent (browser-side, local-first)
-   Loaded via <script src="/js/agent.js" defer> right before studio.js.
+   Loaded via <script src="/js/agent.js"> before assistant.js on the chat page.
    Exposes window.ASHAT.agent = { runBuild, saveBuild, chat,
                                    getLocalConfig, saveGenerated,
                                    loadGenerated, listGenerated,
@@ -179,7 +179,7 @@
 
   // Returns a shaped config with validated endpoint + api_key (for
   // direct LLM calls). Returns null if endpoint or api_key is missing.
-  // Shared across agent.js and the spec-chat inline code in studio.php.
+  // Shared across agent.js and assistant.js (chat page).
   function getByoConfig() {
     const cfg = getLocalConfig();
     if (!cfg || !cfg.endpoint) return null;

@@ -45,8 +45,7 @@
     <div class="glass-card-solid p-5">
       <div class="label-gold mb-3">Quick links</div>
       <ul class="space-y-2 text-sm">
-        <li><a href="/ide/" class="link-accent">Open IDE →</a></li>
-        <li><a href="/ide/planner/" class="link-accent">Planner →</a></li>
+        <li><a href="/chat/" class="link-accent">Open Chat →</a></li>
         <?php if ($u['role'] === 'Admin'): ?>
           <li><a href="/account/active-users/" class="link-accent">Active users →</a></li>
         <?php endif; ?>

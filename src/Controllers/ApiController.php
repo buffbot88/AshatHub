@@ -103,7 +103,7 @@ final class ApiController
     }
 
     /**
-     * Serve a static asset through the API (GET /api/asset?path=js/studio/chat.js).
+     * Serve a static asset through the API (GET /api/asset?path=js/assistant.js).
      * Useful on hosts where mod_rewrite is unavailable and the
      * front-controller fallback doesn't apply; Pro/Admin only via route middleware.
      */

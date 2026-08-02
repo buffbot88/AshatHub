@@ -29,11 +29,11 @@
     </h1>
 
     <p class="mt-6 text-lg max-w-2xl mx-auto leading-relaxed" style="color: var(--text-soft);">
-      A free browser-based AI coding platform. Write a spec, approve the plan, and let AI build it.
+      A free browser-based AI coding platform. Chat with the AI, refine a spec, and let it build your project.
     </p>
 
     <div class="mt-9 flex justify-center gap-3 flex-wrap">
-      <a href="/ide/" class="btn-gold inline-flex items-center gap-2 px-5 py-3 text-sm">Launch ASHAT IDE</a>
+      <a href="/chat/" class="btn-gold inline-flex items-center gap-2 px-5 py-3 text-sm">Start Chatting</a>
       <a href="/docs/" class="btn-outline inline-flex items-center gap-2 px-5 py-3 text-sm">Read the docs</a>
     </div>
 
@@ -75,13 +75,12 @@
   <div class="flex items-baseline justify-between gap-4 mb-3">
     <h2 class="section-title">How it works</h2>
     <a href="/docs/" class="hidden sm:block text-xs font-mono" style="color: var(--accent);">Full details in the docs →</a>
-  </div>
-  <p class="mb-10 max-w-2xl" style="color: var(--text-mute);">Three steps from idea to working code.</p>
+  </div>      <p class="mb-10 max-w-2xl" style="color: var(--text-mute);">Three steps from idea to working code.</p>
   <div class="grid md:grid-cols-3 gap-4">
     <?php foreach ([
-      ['Write a spec',   'Describe your project in markdown.'],
-      ['Approve the plan','ASHAT proposes what it will build — you review it.'],
-      ['Get your code',  'Files are generated into the IDE, ready to run.'],
+      ['Describe your idea', 'Tell the Chat AI what you want to build.'],
+      ['Refine the spec',    'It asks questions and drafts a structured spec — you approve before any code.'],
+      ['Get your files',     'Generate into your Project Files, then open and edit them in Chat.'],
     ] as $i => $s): ?>
       <div class="p-5" style="background: var(--surface); border: 1px solid var(--line); border-radius: var(--gold-radius-lg);">
         <div class="text-sm font-mono mb-3" style="color: var(--accent);"><?= sprintf('%02d', $i + 1) ?></div>
@@ -97,9 +96,9 @@
   <div class="container mx-auto px-6 py-20">
     <div class="max-w-3xl mx-auto text-center p-10 md:p-14" style="border: 1px solid var(--line); border-radius: var(--gold-radius-xl); background: var(--surface);">
       <h2 class="section-title mb-3" style="font-size: clamp(26px, 4vw, 36px);">Ready to build with ASHAT?</h2>
-      <p class="mx-auto mb-8 max-w-md leading-relaxed" style="color: var(--text-mute);">Open the IDE, write a spec, and let ASHAT build it. Join our Discord for help, support, and community discussions.</p>
+      <p class="mx-auto mb-8 max-w-md leading-relaxed" style="color: var(--text-mute);">Open Chat, describe your project, and let ASHAT build it. Join our Discord for help, support, and community discussions.</p>
       <div class="flex justify-center gap-3 flex-wrap">
-        <a href="/ide/" class="btn-gold inline-flex items-center gap-2 px-5 py-3 text-sm">Launch ASHAT IDE</a>
+        <a href="/chat/" class="btn-gold inline-flex items-center gap-2 px-5 py-3 text-sm">Start Chatting</a>
         <a href="https://discord.gg/gJ8mreeAT4" target="_blank" rel="noopener" class="btn-outline inline-flex items-center gap-2 px-5 py-3 text-sm">Join our Community</a>
       </div>
     </div>

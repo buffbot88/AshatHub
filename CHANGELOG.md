@@ -9,6 +9,20 @@ The version displayed in the UI comes from `APP_VERSION` in `config/bootstrap.ph
 
 ## [v5.7] — 2026-08-02
 
+### Removed
+
+- **The IDE (`/ide/*`) is gone — Chat is the single development surface**
+  - Deleted: `StudioController`, `src/Core/routes/studio.php`, `public/js/studio.js`,
+    the `pages/studio*` views, and `partials/studio_nav.php`
+  - All `/ide` links removed/repointed: navbar, footer, home CTAs (now
+    "Start Chatting" → `/chat/`), account quick links, project page
+    ("Build in Chat →"), and error pages (403/404 primary actions → Chat)
+  - Seeded Docs rewritten Chat-first: *Getting Started*, *Core Concepts*
+    (Chat / Spec / Consent / Project Files / Export / BYO API), and
+    *Build Workflow* (Idea → Refined Spec → Consent → Generate → Edit)
+  - `/api/specs` + `/api/builds` endpoints stay dormant (kept for data
+    safety — `files.build_id` FK); the chat never calls them
+
 ### Docs
 
 - **Agent operating rules** — new repo-root `AGENTS.md` documents the binding

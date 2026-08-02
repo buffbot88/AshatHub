@@ -93,13 +93,13 @@ class MiddlewareTest extends TestCase
 
     public function test_auth_blocks_guest(): void
     {
-        $ctx = RequestContext::fake(['server' => ['REQUEST_URI' => '/ide/']]);
+        $ctx = RequestContext::fake(['server' => ['REQUEST_URI' => '/chat/']]);
         $result = $this->runMiddleware($this->authMiddleware(...), $ctx);
 
         $this->assertFalse($result['passed'], 'guest should not pass auth middleware');
         $this->assertTrue($result['ctx']->hasResponded());
         $this->assertSame('/login/', $result['ctx']->lastRedirectUrl);
-        $this->assertSame('/ide/', $result['ctx']->flash('redirect_after_login'));
+        $this->assertSame('/chat/', $result['ctx']->flash('redirect_after_login'));
     }
 
     public function test_auth_passes_authenticated_user(): void

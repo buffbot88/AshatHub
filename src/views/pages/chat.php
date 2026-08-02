@@ -15,7 +15,7 @@
           <div style="font-family: var(--font-heading); font-weight: 600; font-size: 12px; color: var(--gold);">Chats</div>
           <div class="text-[9px] font-mono" style="color: var(--gold-muted);">saved locally</div>
         </div>
-        <button id="btn-new-chat" class="btn-gold" style="font-size: 10px; padding: 5px 10px; letter-spacing: 0.5px;">+ New</button>
+        <button id="btn-new-chat" class="btn-gold" style="font-size: 10px; padding: 5px 10px; letter-spacing: 0.5px;">New Chat</button>
       </div>
       <div id="conversation-list" class="chat-sidebar-list">
         <!-- Populated by assistant.js -->
@@ -43,7 +43,7 @@
         <div id="chat-empty-state" class="chat-empty-state">
           <div class="empty-icon" style="color: var(--text-mute);"><svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 11.5a8.5 8.5 0 0 1-12.6 7.4L3 21l2.1-5.4A8.5 8.5 0 1 1 21 11.5z"/></svg></div>
           <h3>Start a conversation</h3>
-          <p>Click "New Chat" to begin brainstorming your project. I'll help you refine ideas into a solid spec — and I never write code without asking you first. When your spec is ready, you'll get a consent card; only clicking "Yes — generate files" writes into your Project Files, where you can view or edit them anytime.</p>
+          <p>Click "New Chat" to start building — this chat is your workspace. I'll help you turn your idea into a solid spec, and I never write code without asking first. When your spec is ready, you'll get a consent card; clicking "Yes — generate files" writes into your Project Files, where you can open or edit them anytime.</p>
         </div>
       </div>
 
@@ -109,11 +109,11 @@
       <div style="background: rgba(255,215,0,0.04); border: 1px solid var(--gold-line); border-radius: var(--gold-radius-xl); padding: 16px;">
         <div class="label-gold mb-3">Tips</div>
         <ul class="text-[11px]" style="color: var(--gold-muted); line-height: 1.8;">
-          <li>• Describe your idea in detail — I'll help refine it into a spec</li>
+          <li>• Describe your idea — I'll help you refine it into a spec</li>
           <li>• I never write code on my own — you'll get a consent card first</li>
-          <li>• Click "Yes — generate files" to write them into your project</li>
-          <li>• Open files from Project Files to view or edit them here</li>
-          <li>• Export saves the conversation as Markdown anytime</li>
+          <li>• Click "Yes — generate files" to write into your Project Files</li>
+          <li>• Click any file in Project Files to open it in the editor</li>
+          <li>• Export saves your conversation as Markdown anytime</li>
         </ul>
       </div>
     </div>

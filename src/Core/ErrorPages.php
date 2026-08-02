@@ -42,10 +42,10 @@ final class ErrorPages
             ],
             403 => [
                 'title'       => 'You don’t have access',
-                'description' => 'ASHAT IDE requires a Pro or Admin account. Guest accounts can browse the Hub but can’t open the IDE.',
+                'description' => 'This area is for members only. Sign in to your account to keep using Chat.',
                 'tone'        => 'err',
                 'actions'     => [
-                    ['label' => 'Request Pro access', 'href' => 'https://discord.gg/gJ8mreeAT4', 'kind' => 'primary'],
+                    ['label' => 'Open Chat',         'href' => '/chat/',     'kind' => 'primary'],
                     ['label' => 'Open account',       'href' => '/account/'],
                     ['label' => '← Back to home',     'href' => '/'],
                 ],
@@ -55,7 +55,7 @@ final class ErrorPages
                 'description' => 'We couldn’t find that URL. The page may have moved, been renamed, or never existed in the first place.',
                 'tone'        => 'accent',
                 'actions'     => [
-                    ['label' => 'Open IDE',    'href' => '/ide/',     'kind' => 'primary'],
+                    ['label' => 'Open Chat',       'href' => '/chat/',    'kind' => 'primary'],
                     ['label' => 'Browse docs',    'href' => '/docs/'],
                     ['label' => '← Back to home', 'href' => '/'],
                 ],

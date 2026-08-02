@@ -67,7 +67,7 @@ $router->group('/api', function () use ($router) {
 
         // ─── Static asset proxy ─────────────────────────────────
         // Serves files from the public/ directory through the API.
-        // Usage: GET /api/asset?path=js/studio/chat.js
+        // Usage: GET /api/asset?path=js/assistant.js
         // Useful when mod_rewrite / .htaccess is unavailable.
         $router->get('/asset', [\Controllers\ApiController::class, 'serveAsset']);
 

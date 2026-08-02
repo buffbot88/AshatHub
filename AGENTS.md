@@ -56,8 +56,8 @@ then is validated and reviewed.
 - **Stack**: PHP 8.1+ (no Composer, zero dependencies), MySQL/MariaDB via PDO,
   server-rendered vanilla PHP, Tailwind CDN, vanilla JS. No build step.
 - **Deep knowledge**: `knowledge.md` holds architecture, conventions, commands,
-  gotchas, and the Files API / Chat / Studio details. Consult it before editing.
-- **Routes**: `src/Core/routes/{web,auth,studio,api,admin}.php`; controllers get
+  gotchas, and the Files API / Chat / Project Files details. Consult it before editing.
+- **Routes**: `src/Core/routes/{web,auth,api,admin}.php`; controllers get
   `RequestContext $ctx`; views in `src/views/pages/`; repositories via
   `RepositoryRegistry` (Pdo* = prod, InMemory* = tests).
 - **Commands**: dev server `php -S localhost:8000 router.php`; tests
@@ -70,4 +70,5 @@ then is validated and reviewed.
 - Docstrings stay ≤ 2 sentences (Vow 8) — move detail into `knowledge.md`, not the
   docblock.
 - `e()` escapes output; all SQL is prepared statements; CSRF on every non-GET.
-- Chat is open to all roles; only `/ide/*` is Pro/Admin-gated.
+- **Chat (`/chat`) is the single development surface** — open to all roles
+  (Member/Pro/Admin). The IDE (`/ide/*`) was removed; don't reintroduce it.

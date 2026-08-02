@@ -223,46 +223,43 @@ INSERT IGNORE INTO `docs_articles` (`slug`, `category`, `title`, `summary`, `con
 ASHAT Hub is a browser-based AI coding platform. To get going:
 
 1. Register an account
-2. Open the Studio (`/ide`)
-3. Sign in to your Pro or Admin role
-4. Write a Spec (Markdown)
-5. Approve the generated plan
-6. Watch ASHAT build the code
+2. Open **Chat** (`/chat`)
+3. Describe your project idea in a sentence or two
+4. Brainstorm with the AI — answer its questions and refine your spec
+5. When the spec is ready, click **Yes — generate files** on the consent card
+6. Open the generated files in **Project Files** to view or edit them
 
 That''s it. You don''t need to install anything.
 ', 1),
 ('concepts','concepts','Core Concepts',
- 'The big ideas behind ASHAT: Specs, Plans, Builds, Modules, BrainStem, S.V.E., and Safety Gates.',
+ 'The big ideas behind ASHAT: Chat, Specs, Consent, and Project Files.',
  '# Core Concepts
 
-ASHAT is built from a small number of moving parts:
+ASHAT is built around a single surface — **Chat** (`/chat`):
 
-- **Spec** — what you want built, written in Markdown.
-- **Plan** — a structured breakdown that ASHAT generates from your Spec.
-- **Build** — the autonomous execution of a Plan.
-- **BrainStem** — unified inference (routing + classification + chat + small codegen).
-- **MainBrain** — custom API for deep reasoning (BYO OpenAI / Anthropic / Gemini / DeepSeek).
-- **S.V.E.** — System Validation Engine for debugging, validation, and repair.
-- **Module** — plug-and-play component (Discord, IDE, Assistant, Website).
-- **Safety Gates** — 14 gates that bound every build phase.
+- **Chat** — where you brainstorm, plan, and write your spec with the AI.
+- **Spec** — what you want built, written in Markdown. The AI drafts it with you, section by section.
+- **Consent card** — the AI never writes code on its own. When your spec is ready, you choose to generate the files.
+- **Project Files** — your personal project folder (150 MB per account). Generated files land here; click any file to open it in the editor.
+- **Export** — download any conversation as a Markdown file.
+- **BYO API** — bring your own OpenAI-compatible endpoint and key; keys stay in your browser.
 
-Read on in `/docs/build-workflow/` to see how they fit together.
+Read on in `/docs/build-workflow/` to see how it all fits together.
 ', 2),
 ('build-workflow','workflow','Build Workflow',
- 'Spec → Approved Build Plan → Build → Validate → Repair → Review.',
+ 'Idea → Refined Spec → Consent → Generate Files → Edit & Iterate.',
  '# Build Workflow
 
 The lifecycle of an ASHAT build:
 
-1. **Write a Spec** (Markdown, in `/ide/planner`).
-2. **Generate Plan** — ASHAT reads your spec and produces a phase tree.
-3. **Approve Plan** — review the plan, approve when you''re happy.
-4. **Build Automatically** — phases execute one at a time.
-5. **Validate & Repair** — S.V.E. catches errors and auto-fixes them.
-6. **Review Results** — open generated files in the editor.
-7. **Iterate** — update your spec and rebuild.
+1. **Open Chat** (`/chat`) and describe your idea.
+2. **Refine the Spec** — the AI asks clarifying questions and drafts a structured Markdown spec.
+3. **Review the Spec** — it appears in the conversation with a consent card.
+4. **Generate Files** — click **Yes — generate files**; the coding agent writes them into your Project Files.
+5. **Edit & Review** — open any generated file in the editor, make changes, and save.
+6. **Iterate** — refine your spec in Chat and generate again.
 
-Each step is gated by BrainStem safety checks so a build can''t escape scope.
+Nothing is written to your project until you explicitly agree.
 ', 3),
 ('writing-specs','workflow','Writing Good Specs',
  'How to write specs that ASHAT actually understands — and why detail directly determines output quality.',

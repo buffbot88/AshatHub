@@ -109,6 +109,11 @@ The version displayed in the UI comes from `APP_VERSION` in `config/bootstrap.ph
 
 ### Fixed
 
+- **Chat funnel: one posture per message** — the SYSTEM_PROMPT now enforces
+  MODE A (gather/refine) vs MODE B (deliver the complete spec) and forbids
+  mixing them, so Ashat stops drafting the spec and asking "want to refine?"
+  in the same reply; the spec is only emitted once every section has
+  concrete detail
 - **Active Users opened to ALL members** — `/account/active-users/` was
   Pro/Admin-only (`requireRole('Admin','Pro')`, navbar + account quick links
   gated). The page, navbar link, and account quick link now render for every

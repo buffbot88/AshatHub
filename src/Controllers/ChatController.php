@@ -26,6 +26,22 @@ final class ChatController
     /** Compatibility fallback for providers with smaller output limits. */
     private const SAFE_MAX_TOKENS = 8192;
 
+    // ── Backend resolution (status pill) ───────────────────────────
+
+    /**
+     * Report which backend would serve chat (BrainStem wins over BYO).
+     * BYO config lives in browser localStorage, so only the server-side
+     * BrainStem half is resolved here; the client merges its own model.
+     */
+    public function resolve(RequestContext $ctx): void
+    {
+        $backend = ChatBackend::select(RepositoryRegistry::brainstemConfig()->active(), null);
+        $ctx->jsonResponse([
+            'backend' => $backend->backendName(),
+            'model'   => $backend->modelLabel(),
+        ]);
+    }
+
     // ── Chat (non-streaming) ─────────────────────────────────────────
 
     public function chat(RequestContext $ctx): void
@@ -71,6 +87,7 @@ final class ChatController
 
         $content = $result['choices'][0]['message']['content'] ?? '';
         $ctx->jsonResponse([
+            'model' => $backend->modelLabel(),
             'choices' => [
                 ['message' => ['role' => 'assistant', 'content' => $content]],
             ],
@@ -96,6 +113,13 @@ final class ChatController
             SseStreamer::send('error', ['message' => 'No AI backend configured. Ask an admin to configure BrainStem, or add a BYO API key in Account → API Settings.']);
             return;
         }
+
+        // Announce which backend + model actually resolved (BrainStem
+        // wins over BYO) so the browser's status pill reflects reality.
+        SseStreamer::send('meta', [
+            'model'   => $backend->modelLabel(),
+            'backend' => $backend->backendName(),
+        ]);
 
         // If the backend doesn't support SSE streaming (e.g. BrainStem Neural Host),
         // do a non-streaming request and send the result as a single 'done' event.
@@ -129,8 +153,11 @@ final class ChatController
 
             $content = $result['choices'][0]['message']['content'] ?? '';
             if ($content !== '') {
-                SseStreamer::send('done', ['full_content' => $content]);
+                // Emit the reply as an OpenAI-compatible delta so the
+                // shared browser transport parses it like any stream.
+                SseStreamer::send('delta', ['choices' => [['delta' => ['content' => $content]]]]);
             }
+            SseStreamer::send('done', ['full_content' => $content]);
             return;
         }
 

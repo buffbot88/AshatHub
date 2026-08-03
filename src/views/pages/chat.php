@@ -69,7 +69,7 @@
           </button>
         </form>
         <div class="chat-meta-bar">
-          <span class="text-[11px] font-mono" style="color: var(--text-dim);">AI Chat · OpenAI compatible</span>
+          <span id="chat-backend-status" class="text-[11px] font-mono" style="color: var(--text-dim);">Model: LFM2.5 1.2B Instruct · checking…</span>
           <span id="chat-token-count" class="text-[11px] font-mono" style="color: var(--text-dim); opacity: 0.85;"></span>
         </div>
       </div>

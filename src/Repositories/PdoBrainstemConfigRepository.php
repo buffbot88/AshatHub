@@ -25,7 +25,7 @@ final class PdoBrainstemConfigRepository implements BrainstemConfigRepository
     {
         try {
             return $this->db->fetchOne(
-                "SELECT id, url, api_key, api_key_masked, updated_at, updated_by
+                "SELECT id, url, api_key, api_key_masked, model, updated_at, updated_by
                  FROM brainstem_config WHERE id = 1"
             );
         } catch (\Throwable $e) {
@@ -34,20 +34,20 @@ final class PdoBrainstemConfigRepository implements BrainstemConfigRepository
         }
     }
 
-    public function upsert(string $url, string $apiKey, string $updatedBy): bool
+    public function upsert(string $url, string $apiKey, string $updatedBy, string $model = ''): bool
     {
         try {
             $masked = self::mask($apiKey);
             $existing = $this->db->fetchOne("SELECT id FROM brainstem_config WHERE id = 1");
             if ($existing) {
                 $this->db->execute(
-                    "UPDATE brainstem_config SET url = ?, api_key = ?, api_key_masked = ?, updated_at = NOW(), updated_by = ? WHERE id = 1",
-                    [$url, $apiKey, $masked, $updatedBy]
+                    "UPDATE brainstem_config SET url = ?, api_key = ?, api_key_masked = ?, model = ?, updated_at = NOW(), updated_by = ? WHERE id = 1",
+                    [$url, $apiKey, $masked, $model, $updatedBy]
                 );
             } else {
                 $this->db->execute(
-                    "INSERT INTO brainstem_config (id, url, api_key, api_key_masked, updated_by) VALUES (1, ?, ?, ?, ?)",
-                    [$url, $apiKey, $masked, $updatedBy]
+                    "INSERT INTO brainstem_config (id, url, api_key, api_key_masked, model, updated_by) VALUES (1, ?, ?, ?, ?, ?)",
+                    [$url, $apiKey, $masked, $model, $updatedBy]
                 );
             }
             return true;
@@ -63,6 +63,7 @@ final class PdoBrainstemConfigRepository implements BrainstemConfigRepository
         return [
             'url'     => ($row['url'] ?? '') !== '' ? $row['url'] : $this->config->brainstemUrl(),
             'api_key' => ($row['api_key'] ?? '') !== '' ? $row['api_key'] : $this->config->brainstemKey(),
+            'model'   => (string) ($row['model'] ?? ''),
         ];
     }
 

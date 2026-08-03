@@ -39,6 +39,7 @@ $router->group('/api', function () use ($router) {
     $router->group('', ['middleware' => ['auth']], function () use ($router) {
         $router->post('/chat',        [\Controllers\ChatController::class,   'chat']);
         $router->post('/chat/stream', [\Controllers\ChatController::class,   'chatStream']);
+        $router->get('/chat/resolve', [\Controllers\ChatController::class,   'resolve']);
         $router->get('/context',      [\Controllers\ApiController::class,    'context']);
 
         // ─── Files (per-user project repo — all authenticated roles) ──

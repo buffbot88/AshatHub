@@ -476,14 +476,53 @@
         '\n\nGenerate all necessary files with complete, working code.' + langNote;
   }
 
-  // ── Streaming chat (SSE from OpenAI-compatible endpoints) ────────
-  async function chatStream(messages, opts) {
-    opts = opts || {};
-    const cfg = getLocalConfig();
-    if (!cfg) throw new Error('No API config — go to /account/ and save your provider + key first.');
-    if (!cfg.api_key) throw new Error('API config missing api_key.');
-    if (!cfg.endpoint) throw new Error('API config has no endpoint URL.');
+  // ══════════════════════════════════════════════════════════════════
+  //  CORE STREAMING TRANSPORT (provider-agnostic)
+  //  Fetches any OpenAI/Anthropic/Gemini-compatible endpoint and
+  //  normalizes the reply to plain text. Takes endpoint, headers, and
+  //  payload directly — no knowledge of BYO config or localStorage, so
+  //  a future default stream can reuse it without the BYO layer.
+  // ══════════════════════════════════════════════════════════════════
 
+  // Extract text from one SSE event across OpenAI, Anthropic, and Gemini
+  // shapes: choices[0].delta.content, content_block_delta delta.text,
+  // and candidates[0].content.parts[].text. Returns '' when no content.
+  function sseDeltaContent(parsed, fullText) {
+    if (!parsed || typeof parsed !== 'object') return '';
+    const choice = parsed.choices && parsed.choices[0];
+    if (choice) {
+      if (choice.delta && typeof choice.delta.content === 'string' && choice.delta.content) {
+        return choice.delta.content;
+      }
+      // Whole-reply SSE event (endpoint ignoring stream:true): only use
+      // message.content while nothing has streamed yet, so an endpoint
+      // sending BOTH can't double-count the full reply.
+      if (!fullText && choice.message && typeof choice.message.content === 'string' && choice.message.content) {
+        return choice.message.content;
+      }
+    }
+    // Anthropic: {type:'content_block_delta', delta:{type:'text_delta', text:'…'}}
+    if (parsed.type === 'content_block_delta' && parsed.delta && typeof parsed.delta.text === 'string') {
+      return parsed.delta.text;
+    }
+    // Gemini: {candidates:[{content:{parts:[{text:'…'}]}}]}
+    if (Array.isArray(parsed.candidates)) {
+      const parts = parsed.candidates[0] && parsed.candidates[0].content && parsed.candidates[0].content.parts;
+      if (Array.isArray(parts)) {
+        const text = parts.map((p) => (p && typeof p.text === 'string' ? p.text : '')).join('');
+        if (text) return text;
+      }
+    }
+    return '';
+  }
+
+  /**
+   * Stream (or single-fetch) an OpenAI-compatible completion to plain
+   * text, retrying transient failures and rejecting-stream 4xx once.
+   * payload.stream defaults to true; the retry flips it to false.
+   */
+  async function streamCompletion(endpoint, headers, payload, opts) {
+    opts = opts || {};
     if (opts.onProgress) opts.onProgress('Connecting to AI…');
 
     const controller = (typeof AbortController !== 'undefined') ? new AbortController() : null;
@@ -493,20 +532,11 @@
     }, REQUEST_TIMEOUT) : null;
 
     try {
-      const r = await fetchWithRetry(cfg.endpoint, {
+      const r = await fetchWithRetry(endpoint, {
         method:  'POST',
         signal:  controller ? controller.signal : undefined,
-        headers: {
-          'Content-Type':  'application/json',
-          'Authorization': 'Bearer ' + cfg.api_key,
-        },
-        body: JSON.stringify({
-          model:       cfg.model || 'gpt-4o-mini',
-          messages:    messages,
-          max_tokens:  opts.max_tokens  || DEFAULT_MAX_TOKENS,
-          temperature: opts.temperature || 0.82,
-          stream:      true,
-        }),
+        headers: headers,
+        body: JSON.stringify(payload),
       }, {
         onRetry: function (status, attempt) {
           if (opts.onProgress) {
@@ -527,9 +557,22 @@
           throw new Error('The AI model is still loading. Give it a moment and try again.');
         // Token-cap fallback: some providers reject a max_tokens above
         // their ceiling with a 400/413. Retry once at the safe default.
-        if ((r.status === 400 || r.status === 413) && (opts.max_tokens || 0) > SAFE_MAX_TOKENS && !opts._tokenRetried) {
+        if ((r.status === 400 || r.status === 413) && (payload.max_tokens || 0) > SAFE_MAX_TOKENS && !opts._tokenRetried) {
           if (opts.onProgress) opts.onProgress('Token cap hit — retrying with a compatible limit…');
-          return chatStream(messages, Object.assign({}, opts, { max_tokens: SAFE_MAX_TOKENS, _tokenRetried: true }));
+          return streamCompletion(endpoint, headers,
+            Object.assign({}, payload, { max_tokens: SAFE_MAX_TOKENS }),
+            Object.assign({}, opts, { _tokenRetried: true }));
+        }
+        // Streaming-rejection fallback: some endpoints 4xx the stream
+        // flag itself (not the token cap). Retry once non-streaming so
+        // the raw-body JSON fallback below can parse the single reply.
+        const retriable4xx = r.status >= 400 && r.status < 500
+          && r.status !== 401 && r.status !== 403 && r.status !== 419 && r.status !== 429;
+        if (payload.stream !== false && retriable4xx && !opts._nonStreamRetried) {
+          if (opts.onProgress) opts.onProgress('Streaming not supported — retrying without streaming…');
+          return streamCompletion(endpoint, headers,
+            Object.assign({}, payload, { stream: false }),
+            Object.assign({}, opts, { _nonStreamRetried: true }));
         }
         throw new Error('AI provider error ' + r.status + ': ' + errBody);
       }
@@ -541,6 +584,9 @@
       let fullText = '';
       let buffer = '';
       let rawBody = '';
+      // Hoisted above the chunk loop so an event: line split across
+      // two reads keeps its type when the matching data: line arrives.
+      let eventType = 'message';
 
       if (opts.onProgress) opts.onProgress('Generating…');
 
@@ -559,19 +605,29 @@
 
         for (const line of lines) {
           const trimmed = line.trim();
-          if (!trimmed || !trimmed.startsWith('data: ')) continue;
+          if (!trimmed) {
+            eventType = 'message'; // blank line ends the SSE event block
+            continue;
+          }
+          if (trimmed.startsWith('event: ')) {
+            eventType = trimmed.slice(7).trim();
+            continue;
+          }
+          if (!trimmed.startsWith('data: ')) continue;
           const data = trimmed.slice(6).trim();
           if (data === '[DONE]') continue;
           try {
             const parsed = JSON.parse(data);
-            const choice = parsed.choices?.[0];
-            // delta.content is the normal streaming path; message.content
-            // covers endpoints that ignore "stream":true and emit the
-            // whole reply as one SSE event. Only fall back to message
-            // while nothing has streamed yet, so an endpoint sending
-            // BOTH can't double-count the full reply.
-            const content = (choice && choice.delta && choice.delta.content) ||
-                            (!fullText && choice && choice.message && choice.message.content) || '';
+            // Surface every event (meta, error, reasoning…) to callers
+            // without the transport knowing what each one means.
+            if (opts.onEvent) opts.onEvent(parsed, eventType);
+            // Thinking-model deltas carry reasoning_content/reasoning
+            // instead of content — fire onReasoning so builds can show
+            // a planning stage without polluting the content stream.
+            const delta = parsed.choices && parsed.choices[0] && parsed.choices[0].delta;
+            const reasoning = delta && (delta.reasoning_content || delta.reasoning);
+            if (reasoning && opts.onReasoning) opts.onReasoning(reasoning);
+            const content = sseDeltaContent(parsed, fullText);
             if (content) {
               fullText += content;
               if (opts.onToken) opts.onToken(content);
@@ -590,10 +646,10 @@
 
       if (opts.onProgress) opts.onProgress('Parsing response…');
 
-      // Non-SSE fallback: some OpenAI-compatible endpoints ignore the
-      // "stream": true flag and return a single JSON body instead of
-      // SSE lines. The SSE loop above would have skipped it entirely,
-      // leaving fullText empty — so recover it from the raw body.
+      // Non-SSE fallback: some endpoints ignore the "stream": true flag
+      // and return a single JSON body instead of SSE lines. The SSE loop
+      // above would have skipped it entirely, leaving fullText empty —
+      // so recover it from the raw body.
       if (!fullText && rawBody.trim()) {
         try {
           const single = JSON.parse(rawBody.trim());
@@ -605,6 +661,34 @@
     } finally {
       if (timer) clearTimeout(timer);
     }
+  }
+
+  // ══════════════════════════════════════════════════════════════════
+  //  BYO LAYER (browser-direct, removable)
+  //  Reads the user's key from localStorage and delegates to the core
+  //  transport above. If BYOK support is dropped, delete this section
+  //  plus getLocalConfig/getByoConfig — the core stays for the default.
+  // ══════════════════════════════════════════════════════════════════
+
+  async function chatStream(messages, opts) {
+    opts = opts || {};
+    const cfg = getLocalConfig();
+    if (!cfg) throw new Error('No API config — go to /account/ and save your provider + key first.');
+    if (!cfg.api_key) throw new Error('API config missing api_key.');
+    if (!cfg.endpoint) throw new Error('API config has no endpoint URL.');
+
+    const payload = {
+      model:       cfg.model || 'gpt-4o-mini',
+      messages:    messages,
+      max_tokens:  opts.max_tokens  || DEFAULT_MAX_TOKENS,
+      temperature: opts.temperature || 0.82,
+      stream:      opts.stream !== false,
+    };
+    const headers = {
+      'Content-Type':  'application/json',
+      'Authorization': 'Bearer ' + cfg.api_key,
+    };
+    return streamCompletion(cfg.endpoint, headers, payload, opts);
   }
 
   // ── Streaming build: spec → LLM (streaming) → validated result ──
@@ -630,7 +714,7 @@
     getLocalConfig,
     getByoConfig,
     // LLM driver
-    chatStream, runBuildStream,
+    chatStream, runBuildStream, streamCompletion,
   };
 
 })();

@@ -33,7 +33,7 @@ No build step. No bundler. Drop the folder on a PHP-capable host and run.
 ├── src/
 │   ├── Core/              ← Router, Database, Auth, View, Session, ZipHelper (+ routes/*.php)
 │   ├── Models/            ← ChatBackend
-│   ├── Controllers/       ← 12 controllers (Home, Auth, Community, Docs, Account, Admin, Api, Chat, ChatPage, Files, Support, Error)
+│   ├── Controllers/       ← 13 controllers (Home, Auth, Community, Docs, Account, Admin, Api, Chat, ChatPage, Files, Support, Error, OAuth)
 │   ├── Repositories/      ← PDO + InMemory data access (User, Session, File, …)
 │   ├── Data/              ← CategoryLabels
 │   └── views/             ← Layouts (header.php, footer.php) + page views

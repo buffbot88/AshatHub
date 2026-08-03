@@ -37,6 +37,7 @@
   var convList     = document.getElementById('conversation-list');
   var tokenCount   = document.getElementById('chat-token-count');
   var headerInfo   = document.getElementById('chat-header-info');
+  var backendStatusEl = document.getElementById('chat-backend-status');
 
   // ── Constants ────────────────────────────────────────────────────
   var STORAGE_KEY    = 'ashat.chats';
@@ -200,6 +201,55 @@
   function getByoConfig() {
     return window.ASHAT && window.ASHAT.agent && window.ASHAT.agent.getByoConfig
       ? window.ASHAT.agent.getByoConfig() : null;
+  }
+
+  // ── Backend model + status (chat meta bar) ─────────────────────
+  var DEFAULT_MODEL_LABEL = 'LFM2.5 1.2B Instruct';
+  /** Model the server reports as actually serving (BrainStem > BYO). */
+  var resolvedModel = null;
+
+  /** The model actually in use: the server-resolved one, else BYO/default. */
+  function backendModelLabel() {
+    if (resolvedModel) return resolvedModel;
+    var cfg = window.ASHAT && window.ASHAT.agent && window.ASHAT.agent.getLocalConfig
+      ? window.ASHAT.agent.getLocalConfig() : null;
+    if (cfg && typeof cfg.model === 'string' && cfg.model.trim()) return cfg.model.trim();
+    return DEFAULT_MODEL_LABEL;
+  }
+
+  /** Update the meta-bar model/status readout. */
+  function setBackendStatus(state) {
+    if (!backendStatusEl) return;
+    var color = 'var(--text-dim)';
+    if (state === 'online') color = 'var(--gold-ok)';
+    else if (state === 'offline' || state === 'error') color = 'var(--gold-err)';
+    else if (state === 'checking') color = 'var(--gold-warn)';
+    backendStatusEl.textContent = 'Model: ' + backendModelLabel() + ' · ' + state;
+    backendStatusEl.style.color = color;
+  }
+
+  /**
+   * Probe the server for the resolved backend so the pill is correct
+   * on page load, before any message is sent. BYO stays client-side;
+   * the server only reports its BrainStem half, which wins when set.
+   */
+  function fetchResolvedBackend() {
+    if (typeof ashatFetch !== 'function') return;
+    ashatFetch('/api/chat/resolve/')
+      .then(function (data) {
+        if (!data || typeof data !== 'object') return;
+        if (data.backend === 'brainstem' && typeof data.model === 'string' && data.model) {
+          resolvedModel = data.model;
+          setBackendStatus('online');
+          return;
+        }
+        // No server-side backend: BYO (if any) can't be verified until
+        // the first message, so only flag offline when nothing is set.
+        if (data.backend === 'none' && !getByoConfig()) {
+          setBackendStatus('offline');
+        }
+      })
+      .catch(function () { /* leave 'checking' — the first message confirms */ });
   }
 
   // ══════════════════════════════════════════════════════════════════
@@ -1722,7 +1772,18 @@
       var title = 'Chat Spec';
       var titleMatch = spec.match(/^#\s+Project:\s+(.+)$/m);
       if (titleMatch) title = titleMatch[1].trim();
-      var result = await agent.runBuildStream({ title: title, content: spec }, { mode: 'build' });
+      var result = await agent.runBuildStream({ title: title, content: spec }, {
+        mode: 'build',
+        // Thinking models stream reasoning before content — surface it
+        // as a "thinking…" stage, then restore the label once the agent
+        // starts emitting the actual build.
+        onReasoning: function () {
+          if (status && status.textContent !== 'Thinking…') status.textContent = 'Thinking…';
+        },
+        onToken: function () {
+          if (status && status.textContent === 'Thinking…') status.textContent = 'Generating project files…';
+        },
+      });
       var files = (result && result.files) || [];
       if (!files.length) throw new Error('The agent returned no files. Try again or simplify the spec.');
 
@@ -1939,13 +2000,15 @@
    * Returns the full assistant content on success, or null if streaming failed.
    */
   async function tryStream(body, headers) {
-    if (typeof ReadableStream === 'undefined' || typeof TextDecoder === 'undefined') {
+    var agent = window.ASHAT && window.ASHAT.agent;
+    if (!agent || typeof agent.streamCompletion !== 'function') {
       return null;
     }
 
     var bubble = createAssistantBubble();
     var fullContent = '';
     var liveFilesState = { signature: '', streaming: false };
+    var streamError = null;
 
     // Wire toggle on thinking header
     bubble.thinkingHeader.addEventListener('click', function () {
@@ -1953,135 +2016,83 @@
     });
 
     try {
-      var response = await fetch('/api/chat/stream/', {
-        method: 'POST',
-        headers: headers,
-        body: JSON.stringify(body),
-      });
+      // Chat text flows through the same provider-agnostic transport as
+      // the BYO build path — one parser for both. The server announces
+      // the resolved backend via a 'meta' event before streaming.
+      var text = await agent.streamCompletion('/api/chat/stream/', headers, body, {
+        onToken: function (delta) {
+          fullContent += delta;
+          // Capture complete fenced blocks as soon as their closing
+          // fence arrives. Partial blocks remain invisible, while one
+          // consent card grows as additional files are completed.
+          // A closing fence can be split across SSE chunks (for
+          // example, '`', then '``'), so trigger on any backtick and
+          // let the complete-block parser decide whether the card
+          // actually changed.
+          if (delta.indexOf('`') !== -1) {
+            refreshLiveFilesCard(fullContent, bubble, liveFilesState, true);
+          }
+          // Show raw tokens in the thinking content area
+          bubble.thinkingContent.textContent = fullContent;
+          // Ensure cursor is at the end
+          if (bubble.streamingCursor && bubble.streamingCursor.parentNode) {
+            bubble.streamingCursor.parentNode.appendChild(bubble.streamingCursor);
+          }
+          messagesEl.scrollTop = messagesEl.scrollHeight;
+        },
+        onEvent: function (parsed, eventType) {
+          if (!parsed || typeof parsed !== 'object') return;
 
-      if (!response.ok || !response.body) {
-        removeAssistantBubble(bubble);
-        return null;
-      }
-
-      var reader = response.body.getReader();
-      var decoder = new TextDecoder();
-      var buffer = '';
-
-      while (true) {
-        var result = await reader.read();
-        if (result.done) break;
-
-        buffer += decoder.decode(result.value, { stream: true });
-        var parts = buffer.split('\n\n');
-        buffer = parts.pop();
-
-        for (var p = 0; p < parts.length; p++) {
-          var eventText = parts[p];
-          if (!eventText.trim()) continue;
-
-          var lines = eventText.split('\n');
-          var eventType = 'message';
-          var eventData = '';
-
-          for (var l = 0; l < lines.length; l++) {
-            var line = lines[l];
-            if (line.startsWith('event: ')) {
-              eventType = line.slice(7).trim();
-            } else if (line.startsWith('data: ')) {
-              eventData = line.slice(6).trim();
-            }
+          // Server resolved the backend (BrainStem > BYO) — reflect the
+          // actual serving model in the meta-bar pill.
+          if (eventType === 'meta') {
+            if (parsed.model) resolvedModel = parsed.model;
+            setBackendStatus('online');
+            return;
           }
 
           if (eventType === 'error') {
-            try {
-              var errObj = JSON.parse(eventData);
-              var errMsg = errObj.message || 'Unknown error';
-              var diag = '';
-              if (errMsg.indexOf('no_backend') !== -1 || errMsg.indexOf('No AI backend') !== -1) {
-                diag = '\n\n📋 **How to fix:** Ask an admin to configure the BrainStem host, or add your own API key in Account → API Settings.';
-              }
-              bubble.thinkingContent.textContent = '⚠ Error: ' + errMsg;
-              return '⚠️ **Error:** ' + errMsg + diag;
-            } catch (_) {
-              bubble.thinkingContent.textContent = '⚠ Error from AI backend. Check the server-side BrainStem config (admin settings).';
-              return '⚠️ **Error from AI backend.**';
+            setBackendStatus('error');
+            streamError = parsed.message || 'Unknown error';
+            return;
+          }
+
+          // Thinking-model deltas (o-series / R1 style) — flip the label
+          // to "Thinking..." and show reasoning as it streams.
+          var delta = parsed.choices && parsed.choices[0] && parsed.choices[0].delta;
+          if (delta && (delta.reasoning_content || delta.reasoning)) {
+            if (bubble.thinkingLabel) bubble.thinkingLabel.textContent = 'Thinking...';
+            var reasoning = delta.reasoning_content || delta.reasoning || '';
+            if (reasoning) bubble.thinkingContent.textContent = reasoning;
+            // Ensure cursor is at the end
+            if (bubble.streamingCursor && bubble.streamingCursor.parentNode) {
+              bubble.streamingCursor.parentNode.appendChild(bubble.streamingCursor);
             }
           }
+        },
+      });
 
-          if (eventType === 'done') {
-            try {
-              var doneObj = JSON.parse(eventData);
-              if (doneObj.full_content) {
-                fullContent = doneObj.full_content;
-              }
-            } catch (_) {}
-            // Auto-collapse thinking frame + show final answer. Re-run the
-            // capture with the authoritative full response and enable the
-            // consent button only after the stream is complete.
-            refreshLiveFilesCard(fullContent, bubble, liveFilesState, false);
-            completeThinking(bubble, fullContent);
-            break;
-          }
-
-          // Delta chunk — stream into thinking content
-          if (eventData && eventData !== '[DONE]') {
-            try {
-              var parsed = JSON.parse(eventData);
-              var delta = parsed.choices && parsed.choices[0] && parsed.choices[0].delta;
-              if (delta && (delta.reasoning_content || delta.reasoning)) {
-                // Thinking model (o-series / R1 style) — flip the label
-                // to "Thinking..." and show reasoning as it streams.
-                if (bubble.thinkingLabel) bubble.thinkingLabel.textContent = 'Thinking...';
-                var reasoning = delta.reasoning_content || delta.reasoning || '';
-                if (reasoning) bubble.thinkingContent.textContent = reasoning;
-                // Ensure cursor is at the end
-                if (bubble.streamingCursor && bubble.streamingCursor.parentNode) {
-                  bubble.streamingCursor.parentNode.appendChild(bubble.streamingCursor);
-                }
-              }
-              if (delta && delta.content) {
-                // Non-thinking models only stream content — the label
-                // stays "Awaiting response..." for them.
-                fullContent += delta.content;
-                // Capture complete fenced blocks as soon as their closing
-                // fence arrives. Partial blocks remain invisible, while one
-                // consent card grows as additional files are completed.
-                // A closing fence can be split across SSE chunks (for
-                // example, '`', then '``'), so trigger on any backtick and
-                // let the complete-block parser decide whether the card
-                // actually changed.
-                if (delta.content.indexOf('`') !== -1) {
-                  refreshLiveFilesCard(fullContent, bubble, liveFilesState, true);
-                }
-                // Show raw tokens in the thinking content area
-                bubble.thinkingContent.textContent = fullContent;
-                // Ensure cursor is at the end
-                if (bubble.streamingCursor && bubble.streamingCursor.parentNode) {
-                  bubble.streamingCursor.parentNode.appendChild(bubble.streamingCursor);
-                }
-              }
-            } catch (_) {}
-          }
+      if (streamError) {
+        var diag = '';
+        if (streamError.indexOf('no_backend') !== -1 || streamError.indexOf('No AI backend') !== -1) {
+          diag = '\n\n📋 **How to fix:** Ask an admin to configure the BrainStem host, or add your own API key in Account → API Settings.';
         }
-
-        messagesEl.scrollTop = messagesEl.scrollHeight;
-        if (eventType === 'done') break;
+        bubble.thinkingContent.textContent = '⚠ Error: ' + streamError;
+        return '⚠️ **Error:** ' + streamError + diag;
       }
 
-      // If stream ended naturally (no 'done' event) but we got content,
-      // finalize the live card before returning to sendMessage().
-      if (fullContent) {
-        refreshLiveFilesCard(fullContent, bubble, liveFilesState, false);
-        if (!bubble.finalAnswer.innerHTML) {
-          completeThinking(bubble, fullContent);
-        }
-      }
+      fullContent = text || fullContent;
 
+      // Finalize the live card + thinking frame with the full response
+      // once the stream has ended.
+      refreshLiveFilesCard(fullContent, bubble, liveFilesState, false);
+      completeThinking(bubble, fullContent);
+      setBackendStatus(fullContent ? 'online' : 'error');
       return fullContent || null;
 
     } catch (err) {
       removeAssistantBubble(bubble);
+      setBackendStatus('offline');
       return null;
     }
   }
@@ -2112,6 +2123,9 @@
         ? data.choices[0].message.content
         : (data.message || '(no response)');
 
+      // The server reports which backend actually served (BrainStem > BYO).
+      if (data && data.model) resolvedModel = data.model;
+
       if (reply && reply.trim()) {
         // Show checkmark and update label
         var statusIcon = bubble.thinkingHeader.querySelector('.thinking-status-icon');
@@ -2132,8 +2146,10 @@
         messagesEl.scrollTop = messagesEl.scrollHeight;
       }
 
+      setBackendStatus(reply && reply.trim() ? 'online' : 'error');
       return reply || null;
     } catch (err) {
+      setBackendStatus('offline');
       // Clean up thinking content
       if (bubble.streamingCursor && bubble.streamingCursor.parentNode) {
         bubble.streamingCursor.parentNode.removeChild(bubble.streamingCursor);
@@ -2262,6 +2278,7 @@
         appendSpecConsentCard(spec);
       }
     } else    if (content === null) {
+      setBackendStatus('offline');
       // Both methods failed entirely — tryNonStream already created the bubble
       var accountLink = window.ASHAT && window.ASHAT.accountUrl
         ? '[' + window.ASHAT.accountUrl + '](Account settings → API Settings)'
@@ -3007,6 +3024,15 @@
 
     renderSidebar();
     if (messagesEl) messagesEl.scrollTop = messagesEl.scrollHeight;
+
+    // Set the meta-bar model + status readout. The model label is known
+    // immediately (BYO config or the server default); the connection state
+    // is 'checking' until the first message confirms it.
+    setBackendStatus('checking');
+
+    // Ask the server which backend it would serve (BrainStem wins over
+    // BYO) so the pill shows the true model before the first message.
+    fetchResolvedBackend();
 
     // Fetch project context for awareness
     fetchProjectContext();

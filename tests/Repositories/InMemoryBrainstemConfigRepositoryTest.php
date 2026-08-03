@@ -104,6 +104,33 @@ final class InMemoryBrainstemConfigRepositoryTest extends TestCase
         $this->assertSame('user', $row['updated_by']);
     }
 
+    public function test_upsert_stores_optional_model(): void
+    {
+        $this->repo->upsert('http://host:7860', 'sk-abcdef123456', 'admin', 'Qwen2.5-72B');
+        $row = $this->repo->get();
+        $this->assertSame('Qwen2.5-72B', $row['model']);
+    }
+
+    public function test_upsert_defaults_model_to_empty(): void
+    {
+        $this->repo->upsert('http://host:7860', 'sk-abcdef123456', 'admin');
+        $row = $this->repo->get();
+        $this->assertSame('', $row['model']);
+    }
+
+    public function test_active_includes_configured_model(): void
+    {
+        $this->repo->upsert('http://db-host:7860', 'sk-db-key', 'admin', 'Qwen2.5-72B');
+        $active = $this->repo->active();
+        $this->assertSame('Qwen2.5-72B', $active['model']);
+    }
+
+    public function test_active_model_empty_when_unset(): void
+    {
+        $active = $this->repo->active();
+        $this->assertSame('', $active['model']);
+    }
+
     public function test_upsert_always_returns_true(): void
     {
         // InMemory impl never fails (no DB connection issues)

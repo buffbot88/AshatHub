@@ -55,6 +55,14 @@
                  placeholder="<?= $env_key_set ? '(using env key)' : 'sk-…' ?>"
                  class="mt-1 w-full px-3 py-2 rounded-md bg-ink-soft border border-ink-line focus:outline-none focus:border-accent font-mono text-sm">
         </label>
+        <label class="text-sm block">
+          <span class="text-xs font-mono uppercase tracking-wider text-chalk-mute">Model (optional)</span>
+          <input name="model" type="text"
+                 value="<?= e($brainstem['model'] ?? '') ?>"
+                 placeholder="LFM2.5 1.2B Instruct"
+                 class="mt-1 w-full px-3 py-2 rounded-md bg-ink-soft border border-ink-line focus:outline-none focus:border-accent font-mono text-sm">
+          <span class="mt-1 block text-xs text-chalk-mute">Name of the model the Neural Host runs. Shows in the chat status pill; blank uses the default.</span>
+        </label>
 
         <!-- Resolved config inline (replaces the old Active Configuration card) -->
         <div class="rounded-lg bg-ink-soft border border-ink-line px-4 py-3 space-y-2 text-sm">
@@ -69,6 +77,10 @@
             <?php else: ?>
               <span class="font-mono text-xs text-err">No key configured</span>
             <?php endif; ?>
+          </div>
+          <div class="flex items-center justify-between gap-4">
+            <span class="text-xs font-mono uppercase tracking-wider text-chalk-mute shrink-0">Active Model</span>
+            <span class="font-mono text-xs text-chalk text-right"><?= e($active['model'] !== '' ? $active['model'] : ($view->default_brainstem_label ?? 'LFM2.5 1.2B Instruct') . ' (default)') ?></span>
           </div>
           <?php if ($configured): ?>
             <div class="flex items-center justify-between gap-4">

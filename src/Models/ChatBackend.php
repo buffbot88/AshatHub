@@ -26,25 +26,42 @@ namespace Models;
  */
 final class ChatBackend
 {
+    /** Display label for the BrainStem Neural Host's default model. */
+    private const BRAINSTEM_MODEL_LABEL = 'LFM2.5 1.2B Instruct';
+
+    /** Default BrainStem display label (used when no model is configured). */
+    public static function defaultBrainstemLabel(): string
+    {
+        return self::BRAINSTEM_MODEL_LABEL;
+    }
+
     private string $endpoint;
     private array  $headers;
     private string $defaultModel;
     private bool   $available;
     /** Whether the upstream backend supports SSE streaming. */
     private bool   $streaming;
+    /** Machine name of the resolved backend (brainstem|byo|none). */
+    private string $backendName;
+    /** Human label of the model that actually serves the request. */
+    private string $modelLabel;
 
     private function __construct(
         string $endpoint,
         array  $headers,
         string $defaultModel,
         bool   $available,
-        bool   $streaming = true
+        bool   $streaming = true,
+        string $backendName = 'none',
+        string $modelLabel = ''
     ) {
         $this->endpoint     = $endpoint;
         $this->headers      = $headers;
         $this->defaultModel = $defaultModel;
         $this->available    = $available;
         $this->streaming    = $streaming;
+        $this->backendName  = $backendName;
+        $this->modelLabel   = $modelLabel;
     }
 
     /**
@@ -56,15 +73,20 @@ final class ChatBackend
         // Backend 1: BrainStem Neural Host (DB config > .env)
         // The Neural Host uses X-Ashat-Key auth and does NOT support streaming.
         if ($brainstemActive && ($brainstemActive['api_key'] ?? '') !== '') {
+            // Admin-configured model name wins (sent upstream + shown in
+            // the status pill); the const is the fallback when unset.
+            $model = trim((string) ($brainstemActive['model'] ?? ''));
             return new self(
                 $brainstemActive['url'] . '/v1/chat/completions',
                 [
                     'Content-Type: application/json',
                     'X-Ashat-Key: ' . $brainstemActive['api_key'],
                 ],
-                'brainstem',
+                $model !== '' ? $model : 'brainstem',
                 true,
-                false  // BrainStem Neural Host does not support streaming
+                false,  // BrainStem Neural Host does not support streaming
+                'brainstem',
+                $model !== '' ? $model : self::BRAINSTEM_MODEL_LABEL
             );
         }
 
@@ -78,12 +100,14 @@ final class ChatBackend
                 ],
                 $byoConfig['model'] ?? 'gpt-4o-mini',
                 true,
-                true  // BYO endpoints typically support streaming
+                true,  // BYO endpoints typically support streaming
+                'byo',
+                $byoConfig['model'] ?? 'gpt-4o-mini'
             );
         }
 
         // No backend available
-        return new self('', [], '', false, false);
+        return new self('', [], '', false, false, 'none', '');
     }
 
     /** Whether a backend was resolved. */
@@ -96,6 +120,18 @@ final class ChatBackend
     public function supportsStreaming(): bool
     {
         return $this->streaming;
+    }
+
+    /** Machine name of the resolved backend (brainstem|byo|none). */
+    public function backendName(): string
+    {
+        return $this->backendName;
+    }
+
+    /** Human label of the model that actually serves the request. */
+    public function modelLabel(): string
+    {
+        return $this->modelLabel;
     }
 
     /**

@@ -51,6 +51,7 @@ final class AdminController
             'active'       => RepositoryRegistry::brainstemConfig()->active(),
             'env_url'      => $config->brainstemUrl(),
             'env_key_set'  => $config->brainstemKey() !== '',
+            'default_brainstem_label' => \Models\ChatBackend::defaultBrainstemLabel(),
             'maint'        => $maint,
             'tickets'      => $tickets,
             'pending_projects' => RepositoryRegistry::communityProject()->pending(),
@@ -169,9 +170,10 @@ final class AdminController
     {
         $url    = trim((string) ($ctx->str('url')));
         $apiKey = (string) ($ctx->input('api_key', ''));
+        $model  = trim((string) ($ctx->str('model')));
 
         $admin = $ctx->user();
-        RepositoryRegistry::brainstemConfig()->upsert($url, $apiKey, $admin['username']);
+        RepositoryRegistry::brainstemConfig()->upsert($url, $apiKey, $admin['username'], $model);
 
         $ctx->flash('success', 'BrainStem config updated.');
         $ctx->redirect('/admin/#tab=settings');
@@ -182,7 +184,7 @@ final class AdminController
      */
     public function resetBrainstem(RequestContext $ctx): void
     {
-        RepositoryRegistry::brainstemConfig()->upsert('', '', $ctx->user()['username']);
+        RepositoryRegistry::brainstemConfig()->upsert('', '', $ctx->user()['username'], '');
         $ctx->flash('success', 'BrainStem config reset to environment defaults.');
         $ctx->redirect('/admin/#tab=settings');
     }

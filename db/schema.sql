@@ -175,6 +175,7 @@ CREATE TABLE IF NOT EXISTS `brainstem_config` (
   `url`            VARCHAR(500) NOT NULL DEFAULT '',
   `api_key`        VARCHAR(512) NOT NULL DEFAULT '',
   `api_key_masked` VARCHAR(512) NOT NULL DEFAULT '',
+  `model`          VARCHAR(191) NOT NULL DEFAULT '',
   `updated_at`     DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
   `updated_by`     VARCHAR(50)  DEFAULT NULL,
   PRIMARY KEY (`id`)

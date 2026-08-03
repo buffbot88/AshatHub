@@ -42,7 +42,7 @@ final class InMemoryBrainstemConfigRepository implements BrainstemConfigReposito
         return $this->row;
     }
 
-    public function upsert(string $url, string $apiKey, string $updatedBy): bool
+    public function upsert(string $url, string $apiKey, string $updatedBy, string $model = ''): bool
     {
         $masked = self::mask($apiKey);
         $now = date('Y-m-d H:i:s');
@@ -52,6 +52,7 @@ final class InMemoryBrainstemConfigRepository implements BrainstemConfigReposito
             'url'            => $url,
             'api_key'        => $apiKey,
             'api_key_masked' => $masked,
+            'model'          => $model,
             'updated_at'     => $now,
             'updated_by'     => $updatedBy,
         ];
@@ -64,6 +65,7 @@ final class InMemoryBrainstemConfigRepository implements BrainstemConfigReposito
         return [
             'url'     => ($row['url'] ?? '') !== '' ? $row['url'] : $this->config->brainstemUrl(),
             'api_key' => ($row['api_key'] ?? '') !== '' ? $row['api_key'] : $this->config->brainstemKey(),
+            'model'   => (string) ($row['model'] ?? ''),
         ];
     }
 

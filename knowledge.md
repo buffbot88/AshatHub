@@ -44,6 +44,7 @@ Key code locations:
 | `mysql -u root -p < db/schema.sql` | Full-access DB install |
 | `mysql -u root -p < db/docs-chat-studio-seed.sql` | Fresh Chat Studio docs seed (for an emptied `docs_articles` table) |
 | `mysql -u root -p < db/email-verification.sql` | Email-verification migration (adds `email_verified_at` + `email_verifications` table; run BEFORE enabling the flag) |
+| `mysql -u root -p < db/migrations/005_brainstem_model_column.sql` | Optional BrainStem model-name migration (adds `brainstem_config.model`; run before configuring a model in admin) |
 | `php bin/cleanup-unverified.php [HOURS]` | Purge unverified accounts older than N hours (default 48; no-op unless verification is enabled) |
 
 No package.json or composer.json — **zero dependencies**.
@@ -119,6 +120,13 @@ No package.json or composer.json — **zero dependencies**.
 - **Vow 8 is enforced**: `tests/Core/VowDocblockTest.php` scans every `.php`/`.js` under `src/` + `public/`, parses `/** */` docblocks, and fails if any prose exceeds 2 sentences. The counter is deliberately fair: it strips `@annotation` lines, banner-art lines, numbered-list markers, and neutralizes abbreviations (`e.g.`, `etc.`) + decimals before counting sentence ends — so keep docblocks to 1–2 crisp sentences and the suite stays green.
 - Tests bootstrap from `tests/bootstrap.php` (minimal — no session, no DB)
 - FakeContext + InMemoryRepositories = no database needed
+- **Controller-level SSE test**: `tests/Api/ChatStreamSseTest.php` boots a real
+  local `php -S` mock upstream (`tests/fixtures/sse_mock_server.php`, one-shot
+  port via `stream_socket_server`), drives `ChatController::chatStream()`
+  through FakeContext + a callback `ob_start()` capture buffer, and asserts
+  the meta/delta/done event sequence for both BrainStem and BYO backends
+  plus the error-only paths. It needs `proc_open` — the test self-skips if
+  that function is disabled.
 - **Golden rule**: `FakeContext::assertCsrf()` must call `$this->jsonResponse()`
   (the throwing override) — `parent::jsonResponse()` echoes a real body and
   `exit()`s, killing the PHPUnit process mid-run (false green, 0-byte JUnit
@@ -166,9 +174,11 @@ No package.json or composer.json — **zero dependencies**.
   |---|---|
   | `ashat.api` | BYO provider/key config (never sent to the server) |
 - The chat writes files server-first via `POST /api/files/` — no per-build localStorage content store (the IDE-era `ashat.generated.*` store and its sync helpers were removed with the IDE).
+- **BrainStem model name** — `brainstem_config.model` (optional, migration `005`) names the model the Neural Host runs. `ChatBackend::select()` uses it as the upstream `model` payload value AND the status-pill label; when blank it falls back to payload `'brainstem'` + label `'LFM2.5 1.2B Instruct'`. Set via Admin → Settings → BrainStem Host; shown in the Active Model row and the chat pill.
 
 - **Chat page (`/chat`, `ChatPageController`)** — standalone Spec Chat. Left: conversation sidebar (localStorage `ashat.chats`); center: chat + input, and a **file editor panel** (`#chat-file-editor`) that replaces the chat when a project file is clicked (Monaco loaded lazily from the CDN — `__chatMonacoReady`/`__chatMonaco`; textarea fallback if the CDN never arrives; Save via `POST /api/files/`, ← Chat restores the conversation). Right pane: **Project Files** card (tree + Upload/Download/Select all/Delete + usage meter) + **Spec Versions** timeline + **Tips**. The chat File Manager renders rows with `textContent` (XSS-safe) and folder markers share the same prefix semantics as files.
 - **Chat behaviors**: `init()` lands on the home/empty state (never auto-creates or auto-opens a conversation); Export downloads `ChatHistory-YYYY-MM-DD.md` (Markdown, `stripMarkers()`-cleaned, no JSON dump). Generated Spec + Project Context cards were removed — `setSpec()` now feeds the Spec Versions timeline + consent card. The right-pane **Tips** card and the empty-state paragraph teach the consent-first flow — the chat never writes code without the consent card, files land in Project Files, and clicking a file opens it in the editor.
+- **Status pill + backend resolution** — the meta-bar `#chat-backend-status` pill shows `Model: <label> · <state>` (online/offline/error/checking). On page load `assistant.js` calls `GET /api/chat/resolve` (`ChatController::resolve` — server-side only, `ChatBackend::select(brainstemActive, null)`) and sets the resolved model when BrainStem is configured; the client merges its own BYO model from `localStorage["ashat.api"]` when the server reports `backend: 'none'`. Each chat stream then re-announces the serving model via the SSE `meta` event.
 - **Capture engine covers edits AND removals** — the consent card counts writes/updates and removals separately; a `## Files to Remove` section is parsed (removal section accepts list items or standalone paths) and approved removals delete exact known files. Cards that were already answered (Yes/No) stay hidden across page reloads.
 - **Monaco save/download**: `binaryResponse()` sends `Cache-Control: no-store` and the export URL is cache-busted (`?t=`), so repeat downloads never serve a stale zip. `ensureChatMonaco()` queues concurrent openers in `chatMonacoPending` — only one poller/creator runs (prevents double `editor.create()` on the same shell).
 
@@ -178,6 +188,7 @@ No package.json or composer.json — **zero dependencies**.
 - `SupportController::adminIndex()` redirects to `/admin/#tab=support` (the tickets render in the tab).
 - **GitHub updater + webhook are GONE** — `Core\GitUpdater`, `public/webhook.php`, the `github-check`/`github-apply`/`webhook-secret` admin routes and settings cards, the dashboard git/update UI, and `tests/Core/GitUpdaterTest.php` were removed. `Core\ZipHelper` stays (Files import/export still use it); the bootstrap no longer ships a lite-mode (`ASHAT_LITE_BOOT`) path.
 - **Code consent (chat AI never writes code)**: the SYSTEM_PROMPT in `assistant.js` enforces a CODE CONSENT POLICY — the chat AI does NOT emit code files or inline HTML/CSS/JS previews (the old `<!--PREVIEW-->` live-preview mechanism was removed). When a spec (`<!--SPEC-->`) is detected, `appendSpecConsentCard()` renders a consent card on the last assistant bubble asking whether to generate the files; only clicking **Yes — generate files** runs `generateFilesInChat()`, which drives the coding agent (`window.ASHAT.agent.runBuildStream`) and writes the resulting files straight into the user's Project Files via `POST /api/files/` (auth-open — works for **Member, Pro, and Admin alike**). A `gen-status-bubble` shows progress; nothing is ever stored without the consent-card click. "Not yet" just dismisses the card. Chat is the only dev surface — no role-gated IDE anymore.
+- **`onReasoning` hook (thinking-model builds)** — the shared transport in `agent.js` extracts `delta.reasoning_content || delta.reasoning` from every SSE chunk and fires `opts.onReasoning(rawChunk)` (per-chunk text; callers accumulate if they need the full transcript) before content extraction, so reasoning never pollutes `fullText`. `generateFilesInChat()` passes `onReasoning` (flips the `gen-status-bubble` to **Thinking…**) and `onToken` (restores **Generating project files…** once content streams). The chat text path displays reasoning via `onEvent` instead — same shape checks, different hook.
 
 ### Community / Publisher Pages
 - **Publisher page** `/community/user/{username}` — lists every project one user published; unknown OR inactive (`is_active = 0`) accounts 404 (no public profile for soft-banned users).

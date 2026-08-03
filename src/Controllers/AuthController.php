@@ -41,11 +41,6 @@ final class AuthController
             $ctx->redirect('/login/');
         }
 
-        // Pro/Admin feature gate: only Pro/Admin users can enter the IDE
-        if (!in_array($result['role'], ['Pro', 'Admin'], true)) {
-            $ctx->flash('info', 'Logged in. Your account is currently Member-tier — the IDE requires a Pro or Admin role.');
-        }
-
         $next = $req->has('next')
             ? $req->safeRedirect('next')
             : ($ctx->flash('redirect_after_login') ?? '/');

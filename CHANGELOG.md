@@ -11,6 +11,7 @@ The version displayed in the UI comes from `APP_VERSION` in `config/bootstrap.ph
 
 ### Removed
 
+- **Removed the obsolete Pro/Admin-gated `/api/asset` proxy** — static assets already use the front-controller/static-file fallback, and no current application code called this route.
 - **Specs + Builds backend fully purged — the backend is now Chat-only**
   - Deleted: `SpecsController`, `BuildsController`, all six spec/build
     repositories (interface + Pdo + InMemory), `Models\BuildPayload`,
@@ -108,8 +109,22 @@ The version displayed in the UI comes from `APP_VERSION` in `config/bootstrap.ph
 
 ### Fixed
 
+- **Active Users opened to ALL members** — `/account/active-users/` was
+  Pro/Admin-only (`requireRole('Admin','Pro')`, navbar + account quick links
+  gated). The page, navbar link, and account quick link now render for every
+  authenticated role; Pro is repositioned as the Advanced Downloadable
+  Client tier with no web feature gates
 - **Monaco edits "not saving"** — saves were working; the *download* served a
   stale cached zip. Fixed with no-store headers + cache-busted export URL
+- **Chat error hid the real cause** — a sleeping Hugging Face Space returns
+  plain `Internal Server Error` (HTTP 500), but the controller dropped the
+  status and reported only the body snippet. Errors now include the HTTP
+  status with a cold-start hint, and the upstream retry budget grew
+  (4 attempts, 2s/4s/8s backoff) so the first message usually succeeds
+- **BYO API opened to ALL roles** — the Account → Settings BYO form was
+  Pro/Admin-only, but every chat error told Members to add a key there.
+  The form now renders for Members too (still localStorage-only, keys never
+  reach the server); seed docs updated to match
 - **`ensureChatMonaco()` double-init race** — two rapid file opens before
   Monaco loaded could double-create the editor on one shell
 - **Community submit gate** — submission previously 403'd every role (the

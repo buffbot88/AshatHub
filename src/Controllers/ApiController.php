@@ -3,7 +3,6 @@ declare(strict_types=1);
 namespace Controllers;
 
 use Core\RequestContext;
-use Core\StaticFileServer;
 use Repositories\RepositoryRegistry;
 
 /**
@@ -15,8 +14,8 @@ use Repositories\RepositoryRegistry;
  *   - FilesController
  *   - ChatController
  *
- * Middleware gating (pro-or-admin, admin-gate) is declared in routes
- * so controllers are pure data handlers with no inline auth checks.
+ * Route middleware is declared separately so controllers remain focused
+ * on data handling without inline authorization checks.
  * ═══════════════════════════════════════════════════════════════════════
  */
 final class ApiController
@@ -84,39 +83,5 @@ final class ApiController
                 ],
             ],
         ]);
-    }
-
-    /**
-     * Serve a static asset through the API (GET /api/asset?path=js/assistant.js).
-     * Useful on hosts where mod_rewrite is unavailable and the
-     * front-controller fallback doesn't apply; Pro/Admin only via route middleware.
-     */
-    public function serveAsset(RequestContext $ctx): void
-    {
-        $path = (string) ($ctx->query('path', ''));
-        if ($path === '') {
-            $ctx->jsonResponse(['error' => 'Missing "path" query parameter.'], 400);
-        }
-
-        $server = new StaticFileServer(ASHAT_PUBLIC);
-        $uriPath = '/' . ltrim($path, '/');
-
-        if ($server->serve($uriPath)) {
-            return;
-        }
-
-        // File not found — fall through to JSON error
-        $filePath = ASHAT_PUBLIC . '/' . ltrim($path, '/');
-        if (!is_file($filePath)) {
-            $ctx->jsonResponse(['error' => 'Asset not found.', 'path' => $path], 404);
-        }
-
-        // File exists but extension isn't in our MIME map
-        $ext = strtolower(pathinfo($filePath, PATHINFO_EXTENSION));
-        $ctx->jsonResponse([
-            'error' => 'Unsupported asset type.',
-            'path'  => $path,
-            'ext'   => $ext,
-        ], 415);
     }
 }

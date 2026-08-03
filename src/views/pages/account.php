@@ -46,9 +46,7 @@
       <div class="label-gold mb-3">Quick links</div>
       <ul class="space-y-2 text-sm">
         <li><a href="/chat/" class="link-accent">Open Chat →</a></li>
-        <?php if ($u['role'] === 'Admin'): ?>
-          <li><a href="/account/active-users/" class="link-accent">Active users →</a></li>
-        <?php endif; ?>
+        <li><a href="/account/active-users/" class="link-accent">Active users →</a></li>
         <li>
           <form method="post" action="/logout/" class="inline">
             <?= csrf_field() ?>
@@ -135,9 +133,8 @@
     <!-- ── Settings ───────────────────────────────────────────────── -->
     <div id="panel-settings" role="tabpanel" aria-labelledby="tab-settings" class="account-panel space-y-6" hidden>
 
-      <!-- API config (Pro/Admin only) — localStorage-first -->
-      <?php if (in_array($u['role'], ['Pro','Admin'], true)): ?>
-        <form id="api-form" onsubmit="return false" class="glass-card-solid p-6">
+      <!-- API config (all roles) — localStorage-first -->
+      <form id="api-form" onsubmit="return false" class="glass-card-solid p-6">
           <h2 style="font-family: var(--font-heading); font-weight: 600; font-size: 18px; color: var(--gold);" class="mb-1">Bring your own API</h2>
           <p class="text-sm mb-4" style="color: var(--gold-muted);">
             Stored <span style="color: var(--gold); font-weight: 500;">only in your browser</span> via
@@ -256,11 +253,6 @@
             hydrate();
           })();
         </script>
-      <?php else: ?>
-        <div class="glass-card-solid p-6 text-sm" style="color: var(--gold-muted);">
-          BYO API configuration is available to <span style="color: var(--gold); font-weight: 500;">Pro</span> and <span style="color: var(--gold); font-weight: 500;">Admin</span> members. Ask an admin to upgrade your account.
-        </div>
-      <?php endif; ?>
     </div>
   </div>
 </section>

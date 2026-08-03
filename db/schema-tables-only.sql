@@ -22,7 +22,7 @@
 --
 --   php -r 'require "config/bootstrap.php"; \Core\Database::seedAdmin();'
 --
--- Or just hit /register and create your own Pro/Admin account.
+-- Or just hit /register and create your own account.
 -- ═══════════════════════════════════════════════════════════════════════
 
 SET FOREIGN_KEY_CHECKS = 0;
@@ -228,9 +228,9 @@ INSERT INTO `docs_articles` (`slug`, `category`, `title`, `summary`, `content`, 
 ('writing-specs','workflow','Writing Good Specs',
  'How to write specs that ASHAT actually understands.',
  '# Writing Good Specs\n\nA spec is a Markdown document. Some tips that pay off:\n\n- **Title** the project clearly.\n- **Description** in 2–4 sentences.\n- **Requirements** as a checklist (`- [ ] ...`).\n- **Technical Stack** — language, framework, runtime.\n- **File Structure** — sketched with bullets or a tree.\n- **Acceptance Criteria** — how you''ll know the build is done.\n\nExample skeleton:\n\n```\n# Project: Multiplayer Tic-Tac-Toe\n\n## Description\nA browser-based multiplayer tic-tac-toe with a tiny WebSocket server.\n\n## Requirements\n- [ ] Two-player rooms with 6-letter join codes\n- [ ] Server stores scores per session\n- [ ] Reconnect on disconnect\n\n## Technical Stack\n- Language: TypeScript\n- Framework: ws (server) + Vite (client)\n\n## File Structure\n- server/index.ts\n- client/App.tsx\n- shared/types.ts\n\n## Acceptance Criteria\n- Two browsers can join, play, and disconnect/reconnect with state intact.\n```\n', 4),
-('byo-api','pro','Bring Your Own API',
- 'Pro and Admin members can plug in any OpenAI-compatible API.',
- '# BYO API\n\nPro and Admin members can plug in their own API key for:\n\n- OpenAI\n- Anthropic\n- Google Gemini\n- DeepSeek\n- Any OpenAI-compatible endpoint\n\nConfigure it once in **Account → API Settings**. Chat and file generation use your supplied provider and model; keys stay in your browser.\n\nYour API key is stored ONLY in your browser (`localStorage["ashat.api"]`); the server never sees it or stores it.\n', 5),
+('byo-api','concepts','Bring Your Own API',
+ 'Every member can plug in any OpenAI-compatible API.',
+ '# BYO API\n\nEvery member can plug in their own API key for:\n\n- OpenAI\n- Anthropic\n- Google Gemini\n- DeepSeek\n- Any OpenAI-compatible endpoint\n\nConfigure it once in **Account → API Settings**. Chat and file generation use your supplied provider and model; keys stay in your browser.\n\nYour API key is stored ONLY in your browser (`localStorage["ashat.api"]`); the server never sees it or stores it.\n', 5),
 ('security','concepts','Security & Privacy',
  'How ASHAT keeps your specs, code, and API keys safe.',
  '# Security\n\n- **Passwords** — `password_hash()` with bcrypt.\n- **Sessions** — server-side, signed, with expiry and IP binding.\n- **CSRF** — token required on every state-changing POST.\n- **XSS** — all output escaped with `htmlspecialchars()`.\n- **SQLi** — every query uses PDO prepared statements.\n- **API keys** — stored only in your browser''s localStorage; the server never sees them.\n- **Sessions in cookies** — `HttpOnly`, `SameSite=Lax`, `Secure` in production.\n', 6),
@@ -245,7 +245,7 @@ INSERT INTO `docs_articles` (`slug`, `category`, `title`, `summary`, `content`, 
 --   php -r 'require "config/bootstrap.php"; \Core\Database::seedAdmin();'
 --   # password becomes 'admin1234'
 --
--- Or just hit /register and create a fresh Pro account.
+-- Or just hit /register and create a fresh account.
 INSERT INTO `users` (`id`, `username`, `email`, `password_hash`, `display_name`, `role`, `is_active`, `last_login_at`)
 VALUES (
   '00000000-0000-0000-0000-000000000001',

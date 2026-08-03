@@ -237,13 +237,13 @@ final class RouteCollectionTest extends TestCase
     public function test_middleware_with_multiple_names(): void
     {
         $c = new RouteCollection();
-        $c->group('/secure', ['middleware' => ['auth', 'pro-or-admin', 'admin-gate']], function () use ($c): void {
+        $c->group('/secure', ['middleware' => ['auth', 'admin-gate', 'custom-gate']], function () use ($c): void {
             $c->get('/secret', ['X', 'y']);
         });
 
         $routes = $c->getRoutes();
         $this->assertCount(1, $routes);
-        $this->assertSame(['auth', 'pro-or-admin', 'admin-gate'], $routes[0]['middleware']);
+        $this->assertSame(['auth', 'admin-gate', 'custom-gate'], $routes[0]['middleware']);
     }
 
     // ── Middleware registry ────────────────────────────────────────
@@ -403,7 +403,7 @@ final class RouteCollectionTest extends TestCase
     {
         $c = new RouteCollection();
         $c->group('/api', ['middleware' => ['auth']], function () use ($c): void {
-            $c->group('/v2', ['middleware' => ['pro-or-admin']], function () use ($c): void {
+            $c->group('/v2', ['middleware' => ['custom-gate']], function () use ($c): void {
                 $c->get('/files/{id}', ['FilesController', 'show']);
             });
         });
@@ -411,7 +411,7 @@ final class RouteCollectionTest extends TestCase
         $routes = $c->getRoutes();
         $this->assertCount(1, $routes);
         $this->assertSame('/api/v2/files/{id}', $routes[0]['pattern']);
-        $this->assertSame(['auth', 'pro-or-admin'], $routes[0]['middleware']);
+        $this->assertSame(['auth', 'custom-gate'], $routes[0]['middleware']);
 
         // Verify regex compiles and matches
         $regex = $c->patternToRegex($routes[0]['pattern']);

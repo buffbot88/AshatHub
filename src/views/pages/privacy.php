@@ -26,7 +26,7 @@
         <ul class="mt-2 space-y-1.5" style="color: var(--gold-muted); line-height: 1.7; padding-left: 1.25rem; list-style: disc;">
           <li><strong>Account information:</strong> username, email address, and a hashed (bcrypt) password when you register</li>
           <li><strong>Profile information:</strong> display name, preferences, and account settings</li>
-          <li><strong>Usage data:</strong> specifications, files, and build metadata you create within the IDE</li>
+          <li><strong>Usage data:</strong> specifications and project files you create in Chat</li>
           <li><strong>Session data:</strong> IP address, user agent, and session timestamps for authentication</li>
           <li><strong>Community content:</strong> projects, descriptions, and tags you submit to the community showcase</li>
         </ul>
@@ -37,7 +37,7 @@
         <p style="color: var(--gold-muted); line-height: 1.7;">Your information is used solely to operate and improve the Service:</p>
         <ul class="mt-2 space-y-1.5" style="color: var(--gold-muted); line-height: 1.7; padding-left: 1.25rem; list-style: disc;">
           <li>Authenticate your identity and maintain your session</li>
-          <li>Store and retrieve your specifications, builds, and files</li>
+          <li>Store and retrieve your specifications and project files</li>
           <li>Display community projects and their metadata</li>
           <li>Monitor Service performance and diagnose errors</li>
           <li>Communicate with you about account-related matters</li>
@@ -52,7 +52,7 @@
 
       <div class="glass-card p-6" style="border-image: none; border: 1px solid var(--gold-line);">
         <h2 class="text-base font-display font-semibold mb-3" style="color: var(--gold);">4. Cookies & Local Storage</h2>
-        <p style="color: var(--gold-muted); line-height: 1.7;">We use a session cookie (<code style="color: var(--gold);">ashat_sid</code>) to maintain your authenticated session. This cookie is <code style="color: var(--gold);">HttpOnly</code>, <code style="color: var(--gold);">SameSite=Lax</code>, and <code style="color: var(--gold);">Secure</code> in production. It contains only a session identifier — no personal data. We also use browser <code style="color: var(--gold);">localStorage</code> to store your API configuration and generated code on your local machine. No tracking cookies, analytics scripts, or advertising cookies are used.</p>
+        <p style="color: var(--gold-muted); line-height: 1.7;">We use a session cookie (<code style="color: var(--gold);">ashat_sid</code>) to maintain your authenticated session. This cookie is <code style="color: var(--gold);">HttpOnly</code>, <code style="color: var(--gold);">SameSite=Lax</code>, and <code style="color: var(--gold);">Secure</code> in production. It contains only a session identifier — no personal data. We also use browser <code style="color: var(--gold);">localStorage</code> to store your API configuration and conversations; project files are stored server-side in your account. No tracking cookies, analytics scripts, or advertising cookies are used.</p>
       </div>
 
       <div class="glass-card p-6" style="border-image: none; border: 1px solid var(--gold-line);">
@@ -69,7 +69,7 @@
 
       <div class="glass-card p-6" style="border-image: none; border: 1px solid var(--gold-line);">
         <h2 class="text-base font-display font-semibold mb-3" style="color: var(--gold);">6. Data Retention</h2>
-        <p style="color: var(--gold-muted); line-height: 1.7;">We retain your account data (specifications, files, builds) for as long as your account remains active. You may delete your account and associated data by contacting us through our Discord community. Logs and error traces are retained for up to 30 days for diagnostic purposes.</p>
+        <p style="color: var(--gold-muted); line-height: 1.7;">We retain your account data (specifications and project files) for as long as your account remains active. You may delete your account and associated data by contacting us through our Discord community. Logs and error traces are retained for up to 30 days for diagnostic purposes.</p>
       </div>
 
       <div class="glass-card p-6" style="border-image: none; border: 1px solid var(--gold-line);">

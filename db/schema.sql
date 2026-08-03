@@ -486,11 +486,11 @@ The AI will still generate something — but you''ll likely get:
 
 **Investment in the spec always pays back in code quality.** Every 10 minutes spent refining a spec saves 30 minutes of manual code editing later.
 ', 4),
-('byo-api','pro','Bring Your Own API',
- 'Pro and Admin members can plug in any OpenAI-compatible API.',
+('byo-api','concepts','Bring Your Own API',
+ 'Every member can plug in any OpenAI-compatible API.',
  '# BYO API
 
-Pro and Admin members can plug in their own API key for:
+Every member can plug in their own API key for:
 
 - OpenAI
 - Anthropic

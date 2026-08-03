@@ -176,11 +176,6 @@ final class Router
             $next($params);
         });
 
-        $this->collection->middleware('pro-or-admin', function (RequestContext $ctx, array $params, callable $next): void {
-            $ctx->requireRole('Pro', 'Admin');
-            $next($params);
-        });
-
         $this->collection->middleware('admin-gate', function (RequestContext $ctx, array $params, callable $next): void {
             $ctx->requireRole('Admin');
             $next($params);

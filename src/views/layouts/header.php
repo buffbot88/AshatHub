@@ -82,7 +82,7 @@
 <body class="min-h-screen flex flex-col" data-mode="<?= e($view->mode ?? '') ?>"
       style="background-color: var(--bg); color: var(--text); font-family: var(--font-body); font-weight: 400;">
 <?php
-  // Inline the navbar partial (skipped when __hide_navbar is set, e.g. IDE)
+  // Inline the navbar partial unless the page explicitly hides it.
   if (empty($view->__hide_navbar)) {
       require __DIR__ . '/../partials/navbar.php';
   }

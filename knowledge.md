@@ -77,11 +77,10 @@ No package.json or composer.json — **zero dependencies**.
 - Page can override layout: `<?php $view->__layout = 'raw'; ?>`
 
 ### Auth / Security
-- **Roles**: `Member` (default), `Pro`, `Admin` (ENUM in DB — uppercase)
-- AuthController login checks `in_array($result['role'], ['Pro', 'Admin'], true)`
+- **Roles**: `Member` (default), `Pro`, `Admin` (ENUM in DB — uppercase). Pro is tied to the Advanced Downloadable Client; every web feature (Chat, files, BYO API, Active Users) is open to all members
 - Passwords: `password_hash(PASSWORD_BCRYPT)` + `password_verify()`
 - CSRF: every non-GET request validated via `$ctx->assertCsrf()`
-- Three named middleware: `auth`, `pro-or-admin` (checks `Pro`/`Admin`), `admin-gate` (checks `Admin`)
+- Two named middleware: `auth` and `admin-gate` (checks `Admin`); no web feature is Pro-gated
 - Sessions: server-side, HttpOnly, SameSite=Lax
 - API keys stored **only in localStorage** — server never sees them
 - **Username hardening** — `AuthService::usernameError()` is the single source of

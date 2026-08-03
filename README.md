@@ -197,7 +197,7 @@ If the home page returns a plain 500, three diagnostic paths ship with the proje
 | `/docs/:slug`              | Docs article      | Markdown rendered to HTML                |
 | `/chat/`                   | Chat              | Brainstorm with the AI, build specs, generate files into your Project Files, edit with Monaco, export Markdown |
 | `/account/`                | Account           | Tabs: Profile / My Projects / Settings    |
-| `/account/active-users/`   | Active Users      | Who's online — orb viz + model usage (Pro/Admin) |
+| `/account/active-users/`   | Active Users      | Who's online — orb viz + model usage (all members) |
 | `/admin/`                  | Admin panel       | Tabbed dashboard / users / support / settings |
 | `/register/`               | Register          | New account                              |
 | `/login/`                  | Login             | Sign in                                  |
@@ -212,7 +212,7 @@ If the home page returns a plain 500, three diagnostic paths ship with the proje
 - **SQLi**: every query via PDO prepared statements.
 - **Sessions**: signed by PHP, `HttpOnly`, `SameSite=Lax`, optional `Secure` flag.
 - **BYO API keys**: stored **only in the user's browser** (`localStorage["ashat.api"]`). The server never sees them.
-- **Roles**: `Member` (default), `Pro`, `Admin` — enforced by middleware (`pro-or-admin`, `admin-gate`).
+- **Roles**: `Member` (default), `Pro`, `Admin` — Admin routes use `admin-gate`. Pro is now tied to the Advanced Downloadable Client; every web feature (Chat, files, BYO API, Active Users) is open to all members.
 
 
 ## License

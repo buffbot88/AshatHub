@@ -10,7 +10,7 @@ use PHPUnit\Framework\TestCase;
  * ═══════════════════════════════════════════════════════════════════════
  * Tests\Core\MiddlewareTest
  *
- * Tests that the middleware logic (auth, pro-or-admin, admin-gate) works
+ * Tests that the middleware logic (auth and admin-gate) works
  * correctly with FakeContext. The middleware closures here match the
  * actual implementations in src/Core/routes.php, verified in isolation.
  *
@@ -48,15 +48,6 @@ class MiddlewareTest extends TestCase
             $ctx->flash('redirect_after_login', $ctx->server('REQUEST_URI', '/'));
             $ctx->redirect('/login/');
         }
-        $next($params);
-    }
-
-    /**
-     * Simulate the 'pro-or-admin' middleware from routes.php.
-     */
-    private function proOrAdminMiddleware(RequestContext $ctx, array $params, callable $next): void
-    {
-        $ctx->requireRole('Pro', 'Admin');
         $next($params);
     }
 
@@ -121,33 +112,6 @@ class MiddlewareTest extends TestCase
         $this->assertSame('/admin/settings', $result['ctx']->flash('redirect_after_login'));
     }
 
-    // ── Pro-or-admin middleware ───────────────────────────────────
-
-    public function test_pro_or_admin_blocks_member(): void
-    {
-        $ctx = RequestContext::fake(['user' => self::memberUser(), 'server' => ['REQUEST_URI' => '/api/asset']]);
-        $result = $this->runMiddleware($this->proOrAdminMiddleware(...), $ctx);
-
-        $this->assertFalse($result['passed'], 'Member should not pass pro-or-admin');
-        $this->assertTrue($result['ctx']->hasResponded());
-    }
-
-    public function test_pro_or_admin_passes_pro(): void
-    {
-        $ctx = RequestContext::fake(['user' => self::proUser()]);
-        $result = $this->runMiddleware($this->proOrAdminMiddleware(...), $ctx);
-
-        $this->assertTrue($result['passed'], 'pro should pass pro-or-admin');
-    }
-
-    public function test_pro_or_admin_passes_admin(): void
-    {
-        $ctx = RequestContext::fake(['user' => self::adminUser()]);
-        $result = $this->runMiddleware($this->proOrAdminMiddleware(...), $ctx);
-
-        $this->assertTrue($result['passed'], 'admin should pass pro-or-admin');
-    }
-
     // ── Admin-gate middleware ─────────────────────────────────────
 
     public function test_admin_gate_blocks_member(): void
@@ -196,51 +160,31 @@ class MiddlewareTest extends TestCase
         $passed = false;
 
         try {
-            $this->adminGateMiddleware($ctx, [], function (array $p) use ($ctx, &$passed): void {
-                $this->proOrAdminMiddleware($ctx, $p, function (array $p2) use (&$passed): void {
-                    $passed = true;
-                });
+            $this->adminGateMiddleware($ctx, [], function (array $p) use (&$passed): void {
+                $passed = true;
             });
         } catch (\RuntimeException $e) {
             // Not expected here, but safe
         }
 
-        $this->assertTrue($passed, 'admin should pass admin-gate → pro-or-admin stack');
+        $this->assertTrue($passed, 'admin should pass the admin-gate middleware');
     }
 
     public function test_middleware_stack_admin_gate_blocks_pro(): void
     {
         $ctx = RequestContext::fake(['user' => self::proUser()]);
-        $proOrAdminCalled = false;
+        $innerCalled = false;
 
         try {
-            $this->adminGateMiddleware($ctx, [], function (array $p) use (&$proOrAdminCalled): void {
-                $proOrAdminCalled = true;
+            $this->adminGateMiddleware($ctx, [], function (array $p) use (&$innerCalled): void {
+                $innerCalled = true;
             });
         } catch (\RuntimeException $e) {
             // Expected — admin-gate blocks pro
         }
 
-        $this->assertFalse($proOrAdminCalled, 'pro-or-admin should never be reached');
+        $this->assertFalse($innerCalled, 'admin-gate should block pro');
         $this->assertTrue($ctx->hasResponded());
-    }
-
-    public function test_middleware_stack_auth_then_pro_or_admin(): void
-    {
-        $ctx = RequestContext::fake(['user' => self::proUser()]);
-        $innerCalled = false;
-
-        try {
-            $this->authMiddleware($ctx, [], function (array $p) use ($ctx, &$innerCalled): void {
-                $this->proOrAdminMiddleware($ctx, $p, function (array $p2) use (&$innerCalled): void {
-                    $innerCalled = true;
-                });
-            });
-        } catch (\RuntimeException $e) {
-            // Not expected for pro user
-        }
-
-        $this->assertTrue($innerCalled, 'pro should pass auth → pro-or-admin stack');
     }
 
     // ── Middleware passes params correctly ────────────────────────

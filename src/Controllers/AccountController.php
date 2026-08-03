@@ -80,7 +80,7 @@ final class AccountController
 
     public function activeUsers(RequestContext $ctx): void
     {
-        $ctx->requireRole('Admin', 'Pro');
+        $ctx->requireRole('Member', 'Pro', 'Admin');
 
         $users      = self::safeRepo(fn() => RepositoryRegistry::user()->activeWithinHours(2));
         $modelStats = [];  // User::modelUsage() was deprecated (local-first pivot) — always returns empty

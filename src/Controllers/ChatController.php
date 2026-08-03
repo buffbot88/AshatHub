@@ -18,9 +18,11 @@ final class ChatController
 {
     // ── Upstream retry (transient 429 / 5xx — e.g. "Loading model" 503) ──
     /** Max upstream attempts before giving up on transient failures. */
-    private const MAX_ATTEMPTS = 3;
+    private const MAX_ATTEMPTS = 4;
+    // Sleeping Hugging Face Spaces can take 10-30s to wake, so the backoff
+    // is generous enough that the first chat message usually succeeds.
     /** Seconds to sleep between attempts (attempt # → delay). */
-    private const BACKOFF = [1 => 1, 2 => 3];
+    private const BACKOFF = [1 => 2, 2 => 4, 3 => 8];
     /** Compatibility fallback for providers with smaller output limits. */
     private const SAFE_MAX_TOKENS = 8192;
 
@@ -54,7 +56,7 @@ final class ChatController
         if (!is_array($result)) {
             $snippet = mb_substr(trim((string) $raw), 0, 300);
             $snippet = preg_replace('/[\x00-\x1F\x7F]/', '�', $snippet);
-            $ctx->jsonResponse(['error' => 'backend_invalid_response', 'message' => 'AI backend returned non-JSON. Response starts with: ' . $snippet], 502);
+            $ctx->jsonResponse(['error' => 'backend_invalid_response', 'message' => self::friendlyInvalidResponse($upstream['status'], $snippet)], 502);
         }
 
         if ((isset($result['ok']) && !$result['ok']) || !empty($result['error'])) {
@@ -112,7 +114,7 @@ final class ChatController
                 // Include a snippet of the raw response so the user can diagnose
                 $snippet = mb_substr(trim((string) $raw), 0, 300);
                 $snippet = preg_replace('/[\x00-\x1F\x7F]/', '�', $snippet);
-                SseStreamer::send('error', ['message' => 'AI backend returned an invalid response (not JSON). Response starts with: ' . $snippet]);
+                SseStreamer::send('error', ['message' => self::friendlyInvalidResponse($upstream['status'], $snippet)]);
                 return;
             }
 
@@ -221,6 +223,21 @@ final class ChatController
             return 'The AI model is still loading. Give it a moment and try again.';
         }
         return $msg;
+    }
+
+    /**
+     * Friendly message for a non-JSON upstream response, using its HTTP
+     * status so a 5xx plain-text body reads as a host cold start instead
+     * of an app bug (common with sleeping Hugging Face Spaces).
+     */
+    private static function friendlyInvalidResponse(int $status, string $snippet): string
+    {
+        if ($status >= 500) {
+            return 'The AI host is starting up or temporarily unavailable (HTTP ' . $status . '). '
+                . 'Wait a few seconds and try again — if it keeps failing, check the BrainStem host in Admin → Settings. '
+                . 'Response starts with: ' . $snippet;
+        }
+        return 'AI backend returned an invalid response (not JSON). Response starts with: ' . $snippet;
     }
 
 }

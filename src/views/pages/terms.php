@@ -27,12 +27,12 @@
 
       <div class="glass-card p-6" style="border-image: none; border: 1px solid var(--gold-line);">
         <h2 class="text-base font-display font-semibold mb-3" style="color: var(--gold);">2. Description of Service</h2>
-        <p style="color: var(--gold-muted); line-height: 1.7;">ASHAT Hub is a browser-based AI coding platform that allows users to describe software projects (via markdown specifications) and receive AI-generated code, plans, and builds. The Service includes the ASHAT Chat assistant, per-user project file storage, and related tools. The Service is provided "as is" and we make no guarantees about the correctness, security, or fitness of generated code.</p>
+        <p style="color: var(--gold-muted); line-height: 1.7;">ASHAT Hub is a browser-based AI coding platform that allows users to describe software projects through Markdown specifications and generate project files with AI assistance. The Service includes the ASHAT Chat assistant, per-user project file storage, and related tools. The Service is provided "as is" and we make no guarantees about the correctness, security, or fitness of generated code.</p>
       </div>
 
       <div class="glass-card p-6" style="border-image: none; border: 1px solid var(--gold-line);">
         <h2 class="text-base font-display font-semibold mb-3" style="color: var(--gold);">3. User Accounts</h2>
-        <p style="color: var(--gold-muted); line-height: 1.7;">You are responsible for maintaining the confidentiality of your account credentials and for all activity under your account. You must provide accurate, current information during registration. We reserve the right to suspend or terminate accounts that violate these terms or applicable law. Account roles (guest, pro, admin) are granted at our discretion and may be revoked.</p>
+        <p style="color: var(--gold-muted); line-height: 1.7;">You are responsible for maintaining the confidentiality of your account credentials and for all activity under your account. You must provide accurate, current information during registration. We reserve the right to suspend or terminate accounts that violate these terms or applicable law. Account roles (Member, Pro, and Admin) are granted at our discretion and may be revoked.</p>
       </div>
 
       <div class="glass-card p-6" style="border-image: none; border: 1px solid var(--gold-line);">

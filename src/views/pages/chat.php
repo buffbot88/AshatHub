@@ -1,6 +1,6 @@
 <?php /** @var Core\ViewContext $view
   *
-  * Standalone Chat page — adapted from the old IDE Spec Chat, rendered
+  * Standalone Chat page for refining specifications and managing project files, rendered
   * with the main site layout. Same DOM structure and element IDs so
   * assistant.js works without changes.
   */ ?>

@@ -429,7 +429,7 @@ final class InMemoryFileRepositoryTest extends TestCase
         $this->assertNotNull($this->repo->findByPath('u2', 'src/main.ts'));
     }
 
-    // ── duplicate() — file duplication (IDE "Duplicate" action) ───
+    // ── duplicate() — file duplication ────────────────────────────
 
     public function test_duplicate_copies_file(): void
     {

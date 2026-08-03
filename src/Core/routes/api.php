@@ -3,9 +3,7 @@ declare(strict_types=1);
 
 // ─── All JSON API routes live under /api ───────────────────────────
 //
-// Note: routes that involve the Coding Agent (/agent/config, /account/api)
-// were intentionally removed during the local-first pivot. BYO API keys
-// live in browser localStorage only — the server never sees them.
+// BYO API keys live in browser localStorage only — the server never sees them.
 
 $router->group('/api', function () use ($router) {
 
@@ -45,13 +43,4 @@ $router->group('/api', function () use ($router) {
         });
     });
 
-    // ─── Protected routes (pro or admin required) ──────────────
-    $router->group('', ['middleware' => ['pro-or-admin']], function () use ($router) {
-
-        // ─── Static asset proxy ─────────────────────────────────
-        // Serves files from the public/ directory through the API.
-        // Usage: GET /api/asset?path=js/assistant.js
-        // Useful when mod_rewrite / .htaccess is unavailable.
-        $router->get('/asset', [\Controllers\ApiController::class, 'serveAsset']);
-    });
 });

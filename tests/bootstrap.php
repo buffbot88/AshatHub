@@ -35,6 +35,10 @@ defined('SESSION_SECURE_COOKIE')|| define('SESSION_SECURE_COOKIE', false);
 defined('APP_KEY')     || define('APP_KEY', '');
 defined('BRAINSTEM_URL') || define('BRAINSTEM_URL', '');
 defined('BRAINSTEM_KEY')  || define('BRAINSTEM_KEY', '');
+// PAWS_SHARED_SECRET is intentionally NOT defined here — the
+// ssoVerifySession controller reads $_ENV['PAWS_SHARED_SECRET']
+// directly, and tests set that env key in setUp(). Production
+// bootstrap.php populates it from server_config.json.
 
 defined('APP_VERSION') || define('APP_VERSION', '0.0.0-test');
 defined('APP_VERSION_DISPLAY') || define('APP_VERSION_DISPLAY', 'v' . APP_VERSION);

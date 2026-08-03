@@ -33,6 +33,17 @@ final class InMemorySessionRepository implements SessionRepository
     }
 
     /**
+     * Mirror the PDO check: must exist AND not be expired.
+     */
+    public function findById(string $id): ?array
+    {
+        $row = $this->sessions[$id] ?? null;
+        if ($row === null) return null;
+        if ($row['expires_at'] <= time()) return null;
+        return $row;
+    }
+
+    /**
      * Count distinct active users with unexpired sessions.
      */
     public function countActive(): int

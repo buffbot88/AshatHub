@@ -1,9 +1,14 @@
 <?php
   /** @var Core\ViewContext $view */
   $users      = $view->users ?? [];
-  $modelStats = $view->modelStats ?? [];
   $total      = count($users);
   $roleColors = ['Admin' => '#ff7a45', 'Pro' => '#7cc4e8', 'Member' => '#86868f'];
+
+  // Server-rendered relative times (time_ago) so the orb tooltip always
+  // agrees with the table — no client-side timezone parsing.
+  $usersJson = array_map(fn(array $u): array => $u + [
+      'last_active_rel' => time_ago($u['last_active'] ?? null),
+  ], $users);
 ?>
 <section style="border-bottom: 1px solid var(--gold-line);">
   <div class="container mx-auto px-6 py-12">
@@ -12,7 +17,7 @@
         <h1 class="section-title" style="font-size: clamp(28px, 4vw, 40px);">Active Users</h1>
         <p style="color: var(--gold-muted);" class="mt-2">
           <span class="font-mono" style="color: var(--gold);"><?= $total ?></span>
-          user<?= $total !== 1 ? 's' : '' ?> active in the last 2 hours
+          user<?= $total !== 1 ? 's' : '' ?> with active sessions
         </p>
       </div>
       <span class="chip-gold">
@@ -37,89 +42,51 @@
                   transform:translate(-50%, -100%); transition: opacity .15s ease, visibility 0s .15s;"></div>
     </div>
 
-    <!-- ─── Right: Model Usage Table ─────────────────────────── -->
-    <div class="lg:col-span-2 space-y-4">
-      <div class="flex items-center justify-between">
-        <h2 style="font-family: var(--font-heading); font-weight: 600; font-size: 14px; color: var(--gold);">Model Usage</h2>
-        <span class="text-xs font-mono" style="color: var(--gold-muted);"><?= count($modelStats ?? []) ?> model<?= count($modelStats ?? []) !== 1 ? 's' : '' ?></span>
+    <!-- ─── Right: Active Sessions ────────────────────────────── -->
+    <div class="lg:col-span-2">
+      <div class="flex items-center justify-between mb-3">
+        <h2 style="font-family: var(--font-heading); font-weight: 600; font-size: 14px; color: var(--gold);">Active Sessions</h2>
+        <span class="text-xs font-mono" style="color: var(--gold-muted);"><?= $total ?></span>
       </div>
-
-      <?php if (empty($modelStats)): ?>
-        <p class="text-sm py-8 text-center" style="color: var(--gold-muted);">No model data yet.</p>
-      <?php else: ?>
-        <div class="space-y-2">
-          <?php foreach ($modelStats as $i => $m):
-            $pct = $total > 0 ? round(($m['user_count'] / $total) * 100) : 0;
-            $isTop = $i === 0;
-          ?>              <div class="glass-card-solid p-4" style="<?= $isTop ? 'border-color: var(--accent);' : '' ?>">
-              <div class="flex items-center justify-between mb-2">
-                <div class="flex items-center gap-2 min-w-0">
-                  <?php if ($isTop): ?>
-                    <span style="color: var(--accent); font-size: 12px; font-family: var(--font-mono);" title="Most used">top</span>
-                  <?php endif; ?>
-                  <span class="text-sm font-mono font-semibold truncate" style="color: <?= $m['model'] === 'not configured' ? 'var(--gold-muted)' : 'var(--gold-bright)' ?>;">
-                    <?= e($m['model']) ?>
-                  </span>
-                </div>
-                <span class="text-xs font-mono whitespace-nowrap ml-2" style="color: var(--gold-text);">
-                  <?= (int) $m['user_count'] ?> user<?= (int) $m['user_count'] !== 1 ? 's' : '' ?>
-                </span>
-              </div>
-              <!-- Bar -->
-              <div class="w-full h-1.5 rounded-full overflow-hidden" style="background: var(--surface-2); border: 1px solid var(--line);">
-                <div class="h-full rounded-full transition-all duration-700 ease-out"
-                     style="width:<?= $pct ?>%; background: <?= $isTop ? 'var(--accent)' : 'var(--surface-3)' ?>;"></div>
-              </div>
-              <div class="mt-1.5 flex justify-between text-[10px] font-mono" style="color: var(--gold-dim);">
-                <span><?= $pct ?>% of active users</span>
-                <span><?= e($m['usernames'] ?: '—') ?></span>
-              </div>
-            </div>
-          <?php endforeach; ?>
-        </div>
-      <?php endif; ?>
-
-      <!-- Detailed user table -->
-      <details class="group">
-        <summary class="cursor-pointer label-gold py-2 flex items-center gap-2" style="list-style: none;" onmouseover="this.style.color='var(--gold)'" onmouseout="this.style.color=''">
-          <span class="inline-block transition-transform duration-200 group-open:rotate-90">▶</span>
-          Active Sessions
-        </summary>
-        <div class="mt-2 overflow-x-auto rounded-lg glass-card-solid">
-          <table class="w-full text-sm">
-            <thead>
-              <tr class="label-gold" style="background: rgba(15,15,23,0.5);">
-                <th class="text-left py-2 px-3">User</th>
-                <th class="text-left py-2 px-3">Role</th>
-                <th class="text-left py-2 px-3 hidden sm:table-cell">Since</th>
+      <div class="overflow-x-auto rounded-lg glass-card-solid">
+        <table class="w-full text-sm">
+          <thead>
+            <tr class="label-gold" style="background: rgba(15,15,23,0.5);">
+              <th class="text-left py-2 px-3">User</th>
+              <th class="text-left py-2 px-3">Role</th>
+              <th class="text-left py-2 px-3 hidden sm:table-cell">Logged in</th>
+              <th class="text-left py-2 px-3">Last active</th>
+            </tr>
+          </thead>
+          <tbody>
+            <?php foreach ($users as $u): ?>
+              <tr style="border-top: 1px solid var(--gold-line);" onmouseover="this.style.background='rgba(15,15,23,0.3)'" onmouseout="this.style.background=''">
+                <td class="py-2 px-3">
+                  <div class="flex items-center gap-2">
+                    <span class="w-1.5 h-1.5 rounded-full"
+                          style="background: <?= e($roleColors[$u['role']] ?? '#7b7b93') ?>"></span>
+                    <span class="font-medium"><?= e($u['display_name'] ?: $u['username']) ?></span>
+                  </div>
+                  <div class="text-[10px] text-chalk-mute font-mono truncate max-w-[160px]">@<?= e($u['username']) ?></div>
+                </td>
+                <td class="py-2 px-3"><?= role_badge($u['role']) ?></td>
+                <td class="py-2 px-3 text-chalk-soft text-xs hidden sm:table-cell" title="<?= e($u['session_started'] ?? '') ?>"><?= e(time_ago($u['session_started'] ?? null)) ?></td>
+                <td class="py-2 px-3 text-chalk-soft text-xs" title="<?= e($u['last_active'] ?? '') ?>"><?= e(time_ago($u['last_active'] ?? null)) ?></td>
               </tr>
-            </thead>
-            <tbody>
-              <?php foreach ($users as $u): ?>
-                <tr style="border-top: 1px solid var(--gold-line);" onmouseover="this.style.background='rgba(15,15,23,0.3)'" onmouseout="this.style.background=''">
-                  <td class="py-2 px-3">
-                    <div class="flex items-center gap-2">
-                      <span class="w-1.5 h-1.5 rounded-full"
-                            style="background: <?= e($roleColors[$u['role']] ?? '#7b7b93') ?>"></span>
-                      <span class="font-medium"><?= e($u['display_name'] ?: $u['username']) ?></span>
-                    </div>
-                    <div class="text-[10px] text-chalk-mute font-mono truncate max-w-[160px]">@<?= e($u['username']) ?></div>
-                  </td>
-                  <td class="py-2 px-3"><?= role_badge($u['role']) ?></td>
-                  <td class="py-2 px-3 text-chalk-soft text-xs hidden sm:table-cell"><?= e(time_ago($u['session_started'])) ?></td>
-                </tr>
-              <?php endforeach; ?>
-            </tbody>
-          </table>
-        </div>
-      </details>
+            <?php endforeach; ?>
+          </tbody>
+        </table>
+      </div>
+      <p class="text-[10px] font-mono mt-2" style="color: var(--gold-dim);">
+        Sessions are touched on every request; “Last active” is the most recent touch.
+      </p>
     </div>
   <?php endif; ?>
 </section>
 
 <script>
 (function () {
-  var users = <?= json_encode($users ?? [], JSON_UNESCAPED_UNICODE) ?>;
+  var users = <?= json_encode($usersJson, JSON_UNESCAPED_UNICODE) ?>;
   var roleColors = <?= json_encode($roleColors) ?>;
   if (!users || users.length === 0) return;
 
@@ -152,7 +119,7 @@
       user: u,
       color: color,
       x: 0.15 + Math.random() * 0.70,
-      y: 0.15 + Math.random() * 0.70,
+      y: 0.20 + Math.random() * 0.60,
       vx: (Math.random() - 0.5) * 0.002,
       vy: (Math.random() - 0.5) * 0.002,
       radius: 4 + Math.random() * 3,
@@ -201,12 +168,12 @@
     orbs.forEach(function (o) {
       o.x += o.vx;
       o.y += o.vy;
-      // Bounce off edges
+      // Bounce off edges (bottom bound leaves room for the name label)
       if (o.x < 0.05 || o.x > 0.95) o.vx *= -1;
-      if (o.y < 0.05 || o.y > 0.95) o.vy *= -1;
+      if (o.y < 0.15 || o.y > 0.80) o.vy *= -1;
       // Keep in bounds
       o.x = Math.max(0.04, Math.min(0.96, o.x));
-      o.y = Math.max(0.04, Math.min(0.96, o.y));
+      o.y = Math.max(0.10, Math.min(0.82, o.y));
 
       // Hover detection
       if (mouseX >= 0 && mouseY >= 0) {
@@ -229,12 +196,13 @@
       ctx.stroke();
     });
 
-    // Draw orbs
+    // Draw orbs + always-on name labels
     orbs.forEach(function (o) {
       var pulse = 1 + 0.15 * Math.sin(time * o.pulseSpeed + o.phase);
       var r = o.radius * pulse;
       var cx = o.x * W;
       var cy = o.y * H;
+      var label = o.user.display_name || o.user.username;
 
       // Flat halo (no radial gradient — plain translucent circle)
       ctx.beginPath();
@@ -256,7 +224,7 @@
         ctx.lineWidth = 1.5;
         ctx.stroke();
 
-        tooltip.textContent = o.user.display_name || o.user.username;
+        tooltip.textContent = label + ' · active ' + (o.user.last_active_rel || 'recently');
         tooltip.style.visibility = 'visible';
         tooltip.style.opacity = '1';
         tooltip.style.left = cx + 'px';
@@ -265,6 +233,13 @@
         tooltip.style.opacity = '0';
         tooltip.style.visibility = 'hidden';
       }
+
+      // Name label under the orb
+      ctx.font = '10px "JetBrains Mono", monospace';
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'top';
+      ctx.fillStyle = 'rgba(179, 179, 189, 0.85)';
+      ctx.fillText(label, cx, cy + r + 6);
     });
 
     requestAnimationFrame(draw);

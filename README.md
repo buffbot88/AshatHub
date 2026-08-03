@@ -50,7 +50,7 @@ No build step. No bundler. Drop the folder on a PHP-capable host and run.
 ├── index.php              ← Entry point when project is in webroot
 ├── README.md              ← This file
 ├── CHANGELOG.md           ← Release history (Keep a Changelog format)
-└── LICENSE                ← Apache License 2.0
+└── LICENSE                ← Proprietary — All Rights Reserved
 ```
 
 ## Setup
@@ -217,4 +217,6 @@ If the home page returns a plain 500, three diagnostic paths ship with the proje
 
 ## License
 
-See [LICENSE](LICENSE).
+ASHAT Hub is proprietary, closed-source software. All rights reserved —
+see [LICENSE](LICENSE). No part of this project may be copied, modified,
+or redistributed without prior written permission.

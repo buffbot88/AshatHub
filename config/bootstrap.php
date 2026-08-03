@@ -4,14 +4,7 @@
  * ASHAT Hub — Bootstrap
  * Loads config, autoloader, and starts the session.
  *
- * Supports two modes:
- *   Full mode (default) — loads everything: DB config, Session, ConfigBag,
- *     themed error handler. Used for all web requests.
- *   Lite mode — skips Session, ConfigBag, and themed error handler.
- *     Used by the webhook receiver (public/webhook.php) to save ~75%
- *     overhead on every push-triggered update.
- *
- * Enable lite mode by defining ASHAT_LITE_BOOT=true BEFORE requiring this file.
+ * Boots everything: DB config, Session, ConfigBag, themed error handler.
  *
  * Debugging: append `?debug=1&t=TOKEN` to any URL (where TOKEN matches
  * `DEBUG_TOKEN` in config), or download `storage/logs/error.log` via FTP,
@@ -39,11 +32,6 @@ declare(strict_types=1);
 $__env = static function (string $key, mixed $default = null): mixed {
     return $_ENV[$key] ?? getenv($key) ?: $default;
 };
-
-// ─── Lite-mode flag (must be set by the requiring file before require) ─
-if (!defined('ASHAT_LITE_BOOT')) {
-    define('ASHAT_LITE_BOOT', false);
-}
 
 // Project root
 define('ASHAT_ROOT', dirname(__DIR__));
@@ -167,6 +155,12 @@ define('SESSION_SECURE_COOKIE', filter_var($__env('SESSION_SECURE_COOKIE', 'fals
 define('APP_KEY', (string) $__env('APP_KEY', ''));
 // APP_KEY is reserved for future encryption/signing — not currently read.
 
+// PAWS_SHARED_SECRET — server-to-server trust secret for Paws & Parcels
+// SSO verify calls. The game server sends `X-Paws-Shared-Secret` and we
+// compare it with `hash_equals` against the value from server_config.json.
+// Rotate by updating the value in both `server_config.json` files.
+defined('PAWS_SHARED_SECRET') || define('PAWS_SHARED_SECRET', (string) $__env('PAWS_SHARED_SECRET', ''));
+
 define('MAINTENANCE_MODE', filter_var($__env('MAINTENANCE_MODE', 'false'), FILTER_VALIDATE_BOOLEAN));
 define('MAINTENANCE_MESSAGE', (string) $__env('MAINTENANCE_MESSAGE', 'Our little AI is busy upgrading the hub with brand-new magic!'));
 
@@ -200,8 +194,8 @@ spl_autoload_register(function (string $class): void {
 // ─── 3b. Helpers ─────────────────────────────────────────────────────
 require ASHAT_ROOT . '/src/Core/helpers.php';
 
-// ─── 4. Shared: exception log helper (used by both modes) ───────────
-// Defined here (outside the mode split) so it's never duplicated.
+// ─── 4. Shared: exception log helper ──────────────────────────────
+// Defined here so the themed error handler can use it.
 if (!function_exists('ashat_log_exception')) {
     function ashat_log_exception(\Throwable $e): bool {
         try {
@@ -243,9 +237,8 @@ if (!function_exists('ashat_log_exception')) {
 }
 
 // ═════════════════════════════════════════════════════════════════════
-//  FULL MODE  — ConfigBag + themed error handler + Session
+//  BOOT  — ConfigBag + themed error handler + Session
 // ═════════════════════════════════════════════════════════════════════
-if (!ASHAT_LITE_BOOT) {
 
     // ─── ConfigBag (BrainStem URL/key) ────────────────────────────
     \Core\ConfigBag::setInstance(new \Core\ConfigBag(
@@ -303,24 +296,3 @@ if (!ASHAT_LITE_BOOT) {
 
     // ─── 5. Session ───────────────────────────────────────────────
     \Core\Session::start();
-
-// ═════════════════════════════════════════════════════════════════════
-//  LITE MODE  — JSON error handler only (no session, no ConfigBag)
-// ═════════════════════════════════════════════════════════════════════
-} else {
-
-    ini_set('display_errors', '0');
-    error_reporting(E_ALL & ~E_DEPRECATED & ~E_STRICT);
-
-    set_exception_handler(function (\Throwable $e): void {
-        ashat_log_exception($e);
-        http_response_code(500);
-        header('Content-Type: application/json');
-        echo json_encode([
-            'ok'    => false,
-            'error' => $e->getMessage(),
-        ]);
-        exit;
-    });
-
-}

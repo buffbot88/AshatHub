@@ -22,6 +22,11 @@ interface SessionRepository
     public function delete(string $id): void;
 
     /**
+     * Look up a session row by ID and return null if missing or expired.
+     */
+    public function findById(string $id): ?array;
+
+    /**
      * Count distinct active users who currently have unexpired sessions.
      */
     public function countActive(): int;

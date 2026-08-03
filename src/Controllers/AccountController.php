@@ -82,12 +82,10 @@ final class AccountController
     {
         $ctx->requireRole('Member', 'Pro', 'Admin');
 
-        $users      = self::safeRepo(fn() => RepositoryRegistry::user()->activeWithinHours(2));
-        $modelStats = [];  // User::modelUsage() was deprecated (local-first pivot) — always returns empty
+        $users = self::safeRepo(fn() => RepositoryRegistry::user()->activeWithinHours(2));
         $ctx->view('pages/active_users', [
-            'title'      => 'Active Users · ' . APP_NAME,
-            'users'      => $users,
-            'modelStats' => $modelStats,
+            'title' => 'Active Users · ' . APP_NAME,
+            'users' => $users,
         ]);
     }
 }

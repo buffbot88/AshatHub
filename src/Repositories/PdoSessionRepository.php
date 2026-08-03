@@ -54,6 +54,23 @@ final class PdoSessionRepository implements SessionRepository
     }
 
     /**
+     * Look up a session row by ID. Returns null if missing or expired —
+     * `expires_at > NOW()` is enforced inside the query so a row past its
+     * TTL is treated the same as a non-existent one (never trusted).
+     */
+    public function findById(string $id): ?array
+    {
+        $row = $this->db->fetchOne(
+            "SELECT id, user_id, ip, user_agent, created_at, expires_at
+             FROM sessions
+             WHERE id = ? AND expires_at > NOW()
+             LIMIT 1",
+            [$id]
+        );
+        return is_array($row) ? $row : null;
+    }
+
+    /**
      * Count distinct active users who currently have unexpired sessions.
      */
     public function countActive(): int

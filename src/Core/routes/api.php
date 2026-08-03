@@ -11,6 +11,27 @@ $router->group('/api', function () use ($router) {
     $router->get('/health',       [\Controllers\ApiController::class,       'health']);
     $router->get('/me',           [\Controllers\ApiController::class,       'me']);
 
+    // ─── Paws & Parcels SSO trust anchor (server-to-server) ───────
+    // Phase 2 legacy bridge — keeps working for installs that haven't
+    // migrated to OIDC. Phase 3 adds /api/oauth/* next to it; both
+    // coexist.
+    $router->post('/sso/verify-session', [\Controllers\ApiController::class, 'ssoVerifySession']);
+
+    // ─── Phase 3 — OIDC issuer surface ────────────────────────────
+    // Discover, JWKS, token, userinfo, and authorize. Trusted clients
+    // (pre-registered in oauth_clients — seeded for Paws) hit
+    // /authorize, get a code via the local login form, exchange the code
+    // at /token, and inspect /userinfo with the access_token. /jwks and
+    // /.well-known/openid-configuration are public.
+    $router->group('/oauth', function () use ($router) {
+        $router->get('/authorize',              [\Controllers\OAuthController::class, 'authorize']);
+        $router->post('/authorize',             [\Controllers\OAuthController::class, 'authorize']);
+        $router->post('/token',                 [\Controllers\OAuthController::class, 'token']);
+        $router->get('/userinfo',               [\Controllers\OAuthController::class, 'userinfo']);
+        $router->get('/.well-known/jwks.json',  [\Controllers\OAuthController::class, 'jwks']);
+        $router->get('/.well-known/openid-configuration', [\Controllers\OAuthController::class, 'discovery']);
+    });
+
     // ─── Protected routes (authenticated users) ──────────────
     // Chat, context, and the per-user project file manager are open to
     // ALL authenticated roles (Member, Pro, Admin) — everyone gets one

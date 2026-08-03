@@ -38,6 +38,55 @@ final class ApiController
     }
 
     /**
+     * Server-to-server session verification for the Paws & Parcels SSO
+     * bridge; trust anchor is the X-Paws-Shared-Secret header.
+     */
+    public function ssoVerifySession(RequestContext $ctx): void
+    {
+        $headerSecret = (string) ($ctx->server('HTTP_X_PAWS_SHARED_SECRET', '') ?? '');
+        // Read fresh on every request — production bootstrap populates
+        // $_ENV['PAWS_SHARED_SECRET'] from server_config.json, and tests
+        // can override $_ENV in setUp(). Reading the env directly (rather
+        // than caching the value as a define()d constant) is what lets
+        // the test suite work without an alternate test-mode secret.
+        $expected = (string) ($_ENV['PAWS_SHARED_SECRET'] ?? '');
+        if ($expected === '' || $headerSecret === '' || !hash_equals($expected, $headerSecret)) {
+            $ctx->jsonResponse(['valid' => false, 'reason' => 'unauthorized'], 401);
+            return;
+        }
+
+        $body = $ctx->jsonBody();
+        $sessionId = is_array($body) ? trim((string) ($body['session_id'] ?? '')) : '';
+        if ($sessionId === '') {
+            $ctx->jsonResponse(['valid' => false, 'reason' => 'missing_session_id'], 400);
+            return;
+        }
+
+        $row = RepositoryRegistry::session()->findById($sessionId);
+        if ($row === null) {
+            $ctx->jsonResponse(['valid' => false, 'reason' => 'not_found_or_expired'], 200);
+            return;
+        }
+
+        $user = RepositoryRegistry::user()->find((string) $row['user_id']);
+        if ($user === null || empty($user['is_active'])) {
+            $ctx->jsonResponse(['valid' => false, 'reason' => 'inactive_user'], 200);
+            return;
+        }
+
+        unset($user['password_hash']);
+
+        $ctx->jsonResponse([
+            'valid'              => true,
+            'user_id'            => (string) $user['id'],
+            'username'           => (string) $user['username'],
+            'role'               => (string) $user['role'],
+            'display_name'       => (string) ($user['display_name'] ?? $user['username']),
+            'session_expires_at' => (string) $row['expires_at'],
+        ]);
+    }
+
+    /**
      * Return a combined project context summary (files only) for the
      * authenticated user. Used by Chat to inject awareness of the user's
      * existing Project Files into the AI's context.

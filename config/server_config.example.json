@@ -30,5 +30,11 @@
   "// 13": "stack traces on 500s. Leave blank to disable.",
   "DEBUG_TOKEN": "",
   "// 14": "APP_KEY — reserved for future signing/encryption, not read yet",
-  "APP_KEY": ""
+  "APP_KEY": "",
+  "// 15": "PAWS_SHARED_SECRET — server-to-server trust secret used by Paws &",
+  "// 16": "Parcels' game server to verify an Ashat Hub session ID at",
+  "// 17": "POST /api/sso/verify-session. Generate cryptographically random,",
+  "// 18": "≥ 32 chars, and copy the SAME value into the Paws server's",
+  "// 19": "server_config.json under auth.ashatHub.sharedSecret.",
+  "PAWS_SHARED_SECRET": "REPLACE_ME_ASHAT_TO_PAWS_SHARED_SECRET_32_CHARS_MIN"
 }

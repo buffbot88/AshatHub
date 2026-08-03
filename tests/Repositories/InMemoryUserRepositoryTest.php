@@ -302,6 +302,26 @@ final class InMemoryUserRepositoryTest extends TestCase
         $this->assertSame('alice', $active[0]['username']);
     }
 
+    public function test_activeWithinHours_sets_session_started_and_last_active(): void
+    {
+        $this->repo->seed([$this->alice]);
+        $created = time() - 1800;   // 30 min ago
+        $expires = time() + 3600;   // 1 hour from now
+        $this->repo->seedSessions('a1b2c3d4-0001-4000-8000-000000000001', [
+            [
+                'created_at' => date('Y-m-d H:i:s', $created),
+                'expires_at' => date('Y-m-d H:i:s', $expires),
+            ],
+        ]);
+
+        $active = $this->repo->activeWithinHours(24);
+        $this->assertCount(1, $active);
+        // session_started = login time (MAX created_at)
+        $this->assertSame(date('Y-m-d H:i:s', $created), $active[0]['session_started']);
+        // last_active = touch time = expires_at minus SESSION_LIFETIME (7200 in tests)
+        $this->assertSame(date('Y-m-d H:i:s', $expires - 7200), $active[0]['last_active']);
+    }
+
     public function test_activeWithinHours_excludes_users_without_sessions(): void
     {
         $this->repo->seed([$this->alice, $this->bob]);

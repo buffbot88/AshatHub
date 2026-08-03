@@ -3,7 +3,6 @@ declare(strict_types=1);
 namespace Controllers;
 
 use Core\ConfigBag;
-use Core\GitUpdater;
 use Core\RequestContext;
 use Repositories\RepositoryRegistry;
 
@@ -24,7 +23,6 @@ final class AdminController
     {
         $user      = $ctx->user();
         $stats     = self::gatherStats();
-        $gitStatus = (new GitUpdater())->status();
 
         $allUsers    = RepositoryRegistry::user()->all();
         $activeCount = count(array_filter($allUsers, static fn ($u) => $u['is_active']));
@@ -46,7 +44,6 @@ final class AdminController
             'title'        => 'Admin · ' . APP_NAME,
             'user'         => $user,
             'stats'        => $stats,
-            'git'          => $gitStatus,
             'users'        => $allUsers,
             'total_count'  => count($allUsers),
             'active_count' => $activeCount,
@@ -188,93 +185,6 @@ final class AdminController
         RepositoryRegistry::brainstemConfig()->upsert('', '', $ctx->user()['username']);
         $ctx->flash('success', 'BrainStem config reset to environment defaults.');
         $ctx->redirect('/admin/#tab=settings');
-    }
-
-    /**
-     * Check for available updates via GitHub API (no exec/git needed).
-     */
-    public function checkGitHubUpdates(RequestContext $ctx): void
-    {
-        $updater = new GitUpdater();
-        $result  = $updater->check();
-        $ctx->jsonResponse($result);
-    }
-
-    /**
-     * Apply updates by syncing the full main branch archive (no exec/git needed).
-     */
-    public function applyGitHubUpdates(RequestContext $ctx): void
-    {
-        $updater = new GitUpdater();
-        $result  = $updater->zipUpdate();
-        $ctx->jsonResponse($result);
-    }
-
-    /**
-     * Get the current webhook secret status (masked).
-     */
-    public function webhookSecret(RequestContext $ctx): void
-    {
-        $file = ASHAT_ROOT . '/storage/webhook-secret.json';
-        $configured = false;
-        $masked = '';
-
-        if (is_file($file)) {
-            $data = json_decode(file_get_contents($file), true);
-            if (is_array($data) && !empty($data['secret'])) {
-                $configured = true;
-                $secret = (string) $data['secret'];
-                $masked = substr($secret, 0, 4) . '••••' . substr($secret, -4);
-            }
-        }
-
-        // Derive the webhook URL from APP_URL
-        $webhookUrl = rtrim(APP_URL, '/') . '/webhook.php';
-
-        $ctx->jsonResponse([
-            'ok'          => true,
-            'configured'  => $configured,
-            'masked'      => $masked,
-            'webhook_url' => $webhookUrl,
-        ]);
-    }
-
-    /**
-     * Generate or update the webhook secret (POST).
-     */
-    public function saveWebhookSecret(RequestContext $ctx): void
-    {
-        $action = $ctx->str('action'); // 'generate' or 'clear'
-        $dir = ASHAT_ROOT . '/storage';
-        if (!is_dir($dir)) {
-            @mkdir($dir, 0775, true);
-        }
-
-        $file = $dir . '/webhook-secret.json';
-
-        if ($action === 'clear') {
-            if (is_file($file)) {
-                unlink($file);
-            }
-            $ctx->flash('success', 'Webhook secret cleared. GitHub webhook will no longer be accepted.');
-            $ctx->redirect('/admin/#tab=settings');
-        }
-
-        // Generate a cryptographically secure random secret
-        $secret = bin2hex(random_bytes(32)); // 64 hex chars
-
-        file_put_contents(
-            $file,
-            json_encode(['secret' => $secret, 'created_at' => date('c')], JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES)
-        );
-
-        // Return the secret so the admin can copy it into GitHub's webhook settings
-        $webhookUrl = rtrim(APP_URL, '/') . '/webhook.php';
-        $ctx->jsonResponse([
-            'ok'           => true,
-            'secret'       => $secret,
-            'webhook_url'  => $webhookUrl,
-        ]);
     }
 
     /**

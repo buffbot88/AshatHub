@@ -9,6 +9,19 @@ The version displayed in the UI comes from `APP_VERSION` in `config/bootstrap.ph
 
 ## [Unreleased]
 
+### Removed
+
+- **GitHub updater + webhook receiver removed entirely**
+  - Deleted: `Core\GitUpdater`, `public/webhook.php`, and
+    `tests/Core/GitUpdaterTest.php`; the `github-check` / `github-apply` /
+    `webhook-secret` admin routes; the "Update from GitHub" and "Webhook
+    Notifications" settings cards and their JavaScript; the dashboard
+    git/update UI and its script; the `git` view var from
+    `AdminController::dashboard()`
+  - `Core\ZipHelper` is untouched — Chat import/export still uses it;
+    the bootstrap lost its lite-mode (`ASHAT_LITE_BOOT`) path, which the
+    webhook was the only consumer of
+
 ### Added
 
 - **Community showcase — admin approval gate** — new submissions now
@@ -35,30 +48,38 @@ The version displayed in the UI comes from `APP_VERSION` in `config/bootstrap.ph
 
 ### Changed
 
+- **License — proprietary** — `LICENSE` swapped from Apache 2.0 to an
+  "All Rights Reserved" notice; the README License section and project-
+  tree line now reflect the closed-source stance
+
 - **Admin Settings — controls vs. diagnostics split** — the Settings tab
-  now uses a two-column layout: the left column holds the four interactive
-  control cards (BrainStem Host, Update from GitHub, Webhook Notifications,
-  Maintenance Mode), and the right column is a compact read-only **System**
-  sidebar with a spec-tile grid (PHP version, server, memory/upload/POST
-  limits, DB server + name) plus a collapsible "Advanced Environment"
-  drawer for the raw env key-value list. The old standalone Active
-  Configuration card was merged into the BrainStem Host card (status badge
-  moves into the card header; resolved URL/key/updated-by render as a
-  compact footer), and webhooks moved out of the GitHub card into their own
-  card. Form actions are now standardized: primary saves/actions align to
-  the bottom-right of their card, secondary actions (Reset to defaults,
-  Clear Secret, Check for Updates) use ghost/outline styling
+  now uses a two-column layout: the left column holds the interactive
+  control cards (BrainStem Host, Maintenance Mode), and the right column
+  is a compact read-only **System** sidebar with a spec-tile grid (PHP
+  version, server, memory/upload/POST limits, DB server + name) plus a
+  collapsible "Advanced Environment" drawer for the raw env key-value
+  list. The old standalone Active Configuration card was merged into the
+  BrainStem Host card (status badge moves into the card header; resolved
+  URL/key/updated-by render as a compact footer). Form actions are now
+  standardized: primary saves/actions align to the bottom-right of their
+  card, secondary actions (Reset to defaults) use ghost/outline styling
 - **Admin dashboard polish** — the redundant "Active Users" link in the
   header and its duplicate Quick Action card were removed (the page stays
   reachable from the navbar dropdown); stat cards that have no data
-  (empty Project Files, unavailable Git status) are now hidden instead of
-  showing a meaningless `0`/`—` (the Git card's value also renders its
-  `branch @ commit` string correctly now instead of being cast to `0`);
-  the floating red `+N` update pill was replaced with a quiet in-card
-  status line ("+N updates available" / "Webhook push pending" /
-  "Up to date"); the header subtitle became a personal greeting
+  (empty Project Files) are now hidden instead of showing a meaningless
+  `0`; the header subtitle became a personal greeting
   ("Welcome back, …") and the header/action grids were rebalanced to fit
   the fewer cards.
+- **Active Users page — honest data + no dead panels** — the subtitle
+  dropped the misleading "last 2 hours" precision (the query matches
+  sessions touched within ~2 lifetimes, not activity within 2 hours) and
+  now reads "N users with active sessions"; the sessions table gained a
+  real **Last active** column derived from the session touch time
+  (`expires_at − SESSION_LIFETIME`, added to `activeWithinHours` in both
+  repo implementations) alongside "Logged in", and the permanently-empty
+  **Model Usage** panel was removed (its `modelStats` view var was
+  hardcoded `[]` since the local-first pivot); the orb canvas now draws
+  always-on name labels under each node so the graph self-explains
 
 ## [v5.8] — 2026-08-02
 
@@ -139,7 +160,8 @@ The version displayed in the UI comes from `APP_VERSION` in `config/bootstrap.ph
   `Cache-Control: no-store`; the chat export URL is cache-busted with `?t=`
   (so repeat downloads never serve a stale zip); `ensureChatMonaco()` queues
   concurrent callers so only one poller/creator runs (double-create race)
-- **Apache License 2.0** (`LICENSE`) and a committed config template
+- **`LICENSE`** (now a proprietary All Rights Reserved notice — see
+  Unreleased) and a committed config template
   `config/server_config.example.json` (loader skips `//` doc-comment keys)
 - **Fresh Chat Studio docs seed** — `db/docs-chat-studio-seed.sql` repopulates
   an emptied `docs_articles` table with Chat-first docs (Getting Started,

@@ -87,16 +87,18 @@ final class PdoUserRepository implements UserRepository
 
     public function activeWithinHours(int $hours): array
     {
+        $lifetime = defined('SESSION_LIFETIME') ? (int) SESSION_LIFETIME : 7200;
         return $this->db->fetchAll(
             "SELECT u.id, u.username, u.display_name, u.role, u.last_login_at,
-                    MAX(s.created_at) AS session_started
+                    MAX(s.created_at) AS session_started,
+                    DATE_SUB(MAX(s.expires_at), INTERVAL ? SECOND) AS last_active
              FROM users u
              INNER JOIN sessions s ON s.user_id = u.id
              WHERE s.expires_at > DATE_SUB(NOW(), INTERVAL ? HOUR)
              GROUP BY u.id, u.username, u.display_name, u.role, u.last_login_at
              ORDER BY session_started DESC
              LIMIT 50",
-            [$hours]
+            [$lifetime, $hours]
         );
     }
 

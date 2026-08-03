@@ -154,8 +154,18 @@ final class InMemoryUserRepository implements UserRepository
             });
             if (!empty($recent)) {
                 $timestamps = array_map(fn(array $s): string => $s['created_at'] ?? '', $recent);
+                $lifetime = defined('SESSION_LIFETIME') ? (int) SESSION_LIFETIME : 7200;
+                $lastActive = null;
+                foreach ($recent as $s) {
+                    $expiresAt = strtotime($s['expires_at'] ?? '');
+                    if ($expiresAt !== false) {
+                        $touched = $expiresAt - $lifetime;
+                        $lastActive = $lastActive === null ? $touched : max($lastActive, $touched);
+                    }
+                }
                 $r = $u;
                 $r['session_started'] = max($timestamps);
+                $r['last_active'] = $lastActive === null ? null : date('Y-m-d H:i:s', $lastActive);
                 $results[] = $r;
             }
         }

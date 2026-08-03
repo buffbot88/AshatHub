@@ -97,7 +97,7 @@
 
       <div class="glass-card p-6" style="border-image: none; border: 1px solid var(--gold-line);">
         <h2 class="text-base font-display font-semibold mb-3" style="color: var(--gold);">10. Contact</h2>
-        <p style="color: var(--gold-muted); line-height: 1.7;">If you have questions about this Privacy Policy or our data practices, please reach out via our <a href="https://discord.gg/gJ8mreeAT4" target="_blank" rel="noopener" class="link-gold">Discord community</a> or open an issue on our <a href="https://github.com" target="_blank" rel="noopener" class="link-gold">GitHub repository</a>.</p>
+        <p style="color: var(--gold-muted); line-height: 1.7;">If you have questions about this Privacy Policy or our data practices, <a href="/support/create" class="link-gold">Questions? Open a ticket</a> or reach out via our <a href="https://discord.gg/gJ8mreeAT4" target="_blank" rel="noopener" class="link-gold">Discord community</a>.</p>
       </div>
 
     </div>

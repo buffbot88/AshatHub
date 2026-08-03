@@ -64,6 +64,25 @@ then is validated and reviewed.
   `php phpunit.phar` plus `node tests/js/agent-extract.test.js` and
   `node tests/js/chat-capture.test.js`.
 
+## Repo stats — regenerate, don't memorize
+
+Numbers in docs go stale. This section is the single source of truth: re-run
+the command to get the live value before quoting any count in `knowledge.md`,
+`README.md`, commit messages, or the CHANGELOG.
+
+| Metric | Regenerate with | Current |
+|---|---|---|
+| Controllers | `ls src/Controllers/*.php \| wc -l` | 13 |
+| PHP test classes | `find tests -name '*Test.php' \| wc -l` | 22 |
+| JS test files | `ls tests/js/*.test.js \| wc -l` | 2 |
+| Route files | `ls src/Core/routes/*.php \| wc -l` | 4 |
+| Route registrations | `grep -hoE '\$router->(get\|post\|put\|patch\|delete)\(' src/Core/routes/*.php \| wc -l` | 68 |
+| Route groups | `grep -hoE '\$router->group\(' src/Core/routes/*.php \| wc -l` | 7 |
+| Suite status | `php phpunit.phar --no-coverage 2>&1 \| tail -3` | green; 1 skip |
+
+Snapshot verified 2026-08-03. Per-file route registrations: `web.php` 19,
+`api.php` 23, `auth.php` 13, `admin.php` 13.
+
 ## Working conventions
 
 - Update `knowledge.md` whenever you change architecture, routes, APIs, or

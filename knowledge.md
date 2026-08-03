@@ -23,7 +23,7 @@ Vow 8 is **machine-enforced** by `tests/Core/VowDocblockTest.php`, which scans `
 
 Key code locations:
 - **`src/Core/`** — Framework: Router, Database (PDO), Session, View, RequestContext, AuthService, ConfigBag, StaticFileServer
-- **`src/Controllers/`** — 12 controllers (Home, Auth, Docs, Community, Account, Admin, Api, Chat, ChatPage, Files, Support, Error) + `FormRequests/`
+- **`src/Controllers/`** — 13 controllers (Home, Auth, Docs, Community, Account, Admin, Api, Chat, ChatPage, Files, Support, Error, OAuth) + `FormRequests/`
 - **`src/Repositories/`** — Data access layer: Pdo*Repository (production) + InMemory*Repository (tests). Access via `RepositoryRegistry`
 - **`src/views/`** — `layouts/` (header, footer) and `pages/` (one per route)
 - **`public/js/`** — Vanilla JS: `app.js` (ashatFetch, toasts), `agent.js` (Coding Agent — BYO-key LLM driver), `assistant.js` (Chat page — conversations, spec versions, Markdown export, chat File Manager + Monaco panel)
@@ -38,7 +38,7 @@ Key code locations:
 | Command | Purpose |
 |---|---|
 | `php -S localhost:8000 router.php` | Built-in dev server |
-| `php phpunit.phar` | Run all PHP tests (20 test files; phar lives in repo root, gitignored — get it with `curl -L -o phpunit.phar https://phar.phpunit.de/phpunit-10.5.phar`) |
+| `php phpunit.phar` | Run all PHP tests (22 test files; phar lives in repo root, gitignored — get it with `curl -L -o phpunit.phar https://phar.phpunit.de/phpunit-10.5.phar`) |
 | `node tests/js/agent-extract.test.js` | Run the agent.js JS unit tests (JSON extraction + prompt building) |
 | `node tests/js/chat-capture.test.js` | Run the assistant.js chat code-capture engine tests |
 | `mysql -u root -p < db/schema.sql` | Full-access DB install |
@@ -115,7 +115,7 @@ No package.json or composer.json — **zero dependencies**.
   whenever `tailwind.config.js` or the color tokens in `header.php` change
 
 ### Testing
-- PHPUnit 10.5 in `phpunit.xml.dist` (run: `php phpunit.phar` — 469 tests, 864 assertions, green; 1 pre-existing skip)
+- PHPUnit 10.5 in `phpunit.xml.dist` (run: `php phpunit.phar` — the suite is green, with 1 pre-existing skip; exact counts drift as tests are added — live counts regenerate via `AGENTS.md` → Repo stats)
 - **Vow 8 is enforced**: `tests/Core/VowDocblockTest.php` scans every `.php`/`.js` under `src/` + `public/`, parses `/** */` docblocks, and fails if any prose exceeds 2 sentences. The counter is deliberately fair: it strips `@annotation` lines, banner-art lines, numbered-list markers, and neutralizes abbreviations (`e.g.`, `etc.`) + decimals before counting sentence ends — so keep docblocks to 1–2 crisp sentences and the suite stays green.
 - Tests bootstrap from `tests/bootstrap.php` (minimal — no session, no DB)
 - FakeContext + InMemoryRepositories = no database needed

@@ -108,7 +108,10 @@
                 <div class="min-w-0">
                   <a href="/community/project/<?= e($p['slug']) ?>" class="font-medium truncate" style="color: var(--gold-text);" onmouseover="this.style.color='var(--gold)'" onmouseout="this.style.color='var(--gold-text)'"><?= e($p['title']) ?></a>
                   <div class="text-xs mt-1 flex items-center gap-2 flex-wrap" style="color: var(--gold-muted);">
-                    <span class="chip-gold" style="font-size: 10px;"><?= e($p['status']) ?></span>
+                    <?php $pendingStatus = in_array(($p['status'] ?? 'live'), ['pending', 'rejected'], true); ?>
+                    <span class="chip-gold" style="font-size: 10px; <?= $pendingStatus ? 'border-color: var(--warn); color: var(--warn);' : '' ?>">
+                      <?= e($pendingStatus ? ($p['status'] === 'rejected' ? 'rejected' : 'pending approval') : $p['status']) ?>
+                    </span>
                     <span><?= e($p['category']) ?></span>
                     <span>·</span>
                     <span><?= (int) $p['likes'] ?> likes</span>

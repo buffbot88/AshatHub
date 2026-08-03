@@ -33,7 +33,10 @@ final class CommunityController
             $ctx->view('pages/404', ['uri' => "/community/user/{$username}"]);
             return;
         }
-        $projects = RepositoryRegistry::communityProject()->byUser($user['id']);
+        $projects = array_filter(
+            RepositoryRegistry::communityProject()->byUser($user['id']),
+            static fn (array $p): bool => !in_array(($p['status'] ?? 'live'), ['pending', 'rejected'], true)
+        );
         $ctx->view('pages/publisher', [
             'title'    => ($user['display_name'] ?: $user['username']) . ' · Community',
             'user'     => $user,
@@ -52,6 +55,14 @@ final class CommunityController
             return;
         }
         $isOwner = $ctx->user() && ($project['user_id'] ?? '') === $ctx->user()['id'];
+        // Unapproved submissions are only reachable by their owner while
+        // they wait in the admin review queue — everyone else gets a 404.
+        $unapproved = in_array(($project['status'] ?? 'live'), ['pending', 'rejected'], true);
+        if ($unapproved && !$isOwner) {
+            http_response_code(404);
+            $ctx->view('pages/404', ['uri' => "/community/project/{$slug}"]);
+            return;
+        }
         $ctx->view('pages/project', [
             'title'   => $project['title'] . ' · Community',
             'project' => $project,
@@ -120,6 +131,12 @@ final class CommunityController
             $tags,
             $stack
         );
+        // Editing a rejected project re-submits it for admin review.
+        if (($project['status'] ?? '') === 'rejected') {
+            RepositoryRegistry::communityProject()->resubmit($project['id']);
+            $ctx->flash('flash', 'Project updated and resubmitted for admin approval.');
+            $ctx->redirect('/account/#tab=projects');
+        }
         $ctx->flash('flash', 'Project updated.');
         $ctx->redirect('/community/project/' . rawurlencode($slug));
     }
@@ -179,7 +196,7 @@ final class CommunityController
             $stack
         );
 
-        $ctx->flash('flash', 'Project submitted! It is now live in the community showcase.');
-        $ctx->redirect('/community/project/' . rawurlencode($slug));
+        $ctx->flash('flash', 'Project submitted! It is now pending admin approval before appearing in the showcase.');
+        $ctx->redirect('/account/#tab=projects');
     }
 }

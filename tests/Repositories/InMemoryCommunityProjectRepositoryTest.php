@@ -387,9 +387,142 @@ final class InMemoryCommunityProjectRepositoryTest extends TestCase
         $this->assertSame('Desc', $proj['description']);
         $this->assertSame('general', $proj['category']);
         $this->assertSame('u1', $proj['user_id']);
-        $this->assertSame('live', $proj['status']);
+        $this->assertSame('pending', $proj['status']);
         $this->assertSame(0, $proj['likes']);
         $this->assertSame(0, $proj['downloads']);
+    }
+
+    // ── Admin approval lifecycle ──────────────────────────────────
+
+    public function test_submitted_project_is_pending_not_public(): void
+    {
+        $slug = $this->repo->submit('u1', 'Pending Proj', 'Desc', 'general', '', '');
+
+        // Hidden from the public showcase until approved
+        $this->assertCount(0, $this->repo->all());
+        $this->assertSame([], $this->repo->byCategory('general'));
+        $this->assertSame(['all' => 0], $this->repo->categories());
+        // But visible to the owner + admin queue
+        $this->assertNotNull($this->repo->bySlug($slug));
+        $this->assertCount(1, $this->repo->pending());
+        $this->assertCount(1, $this->repo->allIncludingPending());
+    }
+
+    public function test_approve_makes_project_public(): void
+    {
+        $slug = $this->repo->submit('u1', 'Approve Me', 'Desc', 'general', '', '');
+        $proj = $this->repo->bySlug($slug);
+        $this->repo->approve($proj['id']);
+
+        $this->assertCount(1, $this->repo->all());
+        $this->assertCount(0, $this->repo->pending());
+        $this->assertSame('live', $this->repo->bySlug($slug)['status']);
+        $this->assertSame(1, $this->repo->categories()['all']);
+    }
+
+    public function test_reject_keeps_project_hidden(): void
+    {
+        $slug = $this->repo->submit('u1', 'Reject Me', 'Desc', 'general', '', '');
+        $proj = $this->repo->bySlug($slug);
+        $this->repo->reject($proj['id']);
+
+        $this->assertCount(0, $this->repo->all());
+        $this->assertCount(0, $this->repo->pending());
+        $this->assertSame('rejected', $this->repo->bySlug($slug)['status']);
+        $this->assertCount(1, $this->repo->allIncludingPending());
+    }
+
+    public function test_pending_orders_newest_first(): void
+    {
+        $old = array_merge($this->projectA, ['id' => 'proj-1', 'user_id' => 'u1', 'status' => 'pending', 'created_at' => '2026-01-01 00:00:00']);
+        $new = array_merge($this->projectB, ['id' => 'proj-2', 'user_id' => 'u1', 'status' => 'pending', 'created_at' => '2026-07-01 00:00:00']);
+        $this->repo->seed([$old, $new]);
+
+        $pending = $this->repo->pending();
+        $this->assertCount(2, $pending);
+        $this->assertSame('ai-chat', $pending[0]['slug']);
+        $this->assertSame('web-app', $pending[1]['slug']);
+    }
+
+    public function test_all_including_pending_orders_newest_first(): void
+    {
+        $old = array_merge($this->projectA, ['id' => 'proj-1', 'user_id' => 'u1', 'status' => 'live', 'created_at' => '2026-01-01 00:00:00']);
+        $new = array_merge($this->projectB, ['id' => 'proj-2', 'user_id' => 'u1', 'status' => 'pending', 'created_at' => '2026-07-01 00:00:00']);
+        $this->repo->seed([$old, $new]);
+
+        $all = $this->repo->allIncludingPending();
+        $this->assertCount(2, $all);
+        $this->assertSame('ai-chat', $all[0]['slug']);
+        $this->assertSame('web-app', $all[1]['slug']);
+    }
+
+    public function test_approve_reject_do_nothing_for_unknown_id(): void
+    {
+        $this->repo->approve('nope');
+        $this->repo->reject('nope');
+        $this->assertCount(0, $this->repo->inspect());
+    }
+
+    public function test_approve_does_nothing_for_non_pending(): void
+    {
+        $this->repo->seed([array_merge($this->projectA, ['id' => 'proj-1', 'user_id' => 'u1', 'status' => 'live'])]);
+        $this->repo->approve('proj-1');
+        $this->assertSame('live', $this->repo->bySlug('web-app')['status']);
+    }
+
+    public function test_reject_does_nothing_for_non_pending(): void
+    {
+        $this->repo->seed([array_merge($this->projectA, ['id' => 'proj-1', 'user_id' => 'u1', 'status' => 'live'])]);
+        $this->repo->reject('proj-1');
+        $this->assertSame('live', $this->repo->bySlug('web-app')['status']);
+    }
+
+    public function test_resubmit_moves_rejected_back_to_pending(): void
+    {
+        $slug = $this->repo->submit('u1', 'Resubmit Me', 'Desc', 'general', '', '');
+        $proj = $this->repo->bySlug($slug);
+        $this->repo->reject($proj['id']);
+
+        $this->repo->resubmit($proj['id']);
+        $this->assertSame('pending', $this->repo->bySlug($slug)['status']);
+        $this->assertCount(1, $this->repo->pending());
+        $this->assertCount(0, $this->repo->all());
+    }
+
+    public function test_resubmit_does_nothing_for_live_project(): void
+    {
+        $this->repo->seed([array_merge($this->projectA, ['id' => 'proj-1', 'user_id' => 'u1', 'status' => 'live'])]);
+        $this->repo->resubmit('proj-1');
+        $this->assertSame('live', $this->repo->bySlug('web-app')['status']);
+    }
+
+    public function test_resubmit_does_nothing_for_unknown_id(): void
+    {
+        $this->repo->resubmit('nope');
+        $this->assertCount(0, $this->repo->inspect());
+    }
+
+    public function test_all_excludes_pending_and_rejected(): void
+    {
+        $live     = array_merge($this->projectA, ['id' => 'proj-1', 'user_id' => 'u1', 'status' => 'live']);
+        $pending  = array_merge($this->projectB, ['id' => 'proj-2', 'user_id' => 'u1', 'status' => 'pending']);
+        $rejected = array_merge($this->projectC, ['id' => 'proj-3', 'user_id' => 'u1', 'status' => 'rejected']);
+        $this->repo->seed([$live, $pending, $rejected]);
+
+        $items = $this->repo->all();
+        $this->assertCount(1, $items);
+        $this->assertSame('web-app', $items[0]['slug']);
+    }
+
+    public function test_categories_exclude_pending_and_rejected(): void
+    {
+        $live     = array_merge($this->projectA, ['id' => 'proj-1', 'user_id' => 'u1', 'status' => 'live']);
+        $pending  = array_merge($this->projectB, ['id' => 'proj-2', 'user_id' => 'u1', 'status' => 'pending', 'category' => 'ai']);
+        $this->repo->seed([$live, $pending]);
+
+        $cats = $this->repo->categories();
+        $this->assertSame(1, $cats['all']);
+        $this->assertArrayNotHasKey('ai', $cats);
     }
 
     public function test_submit_generates_id(): void

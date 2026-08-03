@@ -22,9 +22,10 @@
         <p class="mt-3 text-lg leading-relaxed" style="color: var(--gold-text);"><?= e($p['description']) ?></p>
       </div>
       <div class="flex items-center gap-3">
-        <span class="chip-gold" style="text-transform: uppercase; letter-spacing: 1px;">
+        <?php $pendingStatus = in_array(($p['status'] ?? 'live'), ['pending', 'rejected'], true); ?>
+        <span class="chip-gold" style="text-transform: uppercase; letter-spacing: 1px; <?= $pendingStatus ? 'border-color: var(--warn); color: var(--warn);' : '' ?>">
           <span class="dot"></span>
-          <?= e($p['status']) ?>
+          <?= e($pendingStatus ? ($p['status'] === 'rejected' ? 'Rejected' : 'Pending approval') : $p['status']) ?>
         </span>
         <?php if ($isOwner): ?>
           <a href="/community/project/<?= e($p['slug']) ?>/edit" class="btn-outline text-sm">Edit</a>
@@ -40,6 +41,24 @@
 
 <section class="container mx-auto px-6 py-12 grid md:grid-cols-3 gap-8">
   <div class="md:col-span-2 space-y-6">
+    <?php if (($p['status'] ?? 'live') === 'pending' && $isOwner): ?>
+      <div class="glass-card-solid p-5" style="border-color: var(--warn);">
+        <div style="font-weight: 600; color: var(--warn);">Pending approval</div>
+        <p class="text-sm mt-1" style="color: var(--gold-muted);">
+          This project is waiting for an admin to review it. It stays hidden from the
+          community showcase until approved — you can still edit it below.
+        </p>
+      </div>
+    <?php endif; ?>
+    <?php if (($p['status'] ?? 'live') === 'rejected' && $isOwner): ?>
+      <div class="glass-card-solid p-5" style="border-color: var(--err);">
+        <div style="font-weight: 600; color: var(--err);">Rejected</div>
+        <p class="text-sm mt-1" style="color: var(--gold-muted);">
+          This submission was not approved and is not visible to the public.
+          You can edit it and resubmit, or delete it.
+        </p>
+      </div>
+    <?php endif; ?>
     <article class="prose prose-invert max-w-none">
       <h2 style="font-family: var(--font-heading); font-weight: 600; font-size: 20px; color: var(--gold);">About</h2>
       <p style="color: var(--gold-text); leading-relaxed;"><?= e($p['description']) ?></p>

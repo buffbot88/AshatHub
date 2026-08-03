@@ -189,6 +189,16 @@ No package.json or composer.json — **zero dependencies**.
 - **Show/edit/delete guards** — `show()`, `edit()`, `update()`, `delete()` all 404 when the publisher is inactive; owner-only checks redirect non-owners.
 - **Account → My Projects** tab lists the user's published projects with Edit / Delete links and an **Open in Chat** deep link (`/chat/?project={slug}&title=…`).
 - `submit()` uses `requireRole()` (no args = any authenticated role) — the old lowercase `guest/pro/admin` list never matched the uppercase ENUM and 403'd everyone.
+- **Admin approval gate** — new submissions are inserted `status='pending'`
+  and hidden from the public showcase (`all()` / `byCategory()` /
+  `categories()` exclude `pending`/`rejected`) until an admin approves.
+  Admin moderates in **Admin → Projects tab** (`/admin/#tab=projects`):
+  pending queue with Approve/Reject (`POST /admin/projects/approve|reject`)
+  plus an all-projects table (`allIncludingPending()`); the dashboard
+  shows a conditional Pending Projects stat card when the queue is
+  non-empty. `bySlug`/`byUser` return all statuses so owners keep editing
+  their own pending project; `show()` renders it only for the owner (404
+  otherwise), and public publisher pages filter to approved projects.
 
 ### Maintenance Mode
 - Toggled via admin UI → writes `storage/maintenance.json`

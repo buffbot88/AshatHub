@@ -7,6 +7,59 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 The version displayed in the UI comes from `APP_VERSION` in `config/bootstrap.php`
 (`APP_VERSION_DISPLAY` = `v` + version).
 
+## [Unreleased]
+
+### Added
+
+- **Community showcase — admin approval gate** — new submissions now
+  start as `pending` and stay hidden from the public showcase until an
+  admin approves them
+  - Repository: new `pending()` / `approve()` / `reject()` /
+    `allIncludingPending()` methods; `submit()` inserts `status='pending'`;
+    public reads (`all()`, `byCategory()`, `categories()`) exclude
+    `pending`/`rejected`; `bySlug`/`byUser` still return all statuses so
+    owners keep access to their own pending project
+  - **Admin → Projects tab** — review queue with Approve / Reject buttons
+    plus an all-projects table with color-coded status chips;
+    `POST /admin/projects/approve|reject` routes under the admin-gate
+  - Dashboard gains a conditional **Pending Projects** stat card (only
+    when the queue is non-empty) linking to the moderation tab
+  - Owner UX: submit redirects to Account → My Projects with a "pending
+    approval" chip; the project detail page shows a pending/rejected
+    banner to its owner while rendering 404 for everyone else; publisher
+    pages only list approved projects; editing a rejected project
+    re-submits it to the review queue (`resubmit()`)
+  - Tests: `InMemoryCommunityProjectRepositoryTest` covers the full
+    approval lifecycle (pending hiding, approve→public, reject→hidden,
+    resubmit, queue ordering, non-pending guards)
+
+### Changed
+
+- **Admin Settings — controls vs. diagnostics split** — the Settings tab
+  now uses a two-column layout: the left column holds the four interactive
+  control cards (BrainStem Host, Update from GitHub, Webhook Notifications,
+  Maintenance Mode), and the right column is a compact read-only **System**
+  sidebar with a spec-tile grid (PHP version, server, memory/upload/POST
+  limits, DB server + name) plus a collapsible "Advanced Environment"
+  drawer for the raw env key-value list. The old standalone Active
+  Configuration card was merged into the BrainStem Host card (status badge
+  moves into the card header; resolved URL/key/updated-by render as a
+  compact footer), and webhooks moved out of the GitHub card into their own
+  card. Form actions are now standardized: primary saves/actions align to
+  the bottom-right of their card, secondary actions (Reset to defaults,
+  Clear Secret, Check for Updates) use ghost/outline styling
+- **Admin dashboard polish** — the redundant "Active Users" link in the
+  header and its duplicate Quick Action card were removed (the page stays
+  reachable from the navbar dropdown); stat cards that have no data
+  (empty Project Files, unavailable Git status) are now hidden instead of
+  showing a meaningless `0`/`—` (the Git card's value also renders its
+  `branch @ commit` string correctly now instead of being cast to `0`);
+  the floating red `+N` update pill was replaced with a quiet in-card
+  status line ("+N updates available" / "Webhook push pending" /
+  "Up to date"); the header subtitle became a personal greeting
+  ("Welcome back, …") and the header/action grids were rebalanced to fit
+  the fewer cards.
+
 ## [v5.8] — 2026-08-02
 
 ### Removed

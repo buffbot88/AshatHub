@@ -53,4 +53,19 @@ interface CommunityProjectRepository
 
     /** Delete project. Auth-scoped to owner. */
     public function delete(string $id, string $userId): void;
+
+    /** All projects including pending/rejected, newest first (admin moderation). */
+    public function allIncludingPending(): array;
+
+    /** Projects awaiting admin approval, newest first. */
+    public function pending(): array;
+
+    /** Approve a project for public visibility (status -> live). */
+    public function approve(string $id): void;
+
+    /** Reject a project; it stays hidden from public listings. */
+    public function reject(string $id): void;
+
+    /** Re-submit a rejected project for admin review (status -> pending). */
+    public function resubmit(string $id): void;
 }

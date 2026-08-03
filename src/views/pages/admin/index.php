@@ -1,13 +1,8 @@
 <?php /** @var Core\ViewContext $view */ ?>
 <section style="border-bottom: 1px solid var(--gold-line);">
   <div class="container mx-auto px-6 py-12">
-    <div class="flex items-end justify-between flex-wrap gap-4">
-      <div>
-        <h1 class="section-title" style="font-size: clamp(28px, 4vw, 40px);">Admin Panel</h1>
-        <p style="color: var(--gold-muted);" class="mt-2">Platform overview, user management, support, and system settings.</p>
-      </div>
-      <a href="/account/active-users/" class="btn-outline" style="font-size: 12px;">Active Users →</a>
-    </div>
+    <h1 class="section-title" style="font-size: clamp(28px, 4vw, 40px);">Admin Panel</h1>
+    <p style="color: var(--gold-muted);" class="mt-2">Welcome back, <?= e($view->user['display_name'] ?: $view->user['username']) ?>.</p>
   </div>
 </section>
 
@@ -16,6 +11,7 @@
   <div class="account-tabs" role="tablist" aria-label="Admin sections">
     <button type="button" role="tab" id="tab-dashboard" class="account-tab active" aria-selected="true"  aria-controls="panel-dashboard" data-tab="dashboard">Dashboard</button>
     <button type="button" role="tab" id="tab-users"     class="account-tab"        aria-selected="false" aria-controls="panel-users"     data-tab="users">Users</button>
+    <button type="button" role="tab" id="tab-projects"  class="account-tab"        aria-selected="false" aria-controls="panel-projects"  data-tab="projects">Projects</button>
     <button type="button" role="tab" id="tab-support"   class="account-tab"        aria-selected="false" aria-controls="panel-support"   data-tab="support">Support</button>
     <button type="button" role="tab" id="tab-settings"  class="account-tab"        aria-selected="false" aria-controls="panel-settings"  data-tab="settings">Settings</button>
   </div>
@@ -28,6 +24,11 @@
   <!-- ── Users ───────────────────────────────────────────────────── -->
   <div id="panel-users" role="tabpanel" aria-labelledby="tab-users" class="account-panel" hidden>
     <?php require __DIR__ . '/../../partials/admin/users.php'; ?>
+  </div>
+
+  <!-- ── Projects (community moderation) ─────────────────────────── -->
+  <div id="panel-projects" role="tabpanel" aria-labelledby="tab-projects" class="account-panel" hidden>
+    <?php require __DIR__ . '/../../partials/admin/projects.php'; ?>
   </div>
 
   <!-- ── Support ─────────────────────────────────────────────────── -->

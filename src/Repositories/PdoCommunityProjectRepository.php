@@ -26,6 +26,11 @@ final class PdoCommunityProjectRepository implements CommunityProjectRepository
     // Rows without a publisher (official seed data) stay visible.
     private const VISIBLE = 'u.id IS NULL OR u.is_active = 1';
 
+    // Public listings only show approved, live projects — pending and
+    // rejected submissions stay out of the showcase until an admin
+    // approves them.
+    private const APPROVED = "cp.status NOT IN ('pending', 'rejected')";
+
     public function all(): array
     {
         return $this->db->fetchAll(
@@ -35,7 +40,7 @@ final class PdoCommunityProjectRepository implements CommunityProjectRepository
                     u.display_name AS publisher_display_name,
                     u.is_active AS publisher_active
              FROM community_projects cp " . self::USER_JOIN .
-            " WHERE " . self::VISIBLE .
+            " WHERE " . self::VISIBLE . " AND " . self::APPROVED .
             " ORDER BY cp.likes DESC, cp.created_at DESC"
         ) ?: [];
     }
@@ -49,7 +54,7 @@ final class PdoCommunityProjectRepository implements CommunityProjectRepository
                     u.display_name AS publisher_display_name,
                     u.is_active AS publisher_active
              FROM community_projects cp " . self::USER_JOIN .
-            " WHERE cp.category = ? AND " . self::VISIBLE . " ORDER BY cp.likes DESC",
+            " WHERE cp.category = ? AND " . self::VISIBLE . " AND " . self::APPROVED . " ORDER BY cp.likes DESC",
             [$category]
         );
     }
@@ -97,7 +102,7 @@ final class PdoCommunityProjectRepository implements CommunityProjectRepository
         $rows = $this->db->fetchAll(
             "SELECT cp.category, COUNT(*) AS count
              FROM community_projects cp " . self::USER_JOIN .
-            " WHERE " . self::VISIBLE . " GROUP BY cp.category ORDER BY count DESC"
+            " WHERE " . self::VISIBLE . " AND " . self::APPROVED . " GROUP BY cp.category ORDER BY count DESC"
         );
         $out = ['all' => 0];
         foreach ($rows as $r) {
@@ -135,7 +140,7 @@ final class PdoCommunityProjectRepository implements CommunityProjectRepository
         $id = Uuid::v4();
         $this->db->execute(
             "INSERT INTO community_projects (id, user_id, title, slug, description, category, tags, stack, status)
-             VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'live')",
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'pending')",
             [$id, $userId, $title, $slug, $description, $category, $tags, $stack]
         );
         return $slug;
@@ -155,6 +160,56 @@ final class PdoCommunityProjectRepository implements CommunityProjectRepository
         $this->db->execute(
             "DELETE FROM community_projects WHERE id = ? AND user_id = ?",
             [$id, $userId]
+        );
+    }
+
+    public function allIncludingPending(): array
+    {
+        return $this->db->fetchAll(
+            "SELECT cp.id, cp.slug, cp.title, cp.description, cp.category, cp.tags,
+                    cp.status, cp.likes, cp.downloads, cp.stack, cp.created_at,
+                    cp.user_id, u.username AS publisher_username,
+                    u.display_name AS publisher_display_name,
+                    u.is_active AS publisher_active
+             FROM community_projects cp " . self::USER_JOIN .
+            " ORDER BY cp.created_at DESC"
+        ) ?: [];
+    }
+
+    public function pending(): array
+    {
+        return $this->db->fetchAll(
+            "SELECT cp.id, cp.slug, cp.title, cp.description, cp.category, cp.tags,
+                    cp.status, cp.likes, cp.downloads, cp.stack, cp.created_at,
+                    cp.user_id, u.username AS publisher_username,
+                    u.display_name AS publisher_display_name,
+                    u.is_active AS publisher_active
+             FROM community_projects cp " . self::USER_JOIN .
+            " WHERE cp.status = 'pending' AND " . self::VISIBLE . " ORDER BY cp.created_at DESC"
+        ) ?: [];
+    }
+
+    public function approve(string $id): void
+    {
+        $this->db->execute(
+            "UPDATE community_projects SET status = 'live' WHERE id = ? AND status = 'pending'",
+            [$id]
+        );
+    }
+
+    public function reject(string $id): void
+    {
+        $this->db->execute(
+            "UPDATE community_projects SET status = 'rejected' WHERE id = ? AND status = 'pending'",
+            [$id]
+        );
+    }
+
+    public function resubmit(string $id): void
+    {
+        $this->db->execute(
+            "UPDATE community_projects SET status = 'pending' WHERE id = ? AND status = 'rejected'",
+            [$id]
         );
     }
 

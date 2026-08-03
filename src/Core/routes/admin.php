@@ -12,6 +12,10 @@ $router->group('/admin', ['middleware' => ['admin-gate']], function () use ($rou
     $router->post('/users/role',    [\Controllers\AdminController::class, 'updateUserRole']);
     $router->post('/users/toggle-status', [\Controllers\AdminController::class, 'toggleUserStatus']);
 
+    // Community moderation
+    $router->post('/projects/approve', [\Controllers\AdminController::class, 'approveProject']);
+    $router->post('/projects/reject',  [\Controllers\AdminController::class, 'rejectProject']);
+
     // System settings
     $router->get('/settings',       [\Controllers\AdminController::class, 'settings']);
     $router->post('/settings/brainstem',      [\Controllers\AdminController::class, 'updateBrainstem']);

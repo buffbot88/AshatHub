@@ -8,16 +8,31 @@
   $maint      = $view->maint ?? ['enabled' => false, 'message' => ''];
 ?>
 
-<div class="grid lg:grid-cols-2 gap-8">
-  <!-- ─── BrainStem Config ──────────────────────────────────────── -->
-  <div class="space-y-6">
+<div class="grid lg:grid-cols-3 gap-8 items-start">
+  <!-- ══════════════════════════════════════════════════════════════
+       LEFT COLUMN — Primary Actions (interactive controls only)
+       ══════════════════════════════════════════════════════════════ -->
+  <div class="lg:col-span-2 space-y-6">
+
+    <!-- ─── BrainStem Host (status + active config merged in) ───── -->
     <div class="p-6 rounded-xl bg-ink-panel border border-ink-line">
-      <h2 class="text-lg font-display font-semibold mb-1">BrainStem Host</h2>
-      <p class="text-sm text-chalk-mute mb-5">
-        Configure the BrainStem inference backend. Leave fields blank to use
-        the <code class="text-chalk text-xs">BRAINSTEM_URL</code> /
-        <code class="text-chalk text-xs">BRAINSTEM_KEY</code> environment defaults.
-      </p>
+      <div class="flex items-start justify-between gap-4 flex-wrap mb-4">
+        <div>
+          <h2 class="text-lg font-display font-semibold mb-1">BrainStem Host</h2>
+          <p class="text-sm text-chalk-mute">
+            Configure the BrainStem inference backend. Leave fields blank to use
+            the <code class="text-chalk text-xs">BRAINSTEM_URL</code> /
+            <code class="text-chalk text-xs">BRAINSTEM_KEY</code> environment defaults.
+          </p>
+        </div>
+        <?php if ($configured): ?>
+          <span class="chip-gold text-[10px] shrink-0"><span class="dot"></span> DB override active</span>
+        <?php elseif ($env_key_set): ?>
+          <span class="shrink-0 text-[10px] font-mono px-2 py-1 rounded-full border border-warn/40 text-warn">Using env defaults</span>
+        <?php else: ?>
+          <span class="shrink-0 text-[10px] font-mono px-2 py-1 rounded-full border border-err/40 text-err">Not configured</span>
+        <?php endif; ?>
+      </div>
 
       <form method="post" action="/admin/settings/brainstem/" class="space-y-4">
         <?= csrf_field() ?>
@@ -40,26 +55,37 @@
                  placeholder="<?= $env_key_set ? '(using env key)' : 'sk-…' ?>"
                  class="mt-1 w-full px-3 py-2 rounded-md bg-ink-soft border border-ink-line focus:outline-none focus:border-accent font-mono text-sm">
         </label>
-        <div class="flex items-center justify-between pt-2">
-          <div class="text-xs text-chalk-mute">
-            Status:
-            <?php if ($configured): ?>
-              <span class="text-ok">DB override active</span>
-              <span class="text-chalk-dim ml-1">(updated by <?= e($brainstem['updated_by'] ?? '?') ?>)</span>
-            <?php elseif ($env_key_set): ?>
-              <span class="text-warn">Using env defaults</span>
+
+        <!-- Resolved config inline (replaces the old Active Configuration card) -->
+        <div class="rounded-lg bg-ink-soft border border-ink-line px-4 py-3 space-y-2 text-sm">
+          <div class="flex items-center justify-between gap-4">
+            <span class="text-xs font-mono uppercase tracking-wider text-chalk-mute shrink-0">Active URL</span>
+            <span class="font-mono text-xs text-chalk break-all text-right"><?= e($active['url'] ?: '(none)') ?></span>
+          </div>
+          <div class="flex items-center justify-between gap-4">
+            <span class="text-xs font-mono uppercase tracking-wider text-chalk-mute shrink-0">Active Key</span>
+            <?php if ($active['api_key'] !== ''): ?>
+              <span class="font-mono text-xs"><span class="text-ok">&#9679; Key is set</span> <span class="text-chalk-dim">(<?= strlen($active['api_key']) ?> chars)</span></span>
             <?php else: ?>
-              <span class="text-err">Not configured</span>
+              <span class="font-mono text-xs text-err">No key configured</span>
             <?php endif; ?>
           </div>
-          <div class="flex gap-2">
-            <button class="px-4 py-2 bg-accent text-ink-deep rounded-md font-medium hover:bg-accent-soft transition">Save</button>
-          </div>
+          <?php if ($configured): ?>
+            <div class="flex items-center justify-between gap-4">
+              <span class="text-xs font-mono uppercase tracking-wider text-chalk-mute shrink-0">Updated by</span>
+              <span class="font-mono text-xs text-chalk-dim"><?= e($brainstem['updated_by'] ?? '?') ?></span>
+            </div>
+          <?php endif; ?>
+        </div>
+
+        <!-- Actions — primary save, aligned bottom-right -->
+        <div class="flex justify-end pt-1">
+          <button class="px-4 py-2 bg-accent text-ink-deep rounded-md font-medium hover:bg-accent-soft transition">Save</button>
         </div>
       </form>
       <!-- Reset form is separate (never nest forms in HTML) -->
       <?php if ($configured): ?>
-        <div class="mt-4 flex justify-end">
+        <div class="mt-3 flex justify-end">
           <form method="post" action="/admin/settings/brainstem/reset/"
                 onsubmit="return confirm('Reset to environment defaults? This will clear the stored DB config.')">
             <?= csrf_field() ?>
@@ -67,105 +93,6 @@
           </form>
         </div>
       <?php endif; ?>
-    </div>
-
-    <!-- ─── Resolved Active Config ───────────────────────────────── -->
-    <div class="p-6 rounded-xl bg-ink-panel border border-ink-line">
-      <h2 class="text-lg font-display font-semibold mb-1">Active Configuration</h2>
-      <p class="text-sm text-chalk-mute mb-4">The URL and key the system will actually use.</p>
-      <div class="space-y-3 text-sm">
-        <div>
-          <span class="text-xs font-mono uppercase tracking-wider text-chalk-mute">Active URL</span>
-          <div class="mt-1 font-mono text-xs bg-ink-soft rounded px-3 py-2 border border-ink-line break-all">
-            <?= e($active['url'] ?: '(none)') ?>
-          </div>
-        </div>
-        <div>
-          <span class="text-xs font-mono uppercase tracking-wider text-chalk-mute">Active Key</span>
-          <div class="mt-1 font-mono text-xs bg-ink-soft rounded px-3 py-2 border border-ink-line">
-            <?php if ($active['api_key'] !== ''): ?>
-              <span class="text-ok">&#9679; Key is set</span>
-              <span class="text-chalk-dim">(<?= strlen($active['api_key']) ?> chars)</span>
-            <?php else: ?>
-              <span class="text-err">No key configured</span>
-            <?php endif; ?>
-          </div>
-        </div>
-      </div>
-    </div>
-  </div>
-
-  <!-- ─── Environment Info ──────────────────────────────────────── -->
-  <div class="space-y-6">
-    <div class="p-6 rounded-xl bg-ink-panel border border-ink-line">
-      <h2 class="text-lg font-display font-semibold mb-1">Environment</h2>
-      <p class="text-sm text-chalk-mute mb-4">Current runtime configuration from <code class="text-chalk text-xs">.env</code> or defaults.</p>
-      <dl class="space-y-3 text-sm">
-        <?php
-          $envItems = [
-            'APP_NAME'         => APP_NAME,
-            'APP_ENV'          => APP_ENV,
-            'APP_DEBUG'        => APP_DEBUG ? 'true' : 'false',
-            'APP_URL'          => APP_URL,
-            'APP_VERSION'      => APP_VERSION,
-            'DB_HOST'          => DB_HOST,
-            'DB_NAME'          => DB_NAME,
-            'SESSION_LIFETIME' => SESSION_LIFETIME . 's',
-            'BRAINSTEM_URL'    => $view->env_url,
-            'BRAINSTEM_KEY'    => $view->env_key_set ? '(set)' : '(not set)',
-          ];
-          foreach ($envItems as $key => $value):
-        ?>
-          <div class="flex items-center justify-between py-1.5 border-b border-ink-line/50 last:border-0">
-            <dt class="font-mono text-xs text-chalk-mute"><?= e($key) ?></dt>
-            <dd class="font-mono text-xs text-right ml-4 max-w-[280px] truncate" title="<?= e((string) $value) ?>">
-              <?= e((string) $value) ?>
-            </dd>
-          </div>
-        <?php endforeach; ?>
-      </dl>
-    </div>
-
-    <!-- ─── PHP Info ─────────────────────────────────────────────── -->
-    <div class="p-6 rounded-xl bg-ink-panel border border-ink-line">
-      <h2 class="text-lg font-display font-semibold mb-1">PHP Runtime</h2>
-      <dl class="space-y-3 text-sm mt-4">
-        <div class="flex items-center justify-between py-1.5 border-b border-ink-line/50">
-          <dt class="font-mono text-xs text-chalk-mute">PHP Version</dt>
-          <dd class="font-mono text-xs"><?= e(PHP_VERSION) ?></dd>
-        </div>
-        <div class="flex items-center justify-between py-1.5 border-b border-ink-line/50">
-          <dt class="font-mono text-xs text-chalk-mute">Server</dt>
-          <dd class="font-mono text-xs"><?= e($_SERVER['SERVER_SOFTWARE'] ?? 'built-in') ?></dd>
-        </div>
-        <div class="flex items-center justify-between py-1.5 border-b border-ink-line/50">
-          <dt class="font-mono text-xs text-chalk-mute">Memory limit</dt>
-          <dd class="font-mono text-xs"><?= e(ini_get('memory_limit') ?: '?') ?></dd>
-        </div>
-        <div class="flex items-center justify-between py-1.5 border-b border-ink-line/50">
-          <dt class="font-mono text-xs text-chalk-mute">Max upload</dt>
-          <dd class="font-mono text-xs"><?= e(ini_get('upload_max_filesize') ?: '?') ?></dd>
-        </div>
-        <div class="flex items-center justify-between py-1.5">
-          <dt class="font-mono text-xs text-chalk-mute">Max POST</dt>
-          <dd class="font-mono text-xs"><?= e(ini_get('post_max_size') ?: '?') ?></dd>
-        </div>
-      </dl>
-    </div>
-
-    <!-- ─── Database ─────────────────────────────────────────────── -->
-    <div class="p-6 rounded-xl bg-ink-panel border border-ink-line">
-      <h2 class="text-lg font-display font-semibold mb-1">Database</h2>
-      <dl class="space-y-3 text-sm mt-4">
-        <div class="flex items-center justify-between py-1.5 border-b border-ink-line/50">
-          <dt class="font-mono text-xs text-chalk-mute">Server</dt>
-          <dd class="font-mono text-xs"><?= e(DB_HOST) ?>:<?= DB_PORT ?></dd>
-        </div>
-        <div class="flex items-center justify-between py-1.5">
-          <dt class="font-mono text-xs text-chalk-mute">Database</dt>
-          <dd class="font-mono text-xs"><?= e(DB_NAME) ?></dd>
-        </div>
-      </dl>
     </div>
 
     <!-- ─── Update from GitHub ──────────────────────────────────── -->
@@ -197,8 +124,8 @@
         <div id="github-file-list" class="text-xs font-mono max-h-32 overflow-y-auto space-y-1" style="color: var(--gold-muted);"></div>
       </div>
 
-      <!-- Action area -->
-      <div class="flex flex-wrap items-center gap-3">
+      <!-- Action area — bottom-right -->
+      <div class="flex flex-wrap items-center justify-end gap-3">
         <button id="github-check-btn"
                 class="px-4 py-2 border border-accent/50 text-accent rounded-md font-medium hover:bg-accent/10 transition disabled:opacity-30 disabled:cursor-not-allowed inline-flex items-center gap-2">
           <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -222,81 +149,80 @@
         <pre id="github-output-text"
              class="text-xs font-mono bg-ink-deep rounded-lg p-4 border border-ink-line overflow-x-auto max-h-64 overflow-y-auto whitespace-pre-wrap"></pre>
       </div>
+    </div>
 
-      <!-- ═══ Webhook Notifications (manual apply only) ═══ -->
-      <hr class="my-5 border-ink-line/50">
-      <div class="pt-2">
-        <div class="flex items-center justify-between flex-wrap gap-2 mb-1">
-          <h3 class="text-base font-display font-semibold">
-            Webhook Notifications
-          </h3>
-          <span id="wh-status-chip" class="chip-gold text-[10px]">
-            <span class="dot"></span> <span id="wh-status-text">loading</span>
-          </span>
-        </div>
-        <p class="text-xs text-chalk-mute mb-3">
-          When configured, GitHub notifies this endpoint on every push. The push is
-          recorded and flagged here &mdash; it is <strong>never applied automatically</strong>.
-          Review changes with <em>Check for Updates</em>, then click <em>Apply Updates</em> to
-          sync from the main.zip archive yourself.
-        </p>
-
-        <!-- Webhook URL display -->
-        <div class="mb-3">
-          <span class="text-[10px] font-mono uppercase tracking-wider text-chalk-mute">Webhook URL</span>
-          <div id="wh-url-display"
-               class="mt-0.5 font-mono text-xs bg-ink-soft rounded px-3 py-2 border border-ink-line break-all text-chalk-dim select-all">
-            loading…
-          </div>
-          <p class="text-[10px] text-chalk-mute mt-1">
-            Enter this URL in GitHub → Settings → Webhooks → Add webhook.
-            Set Content type to <code class="text-chalk">application/json</code>.
-          </p>
-        </div>
-
-        <!-- Secret display -->
-        <div class="mb-3">
-          <span class="text-[10px] font-mono uppercase tracking-wider text-chalk-mute">Secret</span>
-          <div id="wh-secret-display"
-               class="mt-0.5 font-mono text-xs bg-ink-soft rounded px-3 py-2 border border-ink-line break-all text-chalk-dim">
-            <span id="wh-secret-value">—</span>
-          </div>
-          <p class="text-[10px] text-chalk-mute mt-1">
-            GitHub uses this secret to sign the request payload. The server verifies
-            the signature before recording the push.
-          </p>
-        </div>
-
-        <!-- Actions -->
-        <div class="flex flex-wrap items-center gap-2">
-          <button id="wh-generate-btn"
-                  class="px-3 py-1.5 border border-accent/50 text-accent rounded-md text-xs font-medium hover:bg-accent/10 transition disabled:opacity-30 disabled:cursor-not-allowed inline-flex items-center gap-1.5">
-            <span id="wh-generate-text">Generate New Secret</span>
-          </button>
-          <button id="wh-clear-btn"
-                  class="px-3 py-1.5 border border-err/40 text-err rounded-md text-xs font-medium hover:bg-err/10 transition disabled:opacity-30 disabled:cursor-not-allowed inline-flex items-center gap-1.5">
-            Clear Secret
-          </button>
-          <span id="wh-new-secret" class="hidden font-mono text-xs text-accent bg-accent/10 px-3 py-1.5 rounded-md border border-accent/30 break-all max-w-full"></span>
-        </div>
-
-        <!-- GitHub setup instructions (collapsible) -->
-        <details class="mt-4 text-xs text-chalk-mute">
-          <summary class="cursor-pointer hover:text-accent transition font-medium">
-            📖 Setup instructions
-          </summary>
-          <ol class="mt-2 space-y-1.5 pl-4 list-decimal leading-relaxed">
-            <li>Go to your GitHub repo: <code class="text-chalk">github.com/buffbot88/AshatHub</code></li>
-            <li>Click <strong>Settings</strong> → <strong>Webhooks</strong> → <strong>Add webhook</strong></li>
-            <li>Paste the <strong>Webhook URL</strong> (shown above) into the <em>Payload URL</em> field</li>
-            <li>Set <strong>Content type</strong> to <code class="text-chalk">application/json</code></li>
-            <li>Paste the <strong>Secret</strong> (shown above) into the <em>Secret</em> field</li>
-            <li>Select <strong>Just the push event</strong></li>
-            <li>Check <strong>Active</strong> and click <strong>Add webhook</strong></li>
-            <li>GitHub will send a <code class="text-chalk">ping</code> event to verify the connection</li>
-          </ol>
-        </details>
+    <!-- ─── Webhook Notifications (manual apply only) ───────────── -->
+    <div class="p-6 rounded-xl bg-ink-panel border border-ink-line">
+      <div class="flex items-center justify-between flex-wrap gap-2 mb-1">
+        <h2 class="text-lg font-display font-semibold">
+          Webhook Notifications
+        </h2>
+        <span id="wh-status-chip" class="chip-gold text-[10px]">
+          <span class="dot"></span> <span id="wh-status-text">loading</span>
+        </span>
       </div>
+      <p class="text-xs text-chalk-mute mb-4">
+        When configured, GitHub notifies this endpoint on every push. The push is
+        recorded and flagged here &mdash; it is <strong>never applied automatically</strong>.
+        Review changes with <em>Check for Updates</em>, then click <em>Apply Updates</em> to
+        sync from the main.zip archive yourself.
+      </p>
+
+      <!-- Webhook URL display -->
+      <div class="mb-3">
+        <span class="text-[10px] font-mono uppercase tracking-wider text-chalk-mute">Webhook URL</span>
+        <div id="wh-url-display"
+             class="mt-0.5 font-mono text-xs bg-ink-soft rounded px-3 py-2 border border-ink-line break-all text-chalk-dim select-all">
+          loading…
+        </div>
+        <p class="text-[10px] text-chalk-mute mt-1">
+          Enter this URL in GitHub → Settings → Webhooks → Add webhook.
+          Set Content type to <code class="text-chalk">application/json</code>.
+        </p>
+      </div>
+
+      <!-- Secret display -->
+      <div class="mb-3">
+        <span class="text-[10px] font-mono uppercase tracking-wider text-chalk-mute">Secret</span>
+        <div id="wh-secret-display"
+             class="mt-0.5 font-mono text-xs bg-ink-soft rounded px-3 py-2 border border-ink-line break-all text-chalk-dim">
+          <span id="wh-secret-value">—</span>
+        </div>
+        <p class="text-[10px] text-chalk-mute mt-1">
+          GitHub uses this secret to sign the request payload. The server verifies
+          the signature before recording the push.
+        </p>
+      </div>
+
+      <!-- Actions — bottom-right -->
+      <div class="flex flex-wrap items-center justify-end gap-2">
+        <button id="wh-generate-btn"
+                class="px-3 py-1.5 border border-accent/50 text-accent rounded-md text-xs font-medium hover:bg-accent/10 transition disabled:opacity-30 disabled:cursor-not-allowed inline-flex items-center gap-1.5">
+          <span id="wh-generate-text">Generate New Secret</span>
+        </button>
+        <button id="wh-clear-btn"
+                class="px-3 py-1.5 border border-err/40 text-err rounded-md text-xs font-medium hover:bg-err/10 transition disabled:opacity-30 disabled:cursor-not-allowed inline-flex items-center gap-1.5">
+          Clear Secret
+        </button>
+      </div>
+      <div id="wh-new-secret" class="hidden mt-3 font-mono text-xs text-accent bg-accent/10 px-3 py-1.5 rounded-md border border-accent/30 break-all"></div>
+
+      <!-- GitHub setup instructions (collapsible) -->
+      <details class="mt-4 text-xs text-chalk-mute">
+        <summary class="cursor-pointer hover:text-accent transition font-medium">
+          Setup instructions
+        </summary>
+        <ol class="mt-2 space-y-1.5 pl-4 list-decimal leading-relaxed">
+          <li>Go to your GitHub repo: <code class="text-chalk">github.com/buffbot88/AshatHub</code></li>
+          <li>Click <strong>Settings</strong> → <strong>Webhooks</strong> → <strong>Add webhook</strong></li>
+          <li>Paste the <strong>Webhook URL</strong> (shown above) into the <em>Payload URL</em> field</li>
+          <li>Set <strong>Content type</strong> to <code class="text-chalk">application/json</code></li>
+          <li>Paste the <strong>Secret</strong> (shown above) into the <em>Secret</em> field</li>
+          <li>Select <strong>Just the push event</strong></li>
+          <li>Check <strong>Active</strong> and click <strong>Add webhook</strong></li>
+          <li>GitHub will send a <code class="text-chalk">ping</code> event to verify the connection</li>
+        </ol>
+      </details>
     </div>
 
     <!-- ─── Maintenance Mode ─────────────────────────────────────── -->
@@ -339,12 +265,84 @@
                            <?= !empty($maint['enabled']) ? '' : 'opacity-50' ?>"><?= e($maint['message'] ?? '') ?></textarea>
         </label>
 
+        <!-- Action — primary bottom-right -->
         <div class="flex justify-end">
           <button class="px-4 py-2 <?= !empty($maint['enabled']) ? 'bg-err text-white hover:bg-err/80' : 'bg-accent text-ink-deep hover:bg-accent-soft' ?> rounded-md font-medium transition">
             <?= !empty($maint['enabled']) ? 'Disable Maintenance' : 'Enable Maintenance' ?>
           </button>
         </div>
       </form>
+    </div>
+  </div>
+
+  <!-- ══════════════════════════════════════════════════════════════
+       RIGHT COLUMN — System Sidebar (read-only diagnostics)
+       ══════════════════════════════════════════════════════════════ -->
+  <div class="space-y-6">
+    <div class="p-6 rounded-xl bg-ink-panel border border-ink-line">
+      <h2 class="text-lg font-display font-semibold mb-1">System</h2>
+      <p class="text-sm text-chalk-mute mb-4">Runtime environment and server diagnostics.</p>
+
+      <!-- Compact spec grid -->
+      <div class="grid grid-cols-2 gap-3">
+        <div class="rounded-lg bg-ink-soft border border-ink-line px-3 py-2">
+          <div class="text-[10px] font-mono uppercase tracking-wider text-chalk-mute">PHP version</div>
+          <div class="font-mono text-sm text-chalk mt-1 truncate" title="<?= e(PHP_VERSION) ?>"><?= e(PHP_VERSION) ?></div>
+        </div>
+        <div class="rounded-lg bg-ink-soft border border-ink-line px-3 py-2">
+          <div class="text-[10px] font-mono uppercase tracking-wider text-chalk-mute">Server</div>
+          <div class="font-mono text-sm text-chalk mt-1 truncate" title="<?= e($_SERVER['SERVER_SOFTWARE'] ?? 'built-in') ?>"><?= e($_SERVER['SERVER_SOFTWARE'] ?? 'built-in') ?></div>
+        </div>
+        <div class="rounded-lg bg-ink-soft border border-ink-line px-3 py-2">
+          <div class="text-[10px] font-mono uppercase tracking-wider text-chalk-mute">Memory limit</div>
+          <div class="font-mono text-sm text-chalk mt-1"><?= e(ini_get('memory_limit') ?: '?') ?></div>
+        </div>
+        <div class="rounded-lg bg-ink-soft border border-ink-line px-3 py-2">
+          <div class="text-[10px] font-mono uppercase tracking-wider text-chalk-mute">Max upload</div>
+          <div class="font-mono text-sm text-chalk mt-1"><?= e(ini_get('upload_max_filesize') ?: '?') ?></div>
+        </div>
+        <div class="rounded-lg bg-ink-soft border border-ink-line px-3 py-2">
+          <div class="text-[10px] font-mono uppercase tracking-wider text-chalk-mute">Max POST</div>
+          <div class="font-mono text-sm text-chalk mt-1"><?= e(ini_get('post_max_size') ?: '?') ?></div>
+        </div>
+        <div class="rounded-lg bg-ink-soft border border-ink-line px-3 py-2">
+          <div class="text-[10px] font-mono uppercase tracking-wider text-chalk-mute">Database</div>
+          <div class="font-mono text-sm text-chalk mt-1 truncate" title="<?= e(DB_HOST) ?>:<?= e(DB_PORT) ?> / <?= e(DB_NAME) ?>"><?= e(DB_HOST) ?>:<?= e(DB_PORT) ?></div>
+        </div>
+        <div class="rounded-lg bg-ink-soft border border-ink-line px-3 py-2 col-span-2">
+          <div class="text-[10px] font-mono uppercase tracking-wider text-chalk-mute">DB name</div>
+          <div class="font-mono text-sm text-chalk mt-1 truncate" title="<?= e(DB_NAME) ?>"><?= e(DB_NAME) ?></div>
+        </div>
+      </div>
+
+      <!-- Advanced Environment drawer -->
+      <details class="mt-4">
+        <summary class="cursor-pointer hover:text-accent transition font-medium text-sm">Advanced Environment</summary>
+        <dl class="mt-3 space-y-2 text-sm">
+          <?php
+            $envItems = [
+              'APP_NAME'         => APP_NAME,
+              'APP_ENV'          => APP_ENV,
+              'APP_DEBUG'        => APP_DEBUG ? 'true' : 'false',
+              'APP_URL'          => APP_URL,
+              'APP_VERSION'      => APP_VERSION,
+              'DB_HOST'          => DB_HOST,
+              'DB_NAME'          => DB_NAME,
+              'SESSION_LIFETIME' => SESSION_LIFETIME . 's',
+              'BRAINSTEM_URL'    => $view->env_url,
+              'BRAINSTEM_KEY'    => $view->env_key_set ? '(set)' : '(not set)',
+            ];
+            foreach ($envItems as $key => $value):
+          ?>
+            <div class="flex items-center justify-between py-1.5 border-b border-ink-line/50 last:border-0">
+              <dt class="font-mono text-xs text-chalk-mute"><?= e($key) ?></dt>
+              <dd class="font-mono text-xs text-right ml-4 max-w-[200px] truncate" title="<?= e((string) $value) ?>">
+                <?= e((string) $value) ?>
+              </dd>
+            </div>
+          <?php endforeach; ?>
+        </dl>
+      </details>
     </div>
   </div>
 </div>

@@ -46,6 +46,16 @@ final class InMemoryCommunityProjectRepository implements CommunityProjectReposi
     }
 
     /**
+     * Public listings mirror the Pdo APPROVED filter: only approved,
+     * live projects show in the showcase. Absent key defaults to visible.
+     */
+    private function isApproved(array $row): bool
+    {
+        $status = (string) ($row['status'] ?? 'live');
+        return $status !== 'pending' && $status !== 'rejected';
+    }
+
+    /**
      * Return all rows for test assertions.
      */
     public function inspect(): array
@@ -57,7 +67,7 @@ final class InMemoryCommunityProjectRepository implements CommunityProjectReposi
 
     public function all(): array
     {
-        $rows = array_filter($this->rows, fn(array $r): bool => $this->isVisible($r));
+        $rows = array_filter($this->rows, fn(array $r): bool => $this->isVisible($r) && $this->isApproved($r));
         // Sort by likes DESC, created_at DESC (mirrors the SQL)
         $sorted = array_values($rows);
         usort($sorted, function (array $a, array $b): int {
@@ -72,7 +82,7 @@ final class InMemoryCommunityProjectRepository implements CommunityProjectReposi
     {
         $results = [];
         foreach ($this->rows as $r) {
-            if (($r['category'] ?? '') === $category && $this->isVisible($r)) {
+            if (($r['category'] ?? '') === $category && $this->isVisible($r) && $this->isApproved($r)) {
                 $results[] = $r;
             }
         }
@@ -112,7 +122,7 @@ final class InMemoryCommunityProjectRepository implements CommunityProjectReposi
     {
         $out = ['all' => 0];
         foreach ($this->rows as $r) {
-            if (!$this->isVisible($r)) continue;
+            if (!$this->isVisible($r) || !$this->isApproved($r)) continue;
             $cat = $r['category'] ?? 'general';
             $out[$cat] = ($out[$cat] ?? 0) + 1;
             $out['all']++;
@@ -151,12 +161,61 @@ final class InMemoryCommunityProjectRepository implements CommunityProjectReposi
             'category'    => $category,
             'tags'        => $tags,
             'stack'       => $stack,
-            'status'      => 'live',
+            'status'      => 'pending',
             'likes'       => 0,
             'downloads'   => 0,
             'created_at'  => date('Y-m-d H:i:s'),
         ];
         return $slug;
+    }
+
+    public function allIncludingPending(): array
+    {
+        $sorted = array_values($this->rows);
+        usort($sorted, fn(array $a, array $b): int => ($b['created_at'] ?? '') <=> ($a['created_at'] ?? ''));
+        return $sorted;
+    }
+
+    public function pending(): array
+    {
+        $results = [];
+        foreach ($this->rows as $r) {
+            if (($r['status'] ?? '') === 'pending' && $this->isVisible($r)) {
+                $results[] = $r;
+            }
+        }
+        usort($results, fn(array $a, array $b): int => ($b['created_at'] ?? '') <=> ($a['created_at'] ?? ''));
+        return $results;
+    }
+
+    public function approve(string $id): void
+    {
+        foreach ($this->rows as &$row) {
+            if (($row['id'] ?? '') === $id && ($row['status'] ?? '') === 'pending') {
+                $row['status'] = 'live';
+                return;
+            }
+        }
+    }
+
+    public function reject(string $id): void
+    {
+        foreach ($this->rows as &$row) {
+            if (($row['id'] ?? '') === $id && ($row['status'] ?? '') === 'pending') {
+                $row['status'] = 'rejected';
+                return;
+            }
+        }
+    }
+
+    public function resubmit(string $id): void
+    {
+        foreach ($this->rows as &$row) {
+            if (($row['id'] ?? '') === $id && ($row['status'] ?? '') === 'rejected') {
+                $row['status'] = 'pending';
+                return;
+            }
+        }
     }
 
     public function update(string $id, string $userId, string $title, string $description, string $category, string $tags, string $stack): void

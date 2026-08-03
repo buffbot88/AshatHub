@@ -56,7 +56,41 @@ final class AdminController
             'env_key_set'  => $config->brainstemKey() !== '',
             'maint'        => $maint,
             'tickets'      => $tickets,
+            'pending_projects' => RepositoryRegistry::communityProject()->pending(),
+            'all_projects'     => RepositoryRegistry::communityProject()->allIncludingPending(),
         ]);
+    }
+
+    /**
+     * Approve a pending community project (status -> live).
+     */
+    public function approveProject(RequestContext $ctx): void
+    {
+        $projectId = trim((string) ($ctx->str('project_id')));
+        if ($projectId === '') {
+            $ctx->flash('error', 'Missing project ID.');
+            $ctx->redirect('/admin/#tab=projects');
+        }
+
+        RepositoryRegistry::communityProject()->approve($projectId);
+        $ctx->flash('success', 'Project approved and published to the showcase.');
+        $ctx->redirect('/admin/#tab=projects');
+    }
+
+    /**
+     * Reject a pending community project (status -> rejected, stays hidden).
+     */
+    public function rejectProject(RequestContext $ctx): void
+    {
+        $projectId = trim((string) ($ctx->str('project_id')));
+        if ($projectId === '') {
+            $ctx->flash('error', 'Missing project ID.');
+            $ctx->redirect('/admin/#tab=projects');
+        }
+
+        RepositoryRegistry::communityProject()->reject($projectId);
+        $ctx->flash('success', 'Project rejected and removed from the queue.');
+        $ctx->redirect('/admin/#tab=projects');
     }
 
     /**

@@ -17,6 +17,9 @@ final class Router
     private RouteCollection $collection;
     private bool $loaded = false;
 
+    /** @var bool|null Forced maintenance state (tests); null defers to the MAINTENANCE_MODE constant. */
+    private ?bool $maintenanceMode = null;
+
     /** @var self|null Singleton instance used by the static ::dispatch() shim. */
     private static ?self $instance = null;
 
@@ -24,11 +27,14 @@ final class Router
 
     /**
      * @param RouteCollection|null $collection Optional pre-configured
-     *        collection (for testing). Defaults to a fresh empty collection.
+     *        collection for testing (fresh empty by default).
+     * @param bool|null $maintenanceMode Forced maintenance state for tests;
+     *        null defers to the MAINTENANCE_MODE constant.
      */
-    public function __construct(?RouteCollection $collection = null)
+    public function __construct(?RouteCollection $collection = null, ?bool $maintenanceMode = null)
     {
         $this->collection = $collection ?? new RouteCollection();
+        $this->maintenanceMode = $maintenanceMode;
     }
 
     /**
@@ -68,7 +74,8 @@ final class Router
         $uri = '/' . trim($uri, '/');
 
         // ── Maintenance Mode Gate ───────────────────────────────────
-        if (defined('MAINTENANCE_MODE') && MAINTENANCE_MODE) {
+        $maintenanceActive = $this->maintenanceMode ?? (defined('MAINTENANCE_MODE') && MAINTENANCE_MODE);
+        if ($maintenanceActive) {
             if (preg_match('#\.(css|js|png|jpg|jpeg|gif|ico|svg|woff2?)$#', $uri)) {
                 if (PHP_SAPI === 'cli-server') {
                     $file = ASHAT_PUBLIC . $uri;
@@ -77,12 +84,14 @@ final class Router
                 return;
             }
 
-            if (
-                !str_starts_with($uri, '/admin') &&
-                !str_starts_with($uri, '/login') &&
-                !str_starts_with($uri, '/logout') &&
-                !str_starts_with($uri, '/auth/session')
-            ) {
+            // Admins keep full access; everyone else may only reach the
+            // login/admin surfaces until maintenance ends.
+            $isAllowedUri = str_starts_with($uri, '/admin')
+                || str_starts_with($uri, '/login')
+                || str_starts_with($uri, '/logout')
+                || str_starts_with($uri, '/auth/session');
+
+            if (!$isAllowedUri && !$this->sessionUserIsAdmin()) {
                 require ASHAT_ROOT . '/src/views/pages/maintenance.php';
                 return;
             }
@@ -230,6 +239,21 @@ final class Router
     }
 
     // ── Helpers ─────────────────────────────────────────────────────
+
+    /**
+     * Whether the current session belongs to an Admin (maintenance bypass).
+     */
+    private function sessionUserIsAdmin(): bool
+    {
+        $userId = $_SESSION['user_id'] ?? null;
+        if (!$userId) return false;
+        try {
+            $user = \Repositories\RepositoryRegistry::user()->find((string) $userId);
+            return is_array($user) && ($user['role'] ?? '') === 'Admin';
+        } catch (\Throwable $e) {
+            return false;
+        }
+    }
 
     private function isJson(): bool
     {

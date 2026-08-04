@@ -7,6 +7,8 @@ use Core\RequestContext;
 use Core\RouteCollection;
 use Core\Router;
 use PHPUnit\Framework\TestCase;
+use Repositories\InMemoryUserRepository;
+use Repositories\RepositoryRegistry;
 
 /**
  * ═══════════════════════════════════════════════════════════════════════
@@ -45,6 +47,9 @@ final class RouterDispatchTest extends TestCase
         // Ensure CSRF is not set (will be set per-test as needed)
         $_SESSION['_csrf'] = '';
 
+        // Maintenance page render needs the message constant in tests.
+        defined('MAINTENANCE_MESSAGE') || define('MAINTENANCE_MESSAGE', 'Under maintenance.');
+
         // Default request: GET /
         $_SERVER['REQUEST_METHOD'] = 'GET';
         $_SERVER['REQUEST_URI']    = '/';
@@ -71,6 +76,24 @@ final class RouterDispatchTest extends TestCase
         $router = new Router($collection);
 
         // Prevent ensureLoaded() from loading real route files
+        $ref = new \ReflectionProperty(Router::class, 'loaded');
+        $ref->setAccessible(true);
+        $ref->setValue($router, true);
+
+        return $router;
+    }
+
+    /**
+     * Router with maintenance mode forced on (skips ensureLoaded via
+     * reflection, mirroring routerWithRoutes()).
+     */
+    private function maintenanceRouter(callable $register): Router
+    {
+        $collection = new RouteCollection();
+        $register($collection);
+
+        $router = new Router($collection, true);
+
         $ref = new \ReflectionProperty(Router::class, 'loaded');
         $ref->setAccessible(true);
         $ref->setValue($router, true);
@@ -332,6 +355,106 @@ final class RouterDispatchTest extends TestCase
         ob_get_clean();
 
         $this->assertFalse($spy->called, 'user route should not match multi-segment paths');
+    }
+
+    // ── Maintenance mode gate ─────────────────────────────────────
+
+    public function test_maintenance_mode_shows_page_to_guests(): void
+    {
+        $spy = $this->makeSpy();
+        $router = $this->maintenanceRouter(function (RouteCollection $c) use ($spy): void {
+            $c->get('/health', function (RequestContext $ctx) use ($spy): void {
+                $spy->called = true;
+            });
+        });
+
+        unset($_SESSION['user_id']);
+        $_SERVER['REQUEST_URI'] = '/health';
+
+        ob_start();
+        $router->handleDispatch();
+        $output = ob_get_clean();
+
+        $this->assertFalse($spy->called, 'guest must not reach routes during maintenance');
+        $this->assertStringContainsString('Under Maintenance', $output);
+    }
+
+    public function test_maintenance_mode_shows_page_to_authenticated_members(): void
+    {
+        $repo = new InMemoryUserRepository();
+        $repo->seed([['id' => 'u-member', 'username' => 'moe', 'email' => 'm@x.test', 'role' => 'Member']]);
+        $old = RepositoryRegistry::swap('user', $repo);
+
+        try {
+            $spy = $this->makeSpy();
+            $router = $this->maintenanceRouter(function (RouteCollection $c) use ($spy): void {
+                $c->get('/health', function (RequestContext $ctx) use ($spy): void {
+                    $spy->called = true;
+                });
+            });
+
+            $_SESSION['user_id'] = 'u-member';
+            $_SERVER['REQUEST_URI'] = '/health';
+
+            ob_start();
+            $router->handleDispatch();
+            $output = ob_get_clean();
+
+            $this->assertFalse($spy->called, 'members must not reach routes during maintenance');
+            $this->assertStringContainsString('Under Maintenance', $output);
+        } finally {
+            RepositoryRegistry::swap('user', $old);
+            unset($_SESSION['user_id']);
+        }
+    }
+
+    public function test_maintenance_mode_bypasses_for_admin_sessions(): void
+    {
+        $repo = new InMemoryUserRepository();
+        $repo->seed([['id' => 'u-admin', 'username' => 'boss', 'email' => 'b@x.test', 'role' => 'Admin']]);
+        $old = RepositoryRegistry::swap('user', $repo);
+
+        try {
+            $spy = $this->makeSpy();
+            $router = $this->maintenanceRouter(function (RouteCollection $c) use ($spy): void {
+                $c->get('/health', function (RequestContext $ctx) use ($spy): void {
+                    $spy->called = true;
+                });
+            });
+
+            $_SESSION['user_id'] = 'u-admin';
+            $_SERVER['REQUEST_URI'] = '/health';
+
+            ob_start();
+            $router->handleDispatch();
+            $output = ob_get_clean();
+
+            $this->assertTrue($spy->called, 'admins must bypass maintenance mode');
+            $this->assertStringNotContainsString('Under Maintenance', $output);
+        } finally {
+            RepositoryRegistry::swap('user', $old);
+            unset($_SESSION['user_id']);
+        }
+    }
+
+    public function test_maintenance_mode_keeps_admin_uri_reachable_for_guests(): void
+    {
+        $spy = $this->makeSpy();
+        $router = $this->maintenanceRouter(function (RouteCollection $c) use ($spy): void {
+            $c->get('/admin/panel', function (RequestContext $ctx) use ($spy): void {
+                $spy->called = true;
+            });
+        });
+
+        unset($_SESSION['user_id']);
+        $_SERVER['REQUEST_URI'] = '/admin/panel';
+
+        ob_start();
+        $router->handleDispatch();
+        $output = ob_get_clean();
+
+        $this->assertTrue($spy->called, '/admin URIs must pass the maintenance gate');
+        $this->assertStringNotContainsString('Under Maintenance', $output);
     }
 
     // ── Route ordering ────────────────────────────────────────────

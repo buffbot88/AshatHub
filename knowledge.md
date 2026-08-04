@@ -211,7 +211,12 @@ No package.json or composer.json — **zero dependencies**.
 
 ### Maintenance Mode
 - Toggled via admin UI → writes `storage/maintenance.json`
-- Non-admin/static routes show maintenance.php view
+- The gate in `Router::handleDispatch()` shows the maintenance page to
+  everyone **except** authenticated **Admins** (session role check via
+  `RepositoryRegistry::user()`; guests cost no DB lookup). Admins see the
+  live site; `/admin`, `/login`, `/logout`, `/auth/session` URIs stay
+  reachable for everyone. `Router::__construct($collection, $maintenanceMode)`
+  accepts a forced flag for tests (default: the `MAINTENANCE_MODE` constant).
 
 ## Gotchas
 

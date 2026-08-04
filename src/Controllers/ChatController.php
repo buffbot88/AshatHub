@@ -29,17 +29,46 @@ final class ChatController
     // ── Backend resolution (status pill) ───────────────────────────
 
     /**
-     * Report which backend would serve chat (BrainStem wins over BYO).
-     * BYO config lives in browser localStorage, so only the server-side
-     * BrainStem half is resolved here; the client merges its own model.
+     * Report the server-side backend for the status pill and probe its
+     * reachability. BYO config lives in browser localStorage (probed
+     * client-side), so only the BrainStem half is resolved here.
      */
     public function resolve(RequestContext $ctx): void
     {
         $backend = ChatBackend::select(RepositoryRegistry::brainstemConfig()->active(), null);
-        $ctx->jsonResponse([
+        $resp = [
             'backend' => $backend->backendName(),
             'model'   => $backend->modelLabel(),
+            'online'  => false,
+        ];
+        if ($backend->isAvailable() && $backend->backendName() === 'brainstem') {
+            $resp['online'] = $this->probeReachability($backend);
+        }
+        $ctx->jsonResponse($resp);
+    }
+
+    /**
+     * Lightweight reachability probe (1-token, short timeout): any 2xx
+     * is online, refusal/timeout is offline — no retry/backoff.
+     */
+    private function probeReachability(ChatBackend $backend): bool
+    {
+        $req = $backend->buildRequest([['role' => 'user', 'content' => 'ping']], ['max_tokens' => 8], false);
+        $streamCtx = stream_context_create([
+            'http' => [
+                'method'        => 'POST',
+                'header'        => $req['headers'],
+                'content'       => json_encode($req['payload']),
+                'timeout'       => 8,
+                'ignore_errors' => true,
+            ],
         ]);
+        $raw = @file_get_contents($req['endpoint'], false, $streamCtx);
+        if ($raw === false) {
+            return false;
+        }
+        $status = self::statusCode($http_response_header[0] ?? '');
+        return $status === 0 || ($status >= 200 && $status < 300);
     }
 
     // ── Chat (non-streaming) ─────────────────────────────────────────

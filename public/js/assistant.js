@@ -229,22 +229,39 @@
   }
 
   /**
-   * Probe the server for the resolved backend so the pill is correct
-   * on page load, before any message is sent. BYO stays client-side;
-   * the server only reports its BrainStem half, which wins when set.
+   * Resolve the status pill on page load — BYO is pinged from the
+   * browser first (key never leaves), else the server probes BrainStem.
    */
   function fetchResolvedBackend() {
+    var agent = window.ASHAT && window.ASHAT.agent;
+    var byoCfg = getByoConfig();
+    if (byoCfg && agent && typeof agent.probeByo === 'function') {
+      setBackendStatus('checking');
+      agent.probeByo(byoCfg).then(function (res) {
+        if (!res || typeof res !== 'object') return;
+        if (res.online) {
+          if (res.model) resolvedModel = res.model;
+          setBackendStatus('online');
+          return;
+        }
+        // Key present but unreachable/rejected — show its model with the
+        // failure state so the user knows to check Account → API Settings.
+        var cfg = getByoConfig();
+        if (cfg && cfg.model) resolvedModel = cfg.model;
+        setBackendStatus(res.error === 'auth' || res.error === 'rate' ? 'error' : 'offline');
+      }).catch(function () { /* leave 'checking' — the first message confirms */ });
+      return;
+    }
     if (typeof ashatFetch !== 'function') return;
     ashatFetch('/api/chat/resolve/')
       .then(function (data) {
         if (!data || typeof data !== 'object') return;
         if (data.backend === 'brainstem' && typeof data.model === 'string' && data.model) {
           resolvedModel = data.model;
-          setBackendStatus('online');
+          setBackendStatus(data.online ? 'online' : 'offline');
           return;
         }
-        // No server-side backend: BYO (if any) can't be verified until
-        // the first message, so only flag offline when nothing is set.
+        // No server-side backend either — nothing can serve.
         if (data.backend === 'none' && !getByoConfig()) {
           setBackendStatus('offline');
         }
@@ -2522,14 +2539,18 @@
       row.style.fontSize = '11px';
       row.title = node.path;
 
+      // Folders are selected by their marker path (trailing slash), so
+      // select-all and per-folder checkboxes share one key space with
+      // the bulk-delete handler's prefix semantics.
+      var selKey = node.type === 'folder' ? node.path + '/' : node.path;
       var cb = document.createElement('input');
       cb.type = 'checkbox';
       cb.className = 'fm-check';
-      cb.checked = !!fmSelected[node.path];
+      cb.checked = !!fmSelected[selKey];
       cb.addEventListener('click', function (e) { e.stopPropagation(); });
       cb.addEventListener('change', function () {
-        if (cb.checked) fmSelected[node.path] = true;
-        else delete fmSelected[node.path];
+        if (cb.checked) fmSelected[selKey] = true;
+        else delete fmSelected[selKey];
         updateFmBulkStatus();
       });
       row.appendChild(cb);
@@ -2774,7 +2795,24 @@
       btnFileSelectAll.addEventListener('click', function () {
         fmAllSelected = !fmAllSelected;
         if (fmAllSelected) {
-          fmFiles.forEach(function (f) { fmSelected[f.path] = true; });
+          // Files AND every folder prefix (marker rows plus implied
+          // folders derived from file paths) so folder checkboxes light
+          // up and bulk delete can use whole-folder tree deletes.
+          fmSelected = {};
+          fmFiles.forEach(function (f) {
+            fmSelected[f.path] = true;
+            // Marker folders carry a trailing '' segment; either way the
+            // last segment names the row itself — parents derive from
+            // what remains (src/main.py → src/).
+            var segs = (f.path || '').split('/');
+            if (f.path && f.path.endsWith('/')) segs.pop();
+            segs.pop();
+            var cur = '';
+            for (var i = 0; i < segs.length; i++) {
+              cur = cur ? cur + '/' + segs[i] : segs[i];
+              fmSelected[cur + '/'] = true;
+            }
+          });
         } else {
           fmSelected = {};
         }
@@ -2788,6 +2826,13 @@
         var paths = Object.keys(fmSelected);
         if (!paths.length) return ashatToast('Select files to delete first.', 'warn');
         if (!confirm('Delete ' + paths.length + ' selected item(s)?')) return;
+        // A selected folder already covers its descendants — drop the
+        // child paths so tree-delete + file-delete don't race and 404.
+        var folders = paths.filter(function (p) { return p.endsWith('/'); });
+        paths = paths.filter(function (p) {
+          return !p.endsWith('/') && !folders.some(function (d) { return p.indexOf(d) === 0; });
+        });
+        folders.forEach(function (p) { paths.push(p); });
         var promises = [];
         paths.forEach(function (p) {
           if (p.endsWith('/')) {

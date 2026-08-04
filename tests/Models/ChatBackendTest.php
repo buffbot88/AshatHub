@@ -38,14 +38,27 @@ final class ChatBackendTest extends TestCase
         $this->assertArrayNotHasKey('stream', $request['payload']);
     }
 
-    public function test_brainstem_backend_reports_model_label_and_name(): void
+    public function test_byo_backend_wins_over_brainstem_when_both_present(): void
     {
         $backend = ChatBackend::select(
             ['url' => 'https://brain.test', 'api_key' => 'server-key'],
             ['endpoint' => 'https://byo.test', 'api_key' => 'byo-key', 'model' => 'byo-model']
         );
 
-        // BrainStem wins over BYO when a server key is configured.
+        // The user's own BYO key takes precedence over the shared host.
+        $this->assertTrue($backend->isAvailable());
+        $this->assertTrue($backend->supportsStreaming());
+        $this->assertSame('byo', $backend->backendName());
+        $this->assertSame('byo-model', $backend->modelLabel());
+    }
+
+    public function test_brainstem_backend_is_fallback_without_byo(): void
+    {
+        $backend = ChatBackend::select(
+            ['url' => 'https://brain.test', 'api_key' => 'server-key'],
+            null
+        );
+
         $this->assertTrue($backend->isAvailable());
         $this->assertFalse($backend->supportsStreaming());
         $this->assertSame('brainstem', $backend->backendName());

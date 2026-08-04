@@ -3,6 +3,8 @@ declare(strict_types=1);
 
 namespace Tests\Api;
 
+require_once __DIR__ . '/BootsMockUpstreamTrait.php';
+
 use Controllers\ChatController;
 use Core\RequestContext;
 use PHPUnit\Framework\TestCase;
@@ -12,10 +14,12 @@ use Repositories\RepositoryRegistry;
 /**
  * Tests for GET /api/chat/resolve — the status-pill backend probe.
  * Exercises the controller via FakeContext with an InMemory BrainStem
- * repo, so no database is required.
+ * repo and a live mock upstream, so no database is required.
  */
 final class ChatResolveTest extends TestCase
 {
+    use BootsMockUpstreamTrait;
+
     private InMemoryBrainstemConfigRepository $brainstem;
 
     protected function setUp(): void
@@ -30,6 +34,7 @@ final class ChatResolveTest extends TestCase
     {
         // Restore defaults so the swap doesn't leak into later tests.
         RepositoryRegistry::reset();
+        $this->stopMockServer();
     }
 
     private function callResolve(): array
@@ -47,11 +52,30 @@ final class ChatResolveTest extends TestCase
         }
     }
 
-    public function testReturnsBrainstemWhenServerKeyConfigured(): void
+    public function testReturnsBrainstemWithConfiguredModelAndProbesOnline(): void
     {
-        // BYO is also present but BrainStem must win (server-side wins).
+        // Boot the mock upstream so the reachability probe gets a real
+        // 2xx — proving the endpoint reports a live host as online.
+        $this->baseUrl = $this->bootMockServer();
         $this->brainstem->seed([
-            'url'     => 'https://brain.test',
+            'url'     => $this->baseUrl,
+            'api_key' => 'server-key',
+            'model'   => 'mock-model',
+        ]);
+
+        $data = $this->callResolve();
+
+        $this->assertSame('brainstem', $data['backend']);
+        $this->assertSame('mock-model', $data['model']);
+        $this->assertTrue($data['online']);
+    }
+
+    public function testReturnsBrainstemButOfflineWhenHostUnreachable(): void
+    {
+        // Port 1 is almost certainly not listening — the probe fails
+        // fast (connection refused) and reports the host as offline.
+        $this->brainstem->seed([
+            'url'     => 'http://127.0.0.1:1',
             'api_key' => 'server-key',
         ]);
 
@@ -59,29 +83,17 @@ final class ChatResolveTest extends TestCase
 
         $this->assertSame('brainstem', $data['backend']);
         $this->assertSame('LFM2.5 1.2B Instruct', $data['model']);
-    }
-
-    public function testReturnsConfiguredModelWhenSet(): void
-    {
-        $this->brainstem->seed([
-            'url'     => 'https://brain.test',
-            'api_key' => 'server-key',
-            'model'   => 'Qwen2.5-72B',
-        ]);
-
-        $data = $this->callResolve();
-
-        $this->assertSame('brainstem', $data['backend']);
-        $this->assertSame('Qwen2.5-72B', $data['model']);
+        $this->assertFalse($data['online']);
     }
 
     public function testReturnsNoneWhenNoBrainstemKeyConfigured(): void
     {
         // No DB row: the repo falls back to env defaults, which have an
-        // empty key in tests, so no backend resolves.
+        // empty key in tests, so no backend resolves (and no probe runs).
         $data = $this->callResolve();
 
         $this->assertSame('none', $data['backend']);
         $this->assertSame('', $data['model']);
+        $this->assertFalse($data['online']);
     }
 }

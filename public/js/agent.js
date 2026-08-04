@@ -165,10 +165,70 @@
     return out;
   }
 
-  // Try a raw parse, then a cleaned parse (escaped in-string newlines).
+  // String-aware: drop commas that sit before a closing brace/bracket.
+  // LLM JSON output frequently carries trailing commas; this removes
+  // them without touching commas inside string values.
+  function stripTrailingCommas(text) {
+    let out = '';
+    let inStr = false;
+    let esc = false;
+    for (let i = 0; i < text.length; i++) {
+      const ch = text[i];
+      if (esc) { out += ch; esc = false; continue; }
+      if (inStr) {
+        if (ch === '\\') { out += ch; esc = true; continue; }
+        if (ch === '"') inStr = false;
+        out += ch;
+        continue;
+      }
+      if (ch === '"') { inStr = true; out += ch; continue; }
+      if (ch === ',') {
+        let j = i + 1;
+        while (j < text.length && (text[j] === ' ' || text[j] === '\t' || text[j] === '\n' || text[j] === '\r')) j++;
+        if (j < text.length && (text[j] === '}' || text[j] === ']')) continue; // drop the comma
+      }
+      out += ch;
+    }
+    return out;
+  }
+
+  // Try a raw parse, then a cleaned parse (escaped in-string newlines),
+  // then a trailing-comma-stripped parse. Returns null only when all fail.
   function tryParseLenient(s) {
     try { return JSON.parse(s); } catch (_) { /* raw failed */ }
-    try { return JSON.parse(cleanJsonStrings(s)); } catch (_) { /* cleaned failed */ }
+    const cleaned = cleanJsonStrings(s);
+    try { return JSON.parse(cleaned); } catch (_) { /* cleaned failed */ }
+    try { return JSON.parse(stripTrailingCommas(cleaned)); } catch (_) { /* strip failed */ }
+    return null;
+  }
+
+  // Recover a JSON object from a broken/truncated payload: find the
+  // first balanced {...} anywhere in the text (string-aware), then, if
+  // it was cut off mid-value (max_tokens), close the open string and
+  // brackets and walk back over closing brackets for the longest
+  // parseable prefix. Returns null when nothing recovers.
+  function recoverJsonObject(text) {
+    if (!text) return null;
+    const start = text.indexOf('{');
+    if (start === -1) return null;
+    const scan = scanBalancedJson(text, start);
+    if (scan.balanced) {
+      const parsed = tryParseLenient(text.slice(start, scan.end));
+      if (parsed) return parsed;
+    }
+    let candidate = text.slice(start);
+    if (scan.inStr) candidate += '"';
+    candidate += scan.stack.slice().reverse().map((c) => (c === '{' ? '}' : ']')).join('');
+    const repaired = tryParseLenient(candidate);
+    if (repaired) return repaired;
+    let attempts = 0;
+    for (let i = candidate.length - 1; i > start && attempts < 80; i--) {
+      const ch = candidate[i];
+      if (ch !== '}' && ch !== ']') continue;
+      attempts++;
+      const parsed = tryParseLenient(candidate.slice(0, i + 1));
+      if (parsed) return parsed;
+    }
     return null;
   }
 
@@ -259,13 +319,16 @@
     return m[(lang || '').toLowerCase()] || '.txt';
   }
 
-  // Recover a file path from a code-fence info line (e.g. "tsx src/App.tsx")
-  // or a leading comment marker in the content (e.g. "// src/App.tsx",
-  // "# src/main.py", "<!-- src/index.html -->").
+  // Recover a file path from a code-fence info line (e.g. "tsx src/App.tsx",
+  // "json package.json") or a leading comment marker in the content
+  // (e.g. "// src/App.tsx", "# src/main.py", "<!-- src/index.html -->").
+  // Bare filenames are accepted on the info line; numeric version tokens
+  // like "3.12" are not treated as paths.
   function extractFencePath(info, content) {
     const tokens = (info || '').trim().split(/\s+/).filter(Boolean);
     for (const t of tokens.slice(1)) { // first token is the language
-      if (/[\w.\-\/\\]+\.\w+/.test(t) && /[\/\\]/.test(t)) {
+      if (/[\w.\-\/\\]+\.\w{1,10}/.test(t)
+          && (/[\/\\]/.test(t) || !/^\d+\.\d+$/.test(t))) {
         const p = sanitizePath(t);
         if (p) return p;
       }
@@ -311,11 +374,44 @@
         if (Array.isArray(parsed.files)) return parsed; // full payload wins
         // A JSON-object fence is only a "plan-only" fence when it has
         // a plan string; otherwise it's a JSON config FILE (package.json,
-        // tsconfig.json...) that must survive into the file list.
+        // tsconfig.json...) — but only when it names a real path. An
+        // unlabeled JSON blob would land in generated/file-N.json as junk.
         if (typeof parsed.plan === 'string' && parsed.plan.trim()) {
           if (!fenceJson) fenceJson = parsed;
-        } else {
+        } else if (extractFencePath(info, inner)) {
           fileFences.push({ info: info, inner: inner });
+        }
+      } else if (/json/i.test(info) || /["']?(?:plan|files)["']?\s*:/.test(inner)) {
+        // Broken/truncated JSON inside a fence — recover the build
+        // payload BEFORE the per-file fallback can turn it into
+        // generated/file-N.json junk (a max_tokens cutoff mid-JSON is
+        // the common cause). Only a JSON-labeled fence may borrow plan
+        // text or skip a pathless blob; a non-JSON block that merely
+        // CONTAINS a "plan"/"files" fragment is always kept as a file.
+        const jsonFence = /json/i.test(info);
+        const rec = recoverJsonObject(inner);
+        if (rec && typeof rec === 'object') {
+          if (Array.isArray(rec.files)) {
+            const real = rec.files.length && rec.files.every(function (f) {
+              return f && typeof f.path === 'string' && f.path
+                && typeof f.content === 'string';
+            });
+            if (real || jsonFence) return rec;
+          }
+          if (jsonFence && typeof rec.plan === 'string' && rec.plan.trim()) {
+            if (!fenceJson) fenceJson = rec;
+            continue;
+          }
+          if (extractFencePath(info, inner)) {
+            fileFences.push({ info: info, inner: inner });
+            continue;
+          }
+          if (jsonFence) continue; // unlabeled broken JSON blob → skip
+          fileFences.push({ info: info, inner: inner }); // keep the real file
+        } else if (extractFencePath(info, inner)) {
+          fileFences.push({ info: info, inner: inner });
+        } else if (!jsonFence) {
+          fileFences.push({ info: info, inner: inner }); // never drop a real file
         }
       } else {
         // Not JSON — a per-file code block. Kept separate so a
@@ -691,6 +787,51 @@
     return streamCompletion(cfg.endpoint, headers, payload, opts);
   }
 
+  // ── BYO reachability probe (status pill) ────────────────────────
+  // Pings the user's configured endpoint with a tiny completion so the
+  // chat meta-bar can show the real serving model + status on page
+  // load, before any message. The key never leaves the browser.
+  // Returns { online, model, error } — error is one of
+  // 'auth'|'rate'|'timeout'|'unreachable'|'http_N'|'no_config'.
+  async function probeByo(cfg) {
+    cfg = cfg || getByoConfig();
+    if (!cfg) return { online: false, error: 'no_config' };
+    const controller = (typeof AbortController !== 'undefined') ? new AbortController() : null;
+    const timer = controller ? setTimeout(function () { controller.abort(); }, 10000) : null;
+    try {
+      const r = await fetch(cfg.endpoint, {
+        method: 'POST',
+        signal: controller ? controller.signal : undefined,
+        headers: {
+          'Content-Type':  'application/json',
+          'Authorization': 'Bearer ' + cfg.api_key,
+        },
+        body: JSON.stringify({
+          model:      cfg.model || 'gpt-4o-mini',
+          messages:   [{ role: 'user', content: 'ping' }],
+          max_tokens: 8,
+          stream:     false,
+        }),
+      });
+      if (!r.ok) {
+        if (r.status === 401 || r.status === 403) return { online: false, error: 'auth' };
+        if (r.status === 429) return { online: false, error: 'rate' };
+        return { online: false, error: 'http_' + r.status };
+      }
+      const j = await r.json().catch(function () { return null; });
+      const echo = (j && typeof j.model === 'string' && j.model)
+        ? j.model
+        : (j && j.choices && j.choices[0] && j.choices[0].message && j.choices[0].message.model) || '';
+      // The response may echo the resolved model name — prefer it.
+      return { online: true, model: echo || cfg.model || '' };
+    } catch (e) {
+      const aborted = e && e.name === 'AbortError';
+      return { online: false, error: aborted ? 'timeout' : 'unreachable' };
+    } finally {
+      if (timer) clearTimeout(timer);
+    }
+  }
+
   // ── Streaming build: spec → LLM (streaming) → validated result ──
   // Returns the full validated {plan, files[]} payload for the consent
   // card flow (Chat-only — no separate plan-approval phase anymore).
@@ -714,7 +855,7 @@
     getLocalConfig,
     getByoConfig,
     // LLM driver
-    chatStream, runBuildStream, streamCompletion,
+    chatStream, runBuildStream, streamCompletion, probeByo,
   };
 
 })();

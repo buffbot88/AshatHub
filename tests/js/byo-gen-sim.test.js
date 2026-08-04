@@ -14,7 +14,7 @@ const agentSrc = fs.readFileSync(path.join(__dirname, '..', '..', 'public', 'js'
 
 const patched = agentSrc.replace(
   'chatStream, runBuildStream,',
-  'chatStream, runBuildStream, __extractJson: extractJson, __buildUserMsg: buildUserMsg, __runSafetyGates: runSafetyGates, __streamCompletion: streamCompletion,'
+  'chatStream, runBuildStream, __extractJson: extractJson, __buildUserMsg: buildUserMsg, __runSafetyGates: runSafetyGates, __streamCompletion: streamCompletion, __recoverJsonObject: recoverJsonObject, __tryParseLenient: tryParseLenient, __probeByo: probeByo,'
 );
 // If the export line is reordered/reformatted, the replace above no-ops
 // and the suite would silently test nothing — fail loudly instead.
@@ -301,6 +301,70 @@ async function run() {
     check('streamCompletion reasoning + content are separate',
       tokenText === goodJson && text === goodJson, 'token=' + tokenText.slice(0, 40));
   } catch (e) { check('streamCompletion onReasoning accumulates reasoning', false, e.message); }
+
+  // 17. Broken/truncated JSON INSIDE a ```json fence — the classic cause
+  //     of the old generated/file-N.json junk. It must be recovered into
+  //     the real files, never saved as a junk file.
+  const truncated = '{"plan":"Build it","files":[{"path":"src/main.py","content":"print(1)"}]';
+  global.fetch = async () => mockSse(hfStream('Here is the build:\n```json\n' + truncated + '\n```'));
+  try {
+    const r = await agent.runBuildStream(spec, {});
+    check('truncated JSON in fence → recovered files (no junk)',
+      Array.isArray(r.files) && r.files.length === 1 && r.files[0].path === 'src/main.py', JSON.stringify(r));
+  } catch (e) { check('truncated JSON in fence → recovered files (no junk)', false, e.message); }
+
+  // 18. Trailing commas (a very common small-model JSON error) parse fine.
+  const trailing = JSON.stringify({
+    plan: 'Build a tiny tool.',
+    files: [{ path: 'src/main.py', content: 'print("hi")', language: 'python' }],
+  }).replace('}', ',}').replace(']', ',]');
+  global.fetch = async () => mockSse(hfStream(trailing));
+  try {
+    const r = await agent.runBuildStream(spec, {});
+    check('trailing-comma JSON parses', Array.isArray(r.files) && r.files.length === 1, JSON.stringify(r));
+  } catch (e) { check('trailing-comma JSON parses', false, e.message); }
+
+  // 19. An unlabeled JSON-object fence that is NOT a build payload (e.g.
+  //     an OpenAI envelope) must never become generated/file-N.json junk.
+  global.fetch = async () => mockSse(hfStream('```json\n' + JSON.stringify({ id: 'chatcmpl-x', choices: [{ message: { role: 'assistant', content: 'hi' } }] }) + '\n```'));
+  try {
+    const r = await agent.runBuildStream(spec, {});
+    check('unlabeled JSON fence is not junked', false, 'expected throw, got ' + JSON.stringify(r));
+  } catch (e) {
+    check('unlabeled JSON fence is not junked', /no files/i.test(e.message), e.message);
+  }
+
+  // 20. A LABELED json config fence keeps its path (json package.json).
+  global.fetch = async () => mockSse(hfStream('```json package.json\n' + JSON.stringify({ name: 'test-app', version: '1.0.0' }) + '\n```'));
+  try {
+    const r = await agent.runBuildStream(spec, {});
+    check('labeled json config fence → path kept',
+      Array.isArray(r.files) && r.files.length === 1 && r.files[0].path === 'package.json', JSON.stringify(r));
+  } catch (e) { check('labeled json config fence → path kept', false, e.message); }
+
+  // 21. A non-JSON code fence that merely CONTAINS a "plan" fragment
+  //     (e.g. python code with a dict literal) must survive as a real
+  //     file — never silently dropped by the JSON-recovery heuristic.
+  global.fetch = async () => mockSse(hfStream('```python\nconfig = {"plan": "x"}\nprint(config)\n```'));
+  try {
+    const r = await agent.runBuildStream(spec, {});
+    check('non-JSON fence with plan fragment survives',
+      Array.isArray(r.files) && r.files.length === 1 && /^generated\/file-1\./.test(r.files[0].path), JSON.stringify(r));
+  } catch (e) { check('non-JSON fence with plan fragment survives', false, e.message); }
+
+  // 22. probeByo (status-pill ping): online + model echo, 401 → auth,
+  //     network failure → unreachable.
+  const byoProbeCfg = { endpoint: 'https://x.test/v1/chat/completions', api_key: 'k', model: 'cfg-model' };
+  global.fetch = async () => mockJson({ model: 'echoed-model', choices: [{ message: { role: 'assistant', content: 'pong' } }] });
+  const up = await agent.probeByo(byoProbeCfg);
+  check('probeByo online + model echo', up.online === true && up.model === 'echoed-model', JSON.stringify(up));
+  global.fetch = async () => mockJson({ error: { message: 'bad key' } }, 401);
+  const badKey = await agent.probeByo(byoProbeCfg);
+  check('probeByo 401 → auth error', badKey.online === false && badKey.error === 'auth', JSON.stringify(badKey));
+  global.fetch = async () => { throw new TypeError('Failed to fetch'); };
+  const down = await agent.probeByo(byoProbeCfg);
+  check('probeByo network failure → unreachable', down.online === false && down.error === 'unreachable', JSON.stringify(down));
+  check('probeByo is a public export', typeof agent.probeByo === 'function', typeof agent.probeByo);
 
   console.log('\n' + pass + ' passed, ' + fail + ' failed');
   process.exit(fail ? 1 : 0);

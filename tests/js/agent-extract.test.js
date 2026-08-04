@@ -105,13 +105,25 @@ eq('plan-only json fence', extractJson('```json\n{"plan":"just a plan"}\n```'),
 
 // 13. A JSON config FILE inside a ```json fence (no "plan" string) must
 //     survive into the file list, not be treated as a plan-only fence.
-eq('json config file fence', extractJson(
+// An UNLABELED ```json fence with no plan/files is not a build payload
+// and carries no path — it must NOT become generated/file-N.json junk
+// (the reported bug). Only the labeled code fence survives.
+eq('unlabeled json fence is not junked', extractJson(
   '```json\n{"name":"app","version":"1.0.0"}\n```\n\n```python\n# src/main.py\nprint("hi")\n```'),
   {
-    plan: 'Build generated 2 files from your spec.',
+    plan: 'Build generated 1 file from your spec.',
     files: [
-      { path: 'generated/file-1.json', content: '{"name":"app","version":"1.0.0"}', language: 'json' },
       { path: 'src/main.py', content: '# src/main.py\nprint("hi")', language: 'python' },
+    ],
+  });
+
+// A LABELED json config fence keeps its path instead of the junk fallback.
+eq('labeled json config fence keeps path', extractJson(
+  '```json package.json\n{"name":"app","version":"1.0.0"}\n```'),
+  {
+    plan: 'Build generated 1 file from your spec.',
+    files: [
+      { path: 'package.json', content: '{"name":"app","version":"1.0.0"}', language: 'json' },
     ],
   });
 

@@ -65,12 +65,30 @@ final class ChatBackend
     }
 
     /**
-     * Select the active backend: BrainStem (server-side) wins, BYO
-     * (from browser localStorage) is the fallback.
+     * Select the active backend: the user's BYO key (from browser
+     * localStorage) wins when set; BrainStem (server-side) is the
+     * fallback for users without their own key.
      */
     public static function select(?array $brainstemActive, ?array $byoConfig): self
     {
-        // Backend 1: BrainStem Neural Host (DB config > .env)
+        // Backend 1: User's BYO OpenAI-compatible endpoint — the user's
+        // own key takes precedence over the shared server host.
+        if ($byoConfig && !empty($byoConfig['endpoint']) && !empty($byoConfig['api_key'])) {
+            return new self(
+                $byoConfig['endpoint'],
+                [
+                    'Content-Type: application/json',
+                    'Authorization: Bearer ' . $byoConfig['api_key'],
+                ],
+                $byoConfig['model'] ?? 'gpt-4o-mini',
+                true,
+                true,  // BYO endpoints typically support streaming
+                'byo',
+                $byoConfig['model'] ?? 'gpt-4o-mini'
+            );
+        }
+
+        // Backend 2: BrainStem Neural Host (DB config > .env)
         // The Neural Host uses X-Ashat-Key auth and does NOT support streaming.
         if ($brainstemActive && ($brainstemActive['api_key'] ?? '') !== '') {
             // Admin-configured model name wins (sent upstream + shown in
@@ -87,22 +105,6 @@ final class ChatBackend
                 false,  // BrainStem Neural Host does not support streaming
                 'brainstem',
                 $model !== '' ? $model : self::BRAINSTEM_MODEL_LABEL
-            );
-        }
-
-        // Backend 2: User's BYO OpenAI-compatible endpoint
-        if ($byoConfig && !empty($byoConfig['endpoint']) && !empty($byoConfig['api_key'])) {
-            return new self(
-                $byoConfig['endpoint'],
-                [
-                    'Content-Type: application/json',
-                    'Authorization: Bearer ' . $byoConfig['api_key'],
-                ],
-                $byoConfig['model'] ?? 'gpt-4o-mini',
-                true,
-                true,  // BYO endpoints typically support streaming
-                'byo',
-                $byoConfig['model'] ?? 'gpt-4o-mini'
             );
         }
 

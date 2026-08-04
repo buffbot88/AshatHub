@@ -366,6 +366,69 @@ async function run() {
   check('probeByo network failure → unreachable', down.online === false && down.error === 'unreachable', JSON.stringify(down));
   check('probeByo is a public export', typeof agent.probeByo === 'function', typeof agent.probeByo);
 
+  // 23. No BYO key → runBuildStream falls back to the server's default
+  //     BrainStem stream (/api/chat/stream/): the meta/delta/done SSE
+  //     protocol must parse into a valid build, with the CSRF header set.
+  delete store['ashat.api'];
+  // Node has no document — stub the CSRF meta tag so the header path runs.
+  global.document = { querySelector: () => ({ content: 'test-csrf' }) };
+  let lastUrl = null;
+  let lastHeaders = null;
+  global.fetch = async (url, options) => {
+    lastUrl = url;
+    lastHeaders = (options && options.headers) || {};
+    return mockSse([
+      'event: meta',
+      'data: ' + JSON.stringify({ model: 'LFM2.5 1.2B Instruct', backend: 'brainstem' }),
+      '',
+      'event: delta',
+      'data: ' + JSON.stringify({ choices: [{ delta: { content: goodJson } }] }),
+      '',
+      'event: done',
+      'data: ' + JSON.stringify({ full_content: goodJson }),
+      '',
+    ]);
+  };
+  try {
+    const r = await agent.runBuildStream(spec, {});
+    check('no BYO → server fallback builds via /api/chat/stream/',
+      Array.isArray(r.files) && r.files.length === 1 && r.files[0].path === 'src/main.py' && lastUrl === '/api/chat/stream/',
+      JSON.stringify(r) + ' url=' + lastUrl);
+    check('server fallback sends CSRF header',
+      lastHeaders['X-CSRF-Token'] === 'test-csrf', JSON.stringify(lastHeaders));
+  } catch (e) { check('no BYO → server fallback builds via /api/chat/stream/', false, e.message); }
+
+  // 24. Server emits an error SSE event → runBuildStream surfaces it.
+  global.fetch = async () => mockSse([
+    'event: error',
+    'data: ' + JSON.stringify({ message: 'No AI backend configured.' }),
+    '',
+  ]);
+  try {
+    await agent.runBuildStream(spec, {});
+    check('server error event → thrown message', false, 'expected a throw');
+  } catch (e) {
+    check('server error event → thrown message', /No AI backend configured/.test(e.message), e.message);
+  }
+
+  // 25. BYO config present → build stays browser-direct (no server round-trip).
+  store['ashat.api'] = JSON.stringify({
+    provider: 'OpenAI-compatible',
+    model: 'meta-llama/Llama-3.1-8B-Instruct',
+    endpoint: 'https://router.huggingface.co/v1/chat/completions',
+    api_key: 'sk-test',
+  });
+  let hitServer = false;
+  global.fetch = async (url, options) => {
+    if (String(url).indexOf('/api/chat/stream') !== -1) hitServer = true;
+    return mockSse(hfStream(goodJson));
+  };
+  try {
+    const r = await agent.runBuildStream(spec, {});
+    check('BYO present → build stays browser-direct',
+      Array.isArray(r.files) && r.files.length === 1 && !hitServer, 'hitServer=' + hitServer);
+  } catch (e) { check('BYO present → build stays browser-direct', false, e.message); }
+
   console.log('\n' + pass + ' passed, ' + fail + ' failed');
   process.exit(fail ? 1 : 0);
 }

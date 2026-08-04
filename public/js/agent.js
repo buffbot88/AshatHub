@@ -760,6 +760,44 @@
   }
 
   // ══════════════════════════════════════════════════════════════════
+  //  SERVER DEFAULT STREAM (BrainStem — no BYO key required)
+  //  Routes a completion through the server's /api/chat/stream/ endpoint
+  //  — the same SSE protocol the chat text path uses — so the default
+  //  BrainStem backend can serve builds too. No key ever leaves the
+  //  device; the server resolves the backend when byo_config is absent.
+  // ══════════════════════════════════════════════════════════════════
+
+  async function serverChatStream(messages, opts) {
+    opts = opts || {};
+    const csrfMeta = (typeof document !== 'undefined' && document.querySelector)
+      ? document.querySelector('meta[name="csrf-token"]')
+      : null;
+    const payload = {
+      messages:    messages,
+      max_tokens:  opts.max_tokens  || DEFAULT_MAX_TOKENS,
+      temperature: opts.temperature || 0.82,
+    };
+    const headers = {
+      'Content-Type': 'application/json',
+      'X-CSRF-Token': csrfMeta ? csrfMeta.content : '',
+    };
+    // The server reports failures as SSE error events, not HTTP errors.
+    // Capture the first one so the caller gets the real message.
+    let serverError = null;
+    const hookOpts = Object.assign({}, opts, {
+      onEvent: function (parsed, eventType) {
+        if (eventType === 'error' && parsed && typeof parsed.message === 'string') {
+          serverError = parsed.message;
+        }
+        if (typeof opts.onEvent === 'function') opts.onEvent(parsed, eventType);
+      },
+    });
+    const text = await streamCompletion('/api/chat/stream/', headers, payload, hookOpts);
+    if (serverError) throw new Error(serverError);
+    return text;
+  }
+
+  // ══════════════════════════════════════════════════════════════════
   //  BYO LAYER (browser-direct, removable)
   //  Reads the user's key from localStorage and delegates to the core
   //  transport above. If BYOK support is dropped, delete this section
@@ -844,7 +882,12 @@
     ];
     const callOpts = Object.assign({}, opts);
     if (!callOpts.max_tokens) callOpts.max_tokens = BUILD_MAX_TOKENS;
-    const fullText = await chatStream(messages, callOpts);
+    // A valid BYO config (endpoint + key) builds browser-direct; without
+    // one the build falls back to the server's default BrainStem stream.
+    const cfg = getByoConfig();
+    const fullText = cfg
+      ? await chatStream(messages, callOpts)
+      : await serverChatStream(messages, callOpts);
     const parsed = extractJson(fullText);
     return runSafetyGates(parsed);
   }

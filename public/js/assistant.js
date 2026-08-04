@@ -1778,11 +1778,6 @@
       if (!agent || typeof agent.runBuildStream !== 'function') {
         throw new Error('The coding agent is not available on this page.');
       }
-      if (!agent.getLocalConfig || !agent.getLocalConfig()) {
-        status.className = 'gen-status-bubble err';
-        status.textContent = '⚠ Chat is connected, but file generation runs in your browser — add a provider + API key in Account → API Settings (keys stay on your device).';
-        return;
-      }
 
       // runBuildStream expects a spec OBJECT ({ title, content }), not a
       // plain string — pass one so the coding agent actually sees the spec.
@@ -1799,6 +1794,16 @@
         },
         onToken: function () {
           if (status && status.textContent === 'Thinking…') status.textContent = 'Generating project files…';
+        },
+        // A server-side build announces the resolved backend via a 'meta'
+        // event — keep the status pill in sync with the real serving model.
+        onEvent: function (parsed, eventType) {
+          if (eventType === 'meta' && parsed && parsed.model) {
+            resolvedModel = parsed.model;
+            setBackendStatus('online');
+          } else if (eventType === 'error' && parsed && parsed.message) {
+            setBackendStatus('error');
+          }
         },
       });
       var files = (result && result.files) || [];

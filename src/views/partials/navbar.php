@@ -14,6 +14,8 @@
     <nav class="flex items-center gap-5 text-sm text-chalk-soft">
       <a href="/chat/" class="hover:text-accent transition">Chat</a>
       <a href="/community/" class="hover:text-accent transition">Community</a>
+	  <a href="/docs/" class="hover:text-accent transition">Documentation</a>
+	  <a href="/support/" class="hover:text-accent transition">Support</a>
     </nav>
 
     <div class="flex-1"></div>
@@ -31,11 +33,11 @@
         <div id="navbar-dropdown" class="hidden" style="position: absolute; right: 0; top: 100%; margin-top: 6px; min-width: 180px;
              background: var(--surface); border: 1px solid var(--line); border-radius: var(--gold-radius-lg);
              box-shadow: var(--shadow-pop); z-index: 50; overflow: hidden;">
-          <a href="/docs/" class="block px-4 py-2.5 text-sm" style="color: var(--text-soft);" onmouseover="this.style.background='var(--surface-2)'" onmouseout="this.style.background=''">Docs</a>
-          <a href="/support/" class="block px-4 py-2.5 text-sm" style="color: var(--text-soft);" onmouseover="this.style.background='var(--surface-2)'" onmouseout="this.style.background=''">Support</a>
           <div style="border-top: 1px solid var(--line); margin: 4px 0;"></div>
           <a href="/account/" class="block px-4 py-2.5 text-sm" style="color: var(--text-soft);" onmouseover="this.style.background='var(--surface-2)'" onmouseout="this.style.background=''">Account</a>
+		  <a href="https://discord.gg/mRtUe7J372" class="block px-4 py-2.5 text-sm" style="color: var(--text-soft);" onmouseover="this.style.background='var(--surface-2)'" onmouseout="this.style.background=''">Discord</a>
           <a href="/account/active-users/" class="block px-4 py-2.5 text-sm" style="color: var(--text-soft);" onmouseover="this.style.background='var(--surface-2)'" onmouseout="this.style.background=''">Active users</a>
+		  <a href="https://ashatneuralhost.agpstudios.org/" class="block px-4 py-2.5 text-sm" style="color: var(--text-soft);" onmouseover="this.style.background='var(--surface-2)'" onmouseout="this.style.background=''">Live Telemetry</a>
           <?php if ($view->__user['role'] === 'Admin'): ?>
             <a href="/admin/" class="block px-4 py-2.5 text-sm" style="color: var(--accent);" onmouseover="this.style.background='var(--surface-2)'" onmouseout="this.style.background=''">Admin</a>
           <?php endif; ?>

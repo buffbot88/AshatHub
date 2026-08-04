@@ -24,6 +24,16 @@ $router->group('/admin', ['middleware' => ['admin-gate']], function () use ($rou
     // Maintenance mode toggle
     $router->post('/settings/maintenance', [\Controllers\AdminController::class, 'toggleMaintenance']);
 
+    // Database maintenance
+    $router->get('/database',              [\Controllers\AdminController::class, 'database']);
+    $router->get('/database/export',       [\Controllers\AdminController::class, 'databaseExport']);
+    $router->post('/database/query',       [\Controllers\AdminController::class, 'databaseQuery']);
+    $router->post('/database/optimize',    [\Controllers\AdminController::class, 'databaseOptimize']);
+    $router->post('/database/repair',      [\Controllers\AdminController::class, 'databaseRepair']);
+    $router->post('/database/check',       [\Controllers\AdminController::class, 'databaseCheck']);
+    $router->post('/database/import',      [\Controllers\AdminController::class, 'databaseImport']);
+    $router->post('/database/purge-sessions', [\Controllers\AdminController::class, 'databasePurgeSessions']);
+
     // Support ticket management
     $router->get('/support',                  [\Controllers\SupportController::class, 'adminIndex']);
     $router->post('/support/status',          [\Controllers\SupportController::class, 'adminUpdateStatus']);

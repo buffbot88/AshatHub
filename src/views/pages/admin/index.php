@@ -14,6 +14,7 @@
     <button type="button" role="tab" id="tab-projects"  class="account-tab"        aria-selected="false" aria-controls="panel-projects"  data-tab="projects">Projects</button>
     <button type="button" role="tab" id="tab-support"   class="account-tab"        aria-selected="false" aria-controls="panel-support"   data-tab="support">Support</button>
     <button type="button" role="tab" id="tab-settings"  class="account-tab"        aria-selected="false" aria-controls="panel-settings"  data-tab="settings">Settings</button>
+    <button type="button" role="tab" id="tab-database"  class="account-tab"        aria-selected="false" aria-controls="panel-database"  data-tab="database">Database</button>
   </div>
 
   <!-- ── Dashboard ───────────────────────────────────────────────── -->
@@ -39,6 +40,11 @@
   <!-- ── Settings ────────────────────────────────────────────────── -->
   <div id="panel-settings" role="tabpanel" aria-labelledby="tab-settings" class="account-panel" hidden>
     <?php require __DIR__ . '/../../partials/admin/settings.php'; ?>
+  </div>
+
+  <!-- ── Database ────────────────────────────────────────────────── -->
+  <div id="panel-database" role="tabpanel" aria-labelledby="tab-database" class="account-panel" hidden>
+    <?php require __DIR__ . '/../../partials/admin/database.php'; ?>
   </div>
 </section>
 

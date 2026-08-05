@@ -266,6 +266,16 @@ final class AdminController
             }
         }
 
+        $config    = ConfigBag::getInstance();
+        $maintFile = ASHAT_ROOT . '/storage/maintenance.json';
+        $maint = ['enabled' => false, 'message' => ''];
+        if (is_file($maintFile)) {
+            $data = json_decode(file_get_contents($maintFile), true);
+            if (is_array($data)) {
+                $maint = $data;
+            }
+        }
+
         $ctx->view('pages/admin/index', [
             'title'        => 'Admin · Database · ' . APP_NAME,
             'user'         => $ctx->user(),
@@ -284,6 +294,12 @@ final class AdminController
             'sql_query'    => $sqlQuery,
             'import_msg'   => $importMsg,
             'import_error' => $importErr,
+            'brainstem'    => RepositoryRegistry::brainstemConfig()->get(),
+            'active'       => RepositoryRegistry::brainstemConfig()->active(),
+            'env_url'      => $config->brainstemUrl(),
+            'env_key_set'  => $config->brainstemKey() !== '',
+            'default_brainstem_label' => \Models\ChatBackend::defaultBrainstemLabel(),
+            'maint'        => $maint,
         ]);
     }
 

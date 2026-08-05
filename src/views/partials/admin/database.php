@@ -66,7 +66,7 @@
 <div class="pma-section">
   <textarea name="sql" id="pma-sql-input" class="pma-sql" form="pma-query-form" placeholder="Type SQL query here…"><?= e($sqlQuery) ?></textarea>
     <div style="display:flex; align-items:center; gap:8px; margin-top:6px; flex-wrap:wrap;">
-      <form id="pma-query-form" method="post" action="/admin/database/query/" style="display:inline;">
+      <form id="pma-query-form" method="post" action="/admin/database/query/" style="display:inline;" onsubmit="return confirmDangerousQuery(this)">
         <?= csrf_field() ?>
         <input type="hidden" name="sql" id="pma-sql-hidden">
         <button type="submit" class="pma-btn pma-btn-primary" onclick="document.getElementById('pma-sql-hidden').value=document.getElementById('pma-sql-input').value">Run Query</button>
@@ -249,7 +249,7 @@
   <?php elseif ($activeView === 'sql'): ?>
     <!-- ─── Per-table SQL Editor ───────────────────────────── -->
     <div style="border:1px solid var(--gold-line); border-radius:6px; padding:10px;">
-      <form method="post" action="/admin/database/query/">
+      <form method="post" action="/admin/database/query/" onsubmit="return confirmDangerousQuery(this)">
         <?= csrf_field() ?>
         <textarea name="sql" class="pma-sql" style="min-height:70px;" placeholder="SELECT * FROM <?= e($activeTable) ?> LIMIT 25;"><?= e("SELECT * FROM `$activeTable` LIMIT 25;") ?></textarea>
         <div style="margin-top:6px;">
@@ -338,4 +338,14 @@
   document.getElementById('pma-import-modal').addEventListener('click', function(e) {
     if (e.target === this) this.style.display = 'none';
   });
+
+  // Warn before running destructive SQL statements
+  function confirmDangerousQuery(form) {
+    var sql = (form.querySelector('[name=sql]') || {}).value || '';
+    var trimmed = sql.replace(/^[;\s]+/, '').toUpperCase();
+    if (/^(DROP|DELETE|TRUNCATE|ALTER)\b/.test(trimmed)) {
+      return confirm('This query starts with ' + trimmed.split(/\s/)[0] + '. Are you sure you want to run it?');
+    }
+    return true;
+  }
 </script>

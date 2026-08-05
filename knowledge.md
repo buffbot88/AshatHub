@@ -16,6 +16,7 @@ A browser-based AI coding platform — **PHP 8.1+** with **MySQL/MariaDB** via *
 6. Gather ALL context first, then plan with the best reasoning path available: file-picker + code-searcher in parallel, read every file the change touches (symbols, current behavior, conventions, tests), produce a solid build plan in the standard format (goal → files to touch with why → change list → risks → validation) — via a Thinker agent when one is available, otherwise by planning directly with an adversarial review before the plan reaches the user.
 7. Must ask the user if they approve of the build plan before implementing.
 8. Docstrings can be NO LONGER than 1 or 2 sentences.
+9. Do NOT write outside project directory without explicit permission.
 
 Vow 8 is **machine-enforced** by `tests/Core/VowDocblockTest.php`, which scans `src/` + `public/` and fails the suite on any `.php`/`.js` docblock whose prose exceeds 2 sentences. VOWS.md is the canonical text — if it ever changes, update these mirrors in `AGENTS.md` and here.
 
@@ -173,6 +174,8 @@ No package.json or composer.json — **zero dependencies**.
   | Key | Contents |
   |---|---|
   | `ashat.api` | BYO provider/key config (never sent to the server) |
+  | `ashat.backend_model` | Last resolved model name (persists across page refreshes so the status pill shows the real model, not the default) |
+  | `ashat.backend_name` | Last resolved backend machine name (`brainstem`, `byo`, or `none`) — used for the status-pill hover tooltip |
 - The chat writes files server-first via `POST /api/files/` — no per-build localStorage content store (the IDE-era `ashat.generated.*` store and its sync helpers were removed with the IDE).
 - **BrainStem model name** — `brainstem_config.model` (optional, migration `005`) names the model the Neural Host runs. `ChatBackend::select()` uses it as the upstream `model` payload value AND the status-pill label; when blank it falls back to payload `'brainstem'` + label `'LFM2.5 1.2B Instruct'`. Set via Admin → Settings → BrainStem Host; shown in the Active Model row and the chat pill.
 

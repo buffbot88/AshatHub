@@ -7,9 +7,9 @@
 
 `VOWS.md` at the repo root is the **binding contract** for every agent working here.
 It is not advisory and cannot be overridden by convenience, model, or environment.
-The eight vows plus the Build Protocol apply to **every task**, including small ones.
+The nine vows plus the Build Protocol apply to **every task**, including small ones.
 
-### The 8 vows (full text in `VOWS.md`)
+### The 9 vows (full text in `VOWS.md`)
 
 1. Never rationalize for more than a quick moment without asking user.
 2. Never attempt shortcuts.
@@ -27,6 +27,7 @@ The eight vows plus the Build Protocol apply to **every task**, including small 
    directly with an adversarial review before the plan reaches the user.
 7. Must ask the user if they approve of the build plan before implementing.
 8. Docstrings can be NO LONGER than 1 or 2 sentences.
+9. Do NOT write outside project directory without explicit permission.
 
 ### Build Protocol
 

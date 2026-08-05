@@ -42,6 +42,8 @@
   // ── Constants ────────────────────────────────────────────────────
   var STORAGE_KEY    = 'ashat.chats';
   var ACTIVE_KEY     = 'ashat.active_chat';
+  var MODEL_KEY      = 'ashat.backend_model';
+  var BACKEND_KEY    = 'ashat.backend_name';
   var VERSIONS_KEY     = 'ashat.spec_versions';
   var MAX_VERSIONS          = 50;          // Cap total version entries to prevent localStorage bloat
   var MAX_CONTEXT_TOKENS    = 14000;       // Larger working context with 32K-model compatibility
@@ -205,8 +207,29 @@
 
   // ── Backend model + status (chat meta bar) ─────────────────────
   var DEFAULT_MODEL_LABEL = 'LFM2.5 1.2B Instruct';
+  var BACKEND_LABELS = { brainstem: 'BrainStem Neural Host', byo: 'BYO' };
   /** Model the server reports as actually serving (BrainStem > BYO). */
-  var resolvedModel = null;
+  var resolvedModel = (function () {
+    try { var m = localStorage.getItem(MODEL_KEY); return m || null; } catch (_) { return null; }
+  })();
+  /** Backend machine name the server resolved (brainstem|byo|none). */
+  var resolvedBackend = (function () {
+    try { var b = localStorage.getItem(BACKEND_KEY); return b || null; } catch (_) { return null; }
+  })();
+
+  /** Persist the resolved model so the pill remembers across refreshes. */
+  function setResolvedModel(model) {
+    if (!model) return;
+    resolvedModel = model;
+    try { localStorage.setItem(MODEL_KEY, model); } catch (_) {}
+  }
+
+  /** Persist the resolved backend name for the tooltip. */
+  function setResolvedBackend(name) {
+    if (!name) return;
+    resolvedBackend = name;
+    try { localStorage.setItem(BACKEND_KEY, name); } catch (_) {}
+  }
 
   /** The model actually in use: the server-resolved one, else BYO/default. */
   function backendModelLabel() {
@@ -217,6 +240,13 @@
     return DEFAULT_MODEL_LABEL;
   }
 
+  /** Build a human-readable tooltip for the status pill. */
+  function backendTooltip() {
+    var model = backendModelLabel();
+    var label = BACKEND_LABELS[resolvedBackend] || (resolvedBackend ? resolvedBackend : '');
+    return label ? label + ' — ' + model : model;
+  }
+
   /** Update the meta-bar model/status readout. */
   function setBackendStatus(state) {
     if (!backendStatusEl) return;
@@ -225,6 +255,7 @@
     else if (state === 'offline' || state === 'error') color = 'var(--gold-err)';
     else if (state === 'checking') color = 'var(--gold-warn)';
     backendStatusEl.textContent = 'Model: ' + backendModelLabel() + ' · ' + state;
+    backendStatusEl.title = backendTooltip();
     backendStatusEl.style.color = color;
   }
 
@@ -240,14 +271,16 @@
       agent.probeByo(byoCfg).then(function (res) {
         if (!res || typeof res !== 'object') return;
         if (res.online) {
-          if (res.model) resolvedModel = res.model;
+          setResolvedBackend('byo');
+          if (res.model) setResolvedModel(res.model);
           setBackendStatus('online');
           return;
         }
         // Key present but unreachable/rejected — show its model with the
         // failure state so the user knows to check Account → API Settings.
+        setResolvedBackend('byo');
         var cfg = getByoConfig();
-        if (cfg && cfg.model) resolvedModel = cfg.model;
+        if (cfg && cfg.model) setResolvedModel(cfg.model);
         setBackendStatus(res.error === 'auth' || res.error === 'rate' ? 'error' : 'offline');
       }).catch(function () { /* leave 'checking' — the first message confirms */ });
       return;
@@ -257,7 +290,8 @@
       .then(function (data) {
         if (!data || typeof data !== 'object') return;
         if (data.backend === 'brainstem' && typeof data.model === 'string' && data.model) {
-          resolvedModel = data.model;
+          setResolvedBackend(data.backend);
+          setResolvedModel(data.model);
           setBackendStatus(data.online ? 'online' : 'offline');
           return;
         }
@@ -1772,6 +1806,9 @@
    * consent-card click, so nothing is stored without explicit agreement.
    */
   async function generateFilesInChat(spec) {
+    // Override any stale 'offline' from the cold-probe; the build's
+    // 'meta' event will flip it to 'online' once BrainStem responds.
+    setBackendStatus('checking');
     var status = appendGenStatusBubble('Generating project files…');
     try {
       var agent = window.ASHAT && window.ASHAT.agent;
@@ -1799,7 +1836,8 @@
         // event — keep the status pill in sync with the real serving model.
         onEvent: function (parsed, eventType) {
           if (eventType === 'meta' && parsed && parsed.model) {
-            resolvedModel = parsed.model;
+            if (parsed.backend) setResolvedBackend(parsed.backend);
+            setResolvedModel(parsed.model);
             setBackendStatus('online');
           } else if (eventType === 'error' && parsed && parsed.message) {
             setBackendStatus('error');
@@ -2038,6 +2076,9 @@
     });
 
     try {
+      // Override any stale 'offline' from the cold-probe; the 'meta'
+      // event will flip it to 'online' once the backend responds.
+      setBackendStatus('checking');
       // Chat text flows through the same provider-agnostic transport as
       // the BYO build path — one parser for both. The server announces
       // the resolved backend via a 'meta' event before streaming.
@@ -2068,7 +2109,8 @@
           // Server resolved the backend (BrainStem > BYO) — reflect the
           // actual serving model in the meta-bar pill.
           if (eventType === 'meta') {
-            if (parsed.model) resolvedModel = parsed.model;
+            if (parsed.backend) setResolvedBackend(parsed.backend);
+            if (parsed.model) setResolvedModel(parsed.model);
             setBackendStatus('online');
             return;
           }
@@ -2135,6 +2177,8 @@
     if (bubble.thinkingDot) bubble.thinkingDot.style.display = 'none';
 
     try {
+      // Override any stale 'offline' from the cold-probe.
+      setBackendStatus('checking');
       var response = await fetch('/api/chat/', {
         method: 'POST',
         headers: headers,
@@ -2146,7 +2190,7 @@
         : (data.message || '(no response)');
 
       // The server reports which backend actually served (BrainStem > BYO).
-      if (data && data.model) resolvedModel = data.model;
+      if (data && data.model) setResolvedModel(data.model);
 
       if (reply && reply.trim()) {
         // Show checkmark and update label

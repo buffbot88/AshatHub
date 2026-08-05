@@ -46,11 +46,42 @@ The version displayed in the UI comes from `APP_VERSION` in `config/bootstrap.ph
     approval lifecycle (pending hiding, approve→public, reject→hidden,
     resubmit, queue ordering, non-pending guards)
 
+- **Database management tab** — new Admin → Database tab with connection
+  diagnostics (surface meaningful errors when DB is unreachable), table
+  stats, and repair tools
+
+- **Maintenance mode** — admin toggle writes `storage/maintenance.json`;
+  `Router::handleDispatch()` shows the maintenance page to everyone except
+  authenticated Admins (session role check); `/admin`, `/login`, `/logout`,
+  `/auth/session` stay reachable for all roles
+
+- **BrainStem model naming** — `brainstem_config.model` column (migration
+  `005_brainstem_model_column.sql`) names the Neural Host model;
+  `ChatBackend::select()` uses it as the upstream `model` payload AND the
+  status-pill label; when blank falls back to `'brainstem'` + label
+  `'LFM2.5 1.2B Instruct'`. Set via Admin → Settings → BrainStem Host
+
+- **Backend status pill** — meta-bar `#chat-backend-status` shows
+  `Model: <label> · <state>` (online/offline/error/checking);
+  BYO-first probe (`probeByo`) pings the browser-side key before falling
+  back to server resolve (`GET /api/chat/resolve/`); each chat/build
+  stream re-announces the serving model via the SSE `meta` event
+
+- **Server fallback for build stream** — `runBuildStream` falls back to
+  server BrainStem via `serverChatStream()` when no BYO key is configured;
+  `generateFilesInChat` no longer hard-requires `localStorage["ashat.api"]`
+
 ### Changed
 
 - **License — proprietary** — `LICENSE` swapped from Apache 2.0 to an
   "All Rights Reserved" notice; the README License section and project-
   tree line now reflect the closed-source stance
+
+- **BYO-first backend resolution** — `ChatBackend::select()` now prefers
+  the user's BYO key over BrainStem (`byo > brainstem > none`);
+  `agent.js` gains JSON recovery (`recoverJsonObject`, `tryParseLenient`)
+  for broken/truncated fence JSON; File Manager select-all includes
+  folder prefixes
 
 - **Admin Settings — controls vs. diagnostics split** — the Settings tab
   now uses a two-column layout: the left column holds the interactive
@@ -63,13 +94,15 @@ The version displayed in the UI comes from `APP_VERSION` in `config/bootstrap.ph
   URL/key/updated-by render as a compact footer). Form actions are now
   standardized: primary saves/actions align to the bottom-right of their
   card, secondary actions (Reset to defaults) use ghost/outline styling
+
 - **Admin dashboard polish** — the redundant "Active Users" link in the
   header and its duplicate Quick Action card were removed (the page stays
   reachable from the navbar dropdown); stat cards that have no data
   (empty Project Files) are now hidden instead of showing a meaningless
   `0`; the header subtitle became a personal greeting
   ("Welcome back, …") and the header/action grids were rebalanced to fit
-  the fewer cards.
+  the fewer cards
+
 - **Active Users page — honest data + no dead panels** — the subtitle
   dropped the misleading "last 2 hours" precision (the query matches
   sessions touched within ~2 lifetimes, not activity within 2 hours) and
@@ -80,6 +113,30 @@ The version displayed in the UI comes from `APP_VERSION` in `config/bootstrap.ph
   **Model Usage** panel was removed (its `modelStats` view var was
   hardcoded `[]` since the local-first pivot); the orb canvas now draws
   always-on name labels under each node so the graph self-explains
+
+- **VOWS.md — Vow 9 added** — "Do NOT write outside project directory
+  without explicit permission"; mirrors updated in `AGENTS.md` and
+  `knowledge.md`
+
+- **Navbar update** — minor styling and structural improvements
+
+### Fixed
+
+- **Database connection errors surfaced in admin** — admin panel now shows
+  meaningful error messages instead of blank screens when DB is
+  unreachable
+
+- **Status pill cold-probe false negative** — the pill now shows
+  "checking" during builds and chat streams instead of staying stuck on
+  stale "offline" from the page-load probe; model name persists across
+  page refreshes via `localStorage["ashat.backend_model"]`; hover tooltip
+  shows full backend info (e.g. "BrainStem Neural Host — LFM2.5 1.2B
+  Instruct")
+
+### Docs
+
+- **Repo stats updated** — controller, test, and route counts refreshed
+  in `AGENTS.md`
 
 ## [v5.8] — 2026-08-02
 

@@ -2,6 +2,7 @@
   /** @var Core\ViewContext $view */
   $tables      = $view->db_tables ?? [];
   $dbInfo      = $view->db_info ?? [];
+  $dbError     = $view->db_error ?? '';
   $activeTable = $view->active_table ?? '';
   $tableData   = $view->table_data ?? [];
   $tableCols   = $view->table_columns ?? [];
@@ -46,6 +47,12 @@
   .pma-struct-type { color:var(--gold-dim); font-size:11px; }
 </style>
 
+<?php if ($dbError): ?>
+  <div class="pma-flash-err" style="margin-bottom:12px;">
+    <strong>Database connection failed:</strong> <?= e($dbError) ?>
+    <div style="margin-top:6px; font-size:11px; opacity:.7;">Check that the <code>pdo_mysql</code> PHP extension is enabled and DB credentials are correct in <code>config/server_config.json</code>.</div>
+  </div>
+<?php endif; ?>
 <?php if ($importMsg): ?>
   <div class="pma-flash-ok"><?= e($importMsg) ?></div>
 <?php endif; ?>

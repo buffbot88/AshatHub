@@ -231,6 +231,16 @@ final class AdminController
         $page        = max(1, (int) $ctx->int('page'));
         $perPage     = 25;
 
+        // Probe the DB connection once and surface any error to the view.
+        $dbError = '';
+        try {
+            \Core\Database::connection();
+        } catch (\Throwable $e) {
+            $dbError = $e->getPrevious() instanceof \PDOException
+                ? $e->getPrevious()->getMessage()
+                : $e->getMessage();
+        }
+
         $tables = $this->getTableList();
         $dbInfo = $this->getDbInfo();
         $tableData   = [];
@@ -261,6 +271,7 @@ final class AdminController
             'user'         => $ctx->user(),
             'db_tables'    => $tables,
             'db_info'      => $dbInfo,
+            'db_error'     => $dbError,
             'active_table' => $activeTable,
             'active_view'  => $activeView,
             'table_data'   => $tableData,

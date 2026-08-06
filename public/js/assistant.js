@@ -207,7 +207,7 @@
 
   // ── Backend model + status (chat meta bar) ─────────────────────
   var DEFAULT_MODEL_LABEL = 'LFM2.5 1.2B Instruct';
-  var BACKEND_LABELS = { brainstem: 'BrainStem Neural Host', byo: 'BYO' };
+  var BACKEND_LABELS = { brainstem: 'BrainStem Neural Host' };
   /** Model the server reports as actually serving (BrainStem > BYO). */
   var resolvedModel = (function () {
     try { var m = localStorage.getItem(MODEL_KEY); return m || null; } catch (_) { return null; }
@@ -264,27 +264,6 @@
    * browser first (key never leaves), else the server probes BrainStem.
    */
   function fetchResolvedBackend() {
-    var agent = window.ASHAT && window.ASHAT.agent;
-    var byoCfg = getByoConfig();
-    if (byoCfg && agent && typeof agent.probeByo === 'function') {
-      setBackendStatus('checking');
-      agent.probeByo(byoCfg).then(function (res) {
-        if (!res || typeof res !== 'object') return;
-        if (res.online) {
-          setResolvedBackend('byo');
-          if (res.model) setResolvedModel(res.model);
-          setBackendStatus('online');
-          return;
-        }
-        // Key present but unreachable/rejected — show its model with the
-        // failure state so the user knows to check Account → API Settings.
-        setResolvedBackend('byo');
-        var cfg = getByoConfig();
-        if (cfg && cfg.model) setResolvedModel(cfg.model);
-        setBackendStatus(res.error === 'auth' || res.error === 'rate' ? 'error' : 'offline');
-      }).catch(function () { /* leave 'checking' — the first message confirms */ });
-      return;
-    }
     if (typeof ashatFetch !== 'function') return;
     ashatFetch('/api/chat/resolve/')
       .then(function (data) {
@@ -295,8 +274,8 @@
           setBackendStatus(data.online ? 'online' : 'offline');
           return;
         }
-        // No server-side backend either — nothing can serve.
-        if (data.backend === 'none' && !getByoConfig()) {
+        // No server-side backend — nothing can serve.
+        if (data.backend === 'none') {
           setBackendStatus('offline');
         }
       })
@@ -2289,8 +2268,7 @@
       temperature: 0.82,
       top_p: 0.95,
     };
-    var byoCfg = getByoConfig();
-    if (byoCfg) body.byo_config = byoCfg;
+    // BYOK disabled — no byo_config sent to server.
 
     var csrfMeta = document.querySelector('meta[name="csrf-token"]');
     var headers = {

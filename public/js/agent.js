@@ -112,31 +112,16 @@
     return { plan: parsed.plan, files: cleaned };
   }
 
-  // ── Public API: BYO config ──────────────────────────────────────
+  // ── Public API: BYO config (DISABLED — BrainStem only) ──────────
   function getLocalConfig() {
-    try {
-      const raw = localStorage.getItem(KEY_API);
-      if (!raw) return null;
-      const cfg = JSON.parse(raw);
-      if (!cfg || !cfg.api_key) return null;
-      return cfg;
-    } catch (e) {
-      console.warn('ashat.api in localStorage is corrupt; ignoring.', e);
-      return null;
-    }
+    // BYOK disabled — always return null so the server BrainStem backend is used.
+    return null;
   }
 
-  // Returns a shaped config with validated endpoint + api_key (for
-  // direct LLM calls). Returns null if endpoint or api_key is missing.
-  // Shared across agent.js and assistant.js (chat page).
+  // Returns a shaped config with validated endpoint + api_key.
+  // DISABLED — always returns null so BrainStem is the sole backend.
   function getByoConfig() {
-    const cfg = getLocalConfig();
-    if (!cfg || !cfg.endpoint) return null;
-    return {
-      endpoint: cfg.endpoint,
-      api_key:  cfg.api_key,
-      model:    cfg.model || 'gpt-4o-mini',
-    };
+    return null;
   }
 
   // ── JSON string cleaner ─────────────────────────────────────────
@@ -798,76 +783,20 @@
   }
 
   // ══════════════════════════════════════════════════════════════════
-  //  BYO LAYER (browser-direct, removable)
-  //  Reads the user's key from localStorage and delegates to the core
-  //  transport above. If BYOK support is dropped, delete this section
-  //  plus getLocalConfig/getByoConfig — the core stays for the default.
+  //  BYO LAYER (DISABLED — BrainStem only)
+  //  BYOK support is disabled. All requests go through the server's
+  //  BrainStem backend via serverChatStream.
   // ══════════════════════════════════════════════════════════════════
 
   async function chatStream(messages, opts) {
-    opts = opts || {};
-    const cfg = getLocalConfig();
-    if (!cfg) throw new Error('No API config — go to /account/ and save your provider + key first.');
-    if (!cfg.api_key) throw new Error('API config missing api_key.');
-    if (!cfg.endpoint) throw new Error('API config has no endpoint URL.');
-
-    const payload = {
-      model:       cfg.model || 'gpt-4o-mini',
-      messages:    messages,
-      max_tokens:  opts.max_tokens  || DEFAULT_MAX_TOKENS,
-      temperature: opts.temperature || 0.82,
-      stream:      opts.stream !== false,
-    };
-    const headers = {
-      'Content-Type':  'application/json',
-      'Authorization': 'Bearer ' + cfg.api_key,
-    };
-    return streamCompletion(cfg.endpoint, headers, payload, opts);
+    // BYOK disabled — fall through to server BrainStem stream.
+    return serverChatStream(messages, opts);
   }
 
-  // ── BYO reachability probe (status pill) ────────────────────────
-  // Pings the user's configured endpoint with a tiny completion so the
-  // chat meta-bar can show the real serving model + status on page
-  // load, before any message. The key never leaves the browser.
-  // Returns { online, model, error } — error is one of
-  // 'auth'|'rate'|'timeout'|'unreachable'|'http_N'|'no_config'.
+  // ── BYO reachability probe (DISABLED) ──────────────────────────
+  // BYOK is disabled — always report offline.
   async function probeByo(cfg) {
-    cfg = cfg || getByoConfig();
-    if (!cfg) return { online: false, error: 'no_config' };
-    const controller = (typeof AbortController !== 'undefined') ? new AbortController() : null;
-    const timer = controller ? setTimeout(function () { controller.abort(); }, 10000) : null;
-    try {
-      const r = await fetch(cfg.endpoint, {
-        method: 'POST',
-        signal: controller ? controller.signal : undefined,
-        headers: {
-          'Content-Type':  'application/json',
-          'Authorization': 'Bearer ' + cfg.api_key,
-        },
-        body: JSON.stringify({
-          model:      cfg.model || 'gpt-4o-mini',
-          messages:   [{ role: 'user', content: 'ping' }],
-          max_tokens: 8,
-          stream:     false,
-        }),
-      });
-      if (!r.ok) {
-        if (r.status === 401 || r.status === 403) return { online: false, error: 'auth' };
-        if (r.status === 429) return { online: false, error: 'rate' };
-        return { online: false, error: 'http_' + r.status };
-      }
-      const j = await r.json().catch(function () { return null; });
-      const echo = (j && typeof j.model === 'string' && j.model)
-        ? j.model
-        : (j && j.choices && j.choices[0] && j.choices[0].message && j.choices[0].message.model) || '';
-      // The response may echo the resolved model name — prefer it.
-      return { online: true, model: echo || cfg.model || '' };
-    } catch (e) {
-      const aborted = e && e.name === 'AbortError';
-      return { online: false, error: aborted ? 'timeout' : 'unreachable' };
-    } finally {
-      if (timer) clearTimeout(timer);
-    }
+    return { online: false, error: 'disabled' };
   }
 
   // ── Streaming build: spec → LLM (streaming) → validated result ──
@@ -882,12 +811,8 @@
     ];
     const callOpts = Object.assign({}, opts);
     if (!callOpts.max_tokens) callOpts.max_tokens = BUILD_MAX_TOKENS;
-    // A valid BYO config (endpoint + key) builds browser-direct; without
-    // one the build falls back to the server's default BrainStem stream.
-    const cfg = getByoConfig();
-    const fullText = cfg
-      ? await chatStream(messages, callOpts)
-      : await serverChatStream(messages, callOpts);
+    // BYOK disabled — always use the server's BrainStem stream.
+    const fullText = await serverChatStream(messages, callOpts);
     const parsed = extractJson(fullText);
     return runSafetyGates(parsed);
   }

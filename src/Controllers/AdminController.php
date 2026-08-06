@@ -234,7 +234,12 @@ final class AdminController
         // Probe the DB connection once and surface any error to the view.
         $dbError = '';
         try {
-            \Core\Database::connection();
+            $pdo = \Core\Database::connection();
+            // Also test a simple query to verify full connectivity
+            $testStmt = $pdo->query('SELECT 1 AS test');
+            if ($testStmt === false) {
+                $dbError = 'Database query test failed';
+            }
         } catch (\Throwable $e) {
             $dbError = $e->getPrevious() instanceof \PDOException
                 ? $e->getPrevious()->getMessage()
@@ -242,6 +247,14 @@ final class AdminController
         }
 
         $tables = $this->getTableList();
+
+        // Debug: write to file (always, for debugging)
+        $debugMsg = date('Y-m-d H:i:s') . ' [Admin DB] Tables found: ' . count($tables);
+        if ($dbError) {
+            $debugMsg .= ' | Error: ' . $dbError;
+        }
+        $debugMsg .= "\n";
+        @file_put_contents(ASHAT_ROOT . '/storage/logs/db_debug.log', $debugMsg, FILE_APPEND);
         $dbInfo = $this->getDbInfo();
         $tableData   = [];
         $tableCols   = [];
@@ -475,7 +488,22 @@ final class AdminController
     {
         try {
             $pdo = \Core\Database::connection();
-            $rows = $pdo->query('SHOW TABLE STATUS')->fetchAll(\PDO::FETCH_ASSOC);
+            
+            // Debug: write to file (always, for debugging)
+            $debugMsg = date('Y-m-d H:i:s') . ' [getTableList] PDO connected: ' . ($pdo ? 'YES' : 'NO');
+            $debugMsg .= ' | DB: ' . ($pdo->query('SELECT DATABASE()')->fetchColumn() ?? 'UNKNOWN');
+            
+            $stmt = $pdo->query('SHOW TABLE STATUS');
+            if ($stmt === false) {
+                $debugMsg .= ' | SHOW TABLE STATUS: FAILED' . "\n";
+                @file_put_contents(ASHAT_ROOT . '/storage/logs/db_debug.log', $debugMsg, FILE_APPEND);
+                return [];
+            }
+            $rows = $stmt->fetchAll(\PDO::FETCH_ASSOC);
+            
+            $debugMsg .= ' | Rows: ' . count($rows) . "\n";
+            @file_put_contents(ASHAT_ROOT . '/storage/logs/db_debug.log', $debugMsg, FILE_APPEND);
+            
             $tables = [];
             foreach ($rows as $row) {
                 $tables[] = [
@@ -487,6 +515,10 @@ final class AdminController
             }
             return $tables;
         } catch (\Throwable $e) {
+            // Debug: write to file (always, for debugging)
+            $debugMsg = date('Y-m-d H:i:s') . ' [getTableList ERROR] ' . $e->getMessage();
+            $debugMsg .= "\n" . $e->getTraceAsString() . "\n";
+            @file_put_contents(ASHAT_ROOT . '/storage/logs/db_debug.log', $debugMsg, FILE_APPEND);
             return [];
         }
     }
@@ -632,7 +664,351 @@ final class AdminController
         return $statements;
     }
 
+    // ── Table management ──────────────────────────────────────────
+
+    /** Create a new table. */
+    public function databaseCreateTable(RequestContext $ctx): void
+    {
+        $tableName = trim((string) $ctx->input('table_name', ''));
+        $columns   = $ctx->input('columns', []); // [{name, type, null, key, default, extra}]
+
+        if ($tableName === '' || empty($columns)) {
+            $ctx->flash('error', 'Table name and at least one column are required.');
+            $ctx->redirect('/admin/#tab=database');
+        }
+
+        if (!preg_match('/^[a-zA-Z_][a-zA-Z0-9_]*$/', $tableName)) {
+            $ctx->flash('error', 'Invalid table name.');
+            $ctx->redirect('/admin/#tab=database');
+        }
+
+        $colDefs = [];
+        foreach ($columns as $col) {
+            $name = trim((string) ($col['name'] ?? ''));
+            $type = trim((string) ($col['type'] ?? ''));
+            if ($name === '' || $type === '') continue;
+
+            $def = '`' . str_replace('`', '', $name) . '` ' . $type;
+            if (($col['null'] ?? '') !== 'YES') {
+                $def .= ' NOT NULL';
+            }
+            if (($col['default'] ?? '') !== '') {
+                $def .= ' DEFAULT ' . $this->quoteDefault((string) $col['default']);
+            }
+            if (($col['extra'] ?? '') !== '') {
+                $def .= ' ' . $col['extra'];
+            }
+            if (($col['key'] ?? '') === 'PRI') {
+                $def .= ' PRIMARY KEY';
+            } elseif (($col['key'] ?? '') === 'UNI') {
+                $def .= ' UNIQUE';
+            } elseif (($col['key'] ?? '') === 'MUL') {
+                $def .= ' INDEX';
+            }
+            $colDefs[] = $def;
+        }
+
+        if (empty($colDefs)) {
+            $ctx->flash('error', 'No valid columns provided.');
+            $ctx->redirect('/admin/#tab=database');
+        }
+
+        $sql = 'CREATE TABLE `' . str_replace('`', '', $tableName) . '` (' . implode(', ', $colDefs) . ') ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci';
+
+        try {
+            \Core\Database::connection()->exec($sql);
+            $ctx->flash('success', 'Table `' . $tableName . '` created.');
+        } catch (\Throwable $e) {
+            $ctx->flash('error', 'Failed to create table: ' . $e->getMessage());
+        }
+        $ctx->redirect('/admin/database/?table=' . urlencode($tableName) . '&view=structure');
+    }
+
+    /** Drop a table. */
+    public function databaseDropTable(RequestContext $ctx): void
+    {
+        $table = trim((string) $ctx->input('table', ''));
+        if ($table === '' || !$this->isValidTableName($table)) {
+            $ctx->flash('error', 'Invalid table name.');
+            $ctx->redirect('/admin/#tab=database');
+        }
+
+        try {
+            \Core\Database::connection()->exec('DROP TABLE `' . str_replace('`', '', $table) . '`');
+            $ctx->flash('success', 'Table `' . $table . '` dropped.');
+        } catch (\Throwable $e) {
+            $ctx->flash('error', 'Failed to drop table: ' . $e->getMessage());
+        }
+        $ctx->redirect('/admin/#tab=database');
+    }
+
+    /** Rename a table. */
+    public function databaseRenameTable(RequestContext $ctx): void
+    {
+        $oldName = trim((string) $ctx->input('old_name', ''));
+        $newName = trim((string) $ctx->input('new_name', ''));
+
+        if ($oldName === '' || $newName === '' || !$this->isValidTableName($oldName)) {
+            $ctx->flash('error', 'Invalid table name.');
+            $ctx->redirect('/admin/#tab=database');
+        }
+
+        if (!preg_match('/^[a-zA-Z_][a-zA-Z0-9_]*$/', $newName)) {
+            $ctx->flash('error', 'Invalid new table name.');
+            $ctx->redirect('/admin/#tab=database');
+        }
+
+        try {
+            \Core\Database::connection()->exec('RENAME TABLE `' . str_replace('`', '', $oldName) . '` TO `' . str_replace('`', '', $newName) . '`');
+            $ctx->flash('success', 'Table renamed to `' . $newName . '`.');
+            $ctx->redirect('/admin/database/?table=' . urlencode($newName) . '&view=data');
+        } catch (\Throwable $e) {
+            $ctx->flash('error', 'Failed to rename table: ' . $e->getMessage());
+            $ctx->redirect('/admin/database/?table=' . urlencode($oldName) . '&view=data');
+        }
+    }
+
+    /** Truncate a table. */
+    public function databaseTruncateTable(RequestContext $ctx): void
+    {
+        $table = trim((string) $ctx->input('table', ''));
+        if ($table === '' || !$this->isValidTableName($table)) {
+            $ctx->flash('error', 'Invalid table name.');
+            $ctx->redirect('/admin/#tab=database');
+        }
+
+        try {
+            \Core\Database::connection()->exec('TRUNCATE TABLE `' . str_replace('`', '', $table) . '`');
+            $ctx->flash('success', 'Table `' . $table . '` truncated.');
+        } catch (\Throwable $e) {
+            $ctx->flash('error', 'Failed to truncate table: ' . $e->getMessage());
+        }
+        $ctx->redirect('/admin/database/?table=' . urlencode($table) . '&view=data');
+    }
+
+    // ── Row operations ────────────────────────────────────────────
+
+    /** Insert a new row into a table. */
+    public function databaseInsertRow(RequestContext $ctx): void
+    {
+        $table  = trim((string) $ctx->input('table', ''));
+        $values = $ctx->input('values', []); // {column_name: value}
+
+        if ($table === '' || !$this->isValidTableName($table)) {
+            $ctx->flash('error', 'Invalid table name.');
+            $ctx->redirect('/admin/#tab=database');
+        }
+
+        if (empty($values)) {
+            $ctx->flash('error', 'No values provided.');
+            $ctx->redirect('/admin/database/?table=' . urlencode($table) . '&view=data');
+        }
+
+        $pdo   = \Core\Database::connection();
+        $cols  = array_keys($values);
+        $colSql = '`' . implode('`, `', array_map(fn($c) => str_replace('`', '', $c), $cols)) . '`';
+        $placeholders = implode(', ', array_fill(0, count($cols), '?'));
+        $sql = 'INSERT INTO `' . str_replace('`', '', $table) . "` ($colSql) VALUES ($placeholders)";
+
+        try {
+            $stmt = $pdo->prepare($sql);
+            $stmt->execute(array_values($values));
+            $ctx->flash('success', 'Row inserted.');
+        } catch (\Throwable $e) {
+            $ctx->flash('error', 'Insert failed: ' . $e->getMessage());
+        }
+        $ctx->redirect('/admin/database/?table=' . urlencode($table) . '&view=data');
+    }
+
+    /** Update an existing row (identified by primary key). */
+    public function databaseUpdateRow(RequestContext $ctx): void
+    {
+        $table  = trim((string) $ctx->input('table', ''));
+        $values = $ctx->input('values', []);    // {column_name: new_value}
+        $pk     = $ctx->input('pk', []);         // {pk_column: pk_value}
+
+        if ($table === '' || !$this->isValidTableName($table) || empty($pk)) {
+            $ctx->flash('error', 'Invalid update parameters.');
+            $ctx->redirect('/admin/#tab=database');
+        }
+
+        $pdo = \Core\Database::connection();
+        $setClauses = [];
+        $setValues   = [];
+        foreach ($values as $col => $val) {
+            $setClauses[] = '`' . str_replace('`', '', $col) . '` = ?';
+            $setValues[]  = $val;
+        }
+        $whereClauses = [];
+        $whereValues  = [];
+        foreach ($pk as $col => $val) {
+            if ($val === null || $val === 'NULL') {
+                $whereClauses[] = '`' . str_replace('`', '', $col) . '` IS NULL';
+            } else {
+                $whereClauses[] = '`' . str_replace('`', '', $col) . '` = ?';
+                $whereValues[]  = $val;
+            }
+        }
+
+        $sql = 'UPDATE `' . str_replace('`', '', $table) . '` SET ' . implode(', ', $setClauses) . ' WHERE ' . implode(' AND ', $whereClauses);
+
+        try {
+            $stmt = $pdo->prepare($sql);
+            $stmt->execute(array_merge($setValues, $whereValues));
+            $ctx->flash('success', 'Row updated (' . $stmt->rowCount() . ' affected).');
+        } catch (\Throwable $e) {
+            $ctx->flash('error', 'Update failed: ' . $e->getMessage());
+        }
+        $ctx->redirect('/admin/database/?table=' . urlencode($table) . '&view=data');
+    }
+
+    /** Delete a row (identified by primary key). */
+    public function databaseDeleteRow(RequestContext $ctx): void
+    {
+        $table = trim((string) $ctx->input('table', ''));
+        $pk    = $ctx->input('pk', []); // {pk_column: pk_value}
+
+        if ($table === '' || !$this->isValidTableName($table) || empty($pk)) {
+            $ctx->flash('error', 'Invalid delete parameters.');
+            $ctx->redirect('/admin/#tab=database');
+        }
+
+        $pdo = \Core\Database::connection();
+        $whereClauses = [];
+        $whereValues  = [];
+        foreach ($pk as $col => $val) {
+            if ($val === null || $val === 'NULL') {
+                $whereClauses[] = '`' . str_replace('`', '', $col) . '` IS NULL';
+            } else {
+                $whereClauses[] = '`' . str_replace('`', '', $col) . '` = ?';
+                $whereValues[]  = $val;
+            }
+        }
+
+        $sql = 'DELETE FROM `' . str_replace('`', '', $table) . '` WHERE ' . implode(' AND ', $whereClauses);
+
+        try {
+            $stmt = $pdo->prepare($sql);
+            $stmt->execute($whereValues);
+            $ctx->flash('success', 'Row deleted (' . $stmt->rowCount() . ' affected).');
+        } catch (\Throwable $e) {
+            $ctx->flash('error', 'Delete failed: ' . $e->getMessage());
+        }
+        $ctx->redirect('/admin/database/?table=' . urlencode($table) . '&view=data');
+    }
+
+    // ── Column management ─────────────────────────────────────────
+
+    /** Add a column to a table. */
+    public function databaseAddColumn(RequestContext $ctx): void
+    {
+        $table    = trim((string) $ctx->input('table', ''));
+        $colName  = trim((string) $ctx->input('column_name', ''));
+        $colType  = trim((string) $ctx->input('column_type', ''));
+        $colNull  = (string) $ctx->input('column_null', 'NO');
+        $colDefault = $ctx->input('column_default', null);
+        $colExtra = trim((string) $ctx->input('column_extra', ''));
+
+        if ($table === '' || !$this->isValidTableName($table) || $colName === '' || $colType === '') {
+            $ctx->flash('error', 'Table, column name, and type are required.');
+            $ctx->redirect('/admin/database/?table=' . urlencode($table) . '&view=structure');
+        }
+
+        $sql = 'ALTER TABLE `' . str_replace('`', '', $table) . '` ADD COLUMN `' . str_replace('`', '', $colName) . '` ' . $colType;
+        if ($colNull !== 'YES') $sql .= ' NOT NULL';
+        if ($colDefault !== null && $colDefault !== '') $sql .= ' DEFAULT ' . $this->quoteDefault((string) $colDefault);
+        if ($colExtra !== '') $sql .= ' ' . $colExtra;
+
+        try {
+            \Core\Database::connection()->exec($sql);
+            $ctx->flash('success', 'Column `' . $colName . '` added.');
+        } catch (\Throwable $e) {
+            $ctx->flash('error', 'Failed to add column: ' . $e->getMessage());
+        }
+        $ctx->redirect('/admin/database/?table=' . urlencode($table) . '&view=structure');
+    }
+
+    /** Drop a column from a table. */
+    public function databaseDropColumn(RequestContext $ctx): void
+    {
+        $table   = trim((string) $ctx->input('table', ''));
+        $colName = trim((string) $ctx->input('column_name', ''));
+
+        if ($table === '' || !$this->isValidTableName($table) || $colName === '') {
+            $ctx->flash('error', 'Invalid parameters.');
+            $ctx->redirect('/admin/#tab=database');
+        }
+
+        try {
+            \Core\Database::connection()->exec('ALTER TABLE `' . str_replace('`', '', $table) . '` DROP COLUMN `' . str_replace('`', '', $colName) . '`');
+            $ctx->flash('success', 'Column `' . $colName . '` dropped.');
+        } catch (\Throwable $e) {
+            $ctx->flash('error', 'Failed to drop column: ' . $e->getMessage());
+        }
+        $ctx->redirect('/admin/database/?table=' . urlencode($table) . '&view=structure');
+    }
+
+    /** Modify a column in a table. */
+    public function databaseModifyColumn(RequestContext $ctx): void
+    {
+        $table      = trim((string) $ctx->input('table', ''));
+        $colName    = trim((string) $ctx->input('column_name', ''));
+        $colType    = trim((string) $ctx->input('column_type', ''));
+        $colNull    = (string) $ctx->input('column_null', 'NO');
+        $colDefault = $ctx->input('column_default', null);
+        $colExtra   = trim((string) $ctx->input('column_extra', ''));
+
+        if ($table === '' || !$this->isValidTableName($table) || $colName === '' || $colType === '') {
+            $ctx->flash('error', 'Table, column name, and type are required.');
+            $ctx->redirect('/admin/database/?table=' . urlencode($table) . '&view=structure');
+        }
+
+        $sql = 'ALTER TABLE `' . str_replace('`', '', $table) . '` MODIFY COLUMN `' . str_replace('`', '', $colName) . '` ' . $colType;
+        if ($colNull !== 'YES') $sql .= ' NOT NULL';
+        if ($colDefault !== null && $colDefault !== '') $sql .= ' DEFAULT ' . $this->quoteDefault((string) $colDefault);
+        if ($colExtra !== '') $sql .= ' ' . $colExtra;
+
+        try {
+            \Core\Database::connection()->exec($sql);
+            $ctx->flash('success', 'Column `' . $colName . '` modified.');
+        } catch (\Throwable $e) {
+            $ctx->flash('error', 'Failed to modify column: ' . $e->getMessage());
+        }
+        $ctx->redirect('/admin/database/?table=' . urlencode($table) . '&view=structure');
+    }
+
     // ── Private helpers ─────────────────────────────────────────────
+
+    /**
+     * Quote a DEFAULT value safely.
+     */
+    private function quoteDefault(string $value): string
+    {
+        $upper = strtoupper($value);
+        if ($upper === 'NULL') return 'NULL';
+        if ($upper === 'CURRENT_TIMESTAMP') return 'CURRENT_TIMESTAMP';
+        if (is_numeric($value)) return $value;
+        return \Core\Database::connection()->quote($value);
+    }
+
+    /**
+     * Get primary key columns for a table.
+     */
+    private function getTablePrimaryKeys(string $table): array
+    {
+        try {
+            $pdo = \Core\Database::connection();
+            $stmt = $pdo->prepare('SHOW KEYS FROM `' . str_replace('`', '', $table) . '` WHERE Key_name = "PRIMARY"');
+            $stmt->execute();
+            $keys = [];
+            while ($row = $stmt->fetch(\PDO::FETCH_ASSOC)) {
+                $keys[] = $row['Column_name'];
+            }
+            return $keys;
+        } catch (\Throwable $e) {
+            return [];
+        }
+    }
 
     /**
      * Gather platform-wide stats for the admin dashboard.
@@ -645,6 +1021,5 @@ final class AdminController
             'active_sessions' => RepositoryRegistry::session()->countActive(),
         ];
     }
-
 
 }

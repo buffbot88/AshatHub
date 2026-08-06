@@ -240,10 +240,11 @@ if (!function_exists('ashat_log_exception')) {
 //  BOOT  — ConfigBag + themed error handler + Session
 // ═════════════════════════════════════════════════════════════════════
 
-    // ─── ConfigBag (BrainStem URL/key) ────────────────────────────
+    // ─── ConfigBag (BrainStem URL/key + local Intent Router URL) ──
     \Core\ConfigBag::setInstance(new \Core\ConfigBag(
         rtrim((string) ($_ENV['BRAINSTEM_URL'] ?? getenv('BRAINSTEM_URL') ?: 'http://localhost:7860'), '/'),
-        (string) ($_ENV['BRAINSTEM_KEY'] ?? getenv('BRAINSTEM_KEY') ?: '')
+        (string) ($_ENV['BRAINSTEM_KEY'] ?? getenv('BRAINSTEM_KEY') ?: ''),
+        rtrim((string) ($_ENV['INTENT_ROUTER_URL'] ?? getenv('INTENT_ROUTER_URL') ?: 'http://127.0.0.1:3000'), '/')
     ));
 
     // ─── Error handling (themed HTML page) ────────────────────────

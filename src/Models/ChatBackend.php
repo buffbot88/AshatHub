@@ -7,27 +7,25 @@ namespace Models;
  * Models\ChatBackend — value object that represents "how to talk to this
  * AI backend."
  *
- * Encapsulates the backend selection logic (BrainStem > BYO > none) and
+ * Encapsulates the backend selection logic (BrainStem > offline) and
  * request construction (endpoint URL, headers, payload) so that the two
  * chat endpoints (non-streaming + SSE streaming) share one seam instead
  * of duplicating ~50 lines each.
  *
  * Usage:
- *   $backend = ChatBackend::select(BrainstemConfig::active(), $body['byo_config'] ?? null);
+ *   $backend = ChatBackend::select(BrainstemConfig::active());
  *   if (!$backend->isAvailable()) { /* 502 * / }
  *   $req = $backend->buildRequest($messages, $body, $stream);
  *   // $req = ['endpoint' => ..., 'headers' => [...], 'payload' => [...]]
- *
- * Testability seam:
- *   $backend = ChatBackend::select(null, ['endpoint' => '...', 'api_key' => '...']);
- *   $req = $backend->buildRequest([...], [...]);
- *   self::assertStringContainsString('Authorization: Bearer', $req['headers'][1]);
  * ═══════════════════════════════════════════════════════════════════════
  */
 final class ChatBackend
 {
     /** Display label for the BrainStem Neural Host's default model. */
     private const BRAINSTEM_MODEL_LABEL = 'LFM2.5 1.2B Instruct';
+
+    /** Actual model ID sent to the Neural Host API. */
+    private const BRAINSTEM_MODEL_ID = 'LFM2.5-1.2B-Instruct-Q8_0.gguf';
 
     /** Default BrainStem display label (used when no model is configured). */
     public static function defaultBrainstemLabel(): string
@@ -65,34 +63,15 @@ final class ChatBackend
     }
 
     /**
-     * Select the active backend: the user's BYO key (from browser
-     * localStorage) wins when set; BrainStem (server-side) is the
-     * fallback for users without their own key.
+     * Select the active backend: BrainStem Neural Host (server-side)
+     * is the sole backend. BYOK is currently disabled.
      */
-    public static function select(?array $brainstemActive, ?array $byoConfig): self
+    public static function select(?array $brainstemActive, ?array $byoConfig = null): self
     {
-        // Backend 1: User's BYO OpenAI-compatible endpoint — the user's
-        // own key takes precedence over the shared server host.
-        if ($byoConfig && !empty($byoConfig['endpoint']) && !empty($byoConfig['api_key'])) {
-            return new self(
-                $byoConfig['endpoint'],
-                [
-                    'Content-Type: application/json',
-                    'Authorization: Bearer ' . $byoConfig['api_key'],
-                ],
-                $byoConfig['model'] ?? 'gpt-4o-mini',
-                true,
-                true,  // BYO endpoints typically support streaming
-                'byo',
-                $byoConfig['model'] ?? 'gpt-4o-mini'
-            );
-        }
-
-        // Backend 2: BrainStem Neural Host (DB config > .env)
-        // The Neural Host uses X-Ashat-Key auth and does NOT support streaming.
+        // BrainStem Neural Host (DB config > .env)
+        // The Neural Host uses X-Ashat-Key auth.
+        // Streaming is NOT supported (stream: false) — forced to false.
         if ($brainstemActive && ($brainstemActive['api_key'] ?? '') !== '') {
-            // Admin-configured model name wins (sent upstream + shown in
-            // the status pill); the const is the fallback when unset.
             $model = trim((string) ($brainstemActive['model'] ?? ''));
             return new self(
                 $brainstemActive['url'] . '/v1/chat/completions',
@@ -100,9 +79,9 @@ final class ChatBackend
                     'Content-Type: application/json',
                     'X-Ashat-Key: ' . $brainstemActive['api_key'],
                 ],
-                $model !== '' ? $model : 'brainstem',
+                $model !== '' ? $model : self::BRAINSTEM_MODEL_ID,
                 true,
-                false,  // BrainStem Neural Host does not support streaming
+                false,  // BrainStem does NOT support streaming (stream: false)
                 'brainstem',
                 $model !== '' ? $model : self::BRAINSTEM_MODEL_LABEL
             );
@@ -147,18 +126,22 @@ final class ChatBackend
      */
     public function buildRequest(array $messages, array $opts, bool $stream = false): array
     {
+        // BrainStem context window is 4096 tokens; cap max_tokens accordingly.
+        $maxTokens = (int) ($opts['max_tokens'] ?? 1024);
+        if ($maxTokens > 4096) {
+            $maxTokens = 4096;
+        }
+
         $payload = [
             'model'       => $this->defaultModel,
             'messages'    => $messages,
-            'max_tokens'  => (int) ($opts['max_tokens'] ?? ($stream ? 12288 : 8192)),
-            'temperature' => (float) ($opts['temperature'] ?? 0.82),
+            'max_tokens'  => $maxTokens,
+            'temperature' => (float) ($opts['temperature'] ?? 0.7),
             'top_p'       => (float) ($opts['top_p'] ?? 0.95),
         ];
 
-        // Only set stream flag if the backend actually supports it
-        if ($stream && $this->streaming) {
-            $payload['stream'] = true;
-        }
+        // BrainStem does NOT support streaming — always set stream: false
+        $payload['stream'] = false;
 
         return [
             'endpoint' => $this->endpoint,

@@ -34,6 +34,22 @@ $router->group('/admin', ['middleware' => ['admin-gate']], function () use ($rou
     $router->post('/database/import',      [\Controllers\AdminController::class, 'databaseImport']);
     $router->post('/database/purge-sessions', [\Controllers\AdminController::class, 'databasePurgeSessions']);
 
+    // Table management
+    $router->post('/database/create-table',   [\Controllers\AdminController::class, 'databaseCreateTable']);
+    $router->post('/database/drop-table',     [\Controllers\AdminController::class, 'databaseDropTable']);
+    $router->post('/database/rename-table',   [\Controllers\AdminController::class, 'databaseRenameTable']);
+    $router->post('/database/truncate-table', [\Controllers\AdminController::class, 'databaseTruncateTable']);
+
+    // Row operations
+    $router->post('/database/insert-row',     [\Controllers\AdminController::class, 'databaseInsertRow']);
+    $router->post('/database/update-row',     [\Controllers\AdminController::class, 'databaseUpdateRow']);
+    $router->post('/database/delete-row',     [\Controllers\AdminController::class, 'databaseDeleteRow']);
+
+    // Column management
+    $router->post('/database/add-column',     [\Controllers\AdminController::class, 'databaseAddColumn']);
+    $router->post('/database/drop-column',    [\Controllers\AdminController::class, 'databaseDropColumn']);
+    $router->post('/database/modify-column',  [\Controllers\AdminController::class, 'databaseModifyColumn']);
+
     // Support ticket management
     $router->get('/support',                  [\Controllers\SupportController::class, 'adminIndex']);
     $router->post('/support/status',          [\Controllers\SupportController::class, 'adminUpdateStatus']);

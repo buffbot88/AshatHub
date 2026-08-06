@@ -124,7 +124,10 @@
      TABLE STATUS LIST (phpMiniAdmin style — compact grid)
      ═══════════════════════════════════════════════════════════════ -->
 <div class="pma-section" style="margin-top:16px;">
-  <div class="pma-section-head">Tables <span style="font-weight:400; font-size:11px; color:var(--gold-dim);">(<?= count($tables) ?>)</span></div>
+  <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:0;">
+    <div class="pma-section-head" style="flex:1; border-radius:6px 6px 0 0;">Tables <span style="font-weight:400; font-size:11px; color:var(--gold-dim);">(<?= count($tables) ?>)</span></div>
+    <button type="button" class="pma-btn pma-btn-primary" style="margin-left:8px; white-space:nowrap;" onclick="document.getElementById('pma-create-table-modal').style.display='flex'">+ Create Table</button>
+  </div>
   <div style="overflow-x:auto; border:1px solid var(--gold-line); border-top:none; border-radius:0 0 6px 6px;">
     <?php if (empty($tables)): ?>
       <div style="padding:12px 10px; color:var(--gold-dim); font-family:var(--font-mono); font-size:12px;">No tables found in this database.</div>
@@ -170,6 +173,20 @@
                   <input type="hidden" name="table" value="<?= e($t['name']) ?>">
                   <button type="submit" class="pma-link" style="background:none; border:none; padding:0; font:inherit; cursor:pointer;">repair</button>
                 </form>
+                <span style="color:var(--gold-dim);"> · </span>
+                <button type="button" class="pma-link" style="background:none; border:none; padding:0; font:inherit; cursor:pointer;" onclick="document.getElementById('pma-rename-modal').style.display='flex'; document.getElementById('pma-rename-old').value='<?= e($t['name']) ?>'; document.getElementById('pma-rename-new').value='<?= e($t['name']) ?>';">rename</button>
+                <span style="color:var(--gold-dim);"> · </span>
+                <button type="button" class="pma-link" style="background:none; border:none; padding:0; font:inherit; cursor:pointer;" onclick="if(confirm('Truncate <?= e(addslashes($t['name'])) ?>? All data will be lost!')) document.getElementById('pma-truncate-<?= e($t['name']) ?>').submit();">truncate</button>
+                <form id="pma-truncate-<?= e($t['name']) ?>" method="post" action="/admin/database/truncate-table/" style="display:none;">
+                  <?= csrf_field() ?>
+                  <input type="hidden" name="table" value="<?= e($t['name']) ?>">
+                </form>
+                <span style="color:var(--gold-dim);"> · </span>
+                <button type="button" class="pma-link pma-link-del" style="background:none; border:none; padding:0; font:inherit; cursor:pointer;" onclick="if(confirm('DROP TABLE <?= e(addslashes($t['name'])) ?>? This cannot be undone!')) document.getElementById('pma-drop-<?= e($t['name']) ?>').submit();">drop</button>
+                <form id="pma-drop-<?= e($t['name']) ?>" method="post" action="/admin/database/drop-table/" style="display:none;">
+                  <?= csrf_field() ?>
+                  <input type="hidden" name="table" value="<?= e($t['name']) ?>">
+                </form>
               </td>
             </tr>
           <?php endforeach; ?>
@@ -200,6 +217,7 @@
        class="pma-btn <?= $activeView === 'structure' ? 'pma-btn-primary' : '' ?>"
        style="text-decoration:none; <?= $activeView === 'structure' ? '' : 'opacity:.6;' ?>">Structure</a>
     <a href="/admin/database/?table=<?= urlencode($activeTable) ?>&view=sql" class="pma-btn" style="text-decoration:none; opacity:.6;">SQL</a>
+    <button type="button" class="pma-btn pma-btn-primary" onclick="openInsertRowModal()">+ Insert Row</button>
   </div>
 
   <?php if ($activeView === 'structure'): ?>
@@ -213,6 +231,7 @@
           <th>Key</th>
           <th>Default</th>
           <th>Extra</th>
+          <th>Actions</th>
         </tr></thead>
         <tbody>
           <?php foreach ($tableCols as $col): ?>
@@ -223,10 +242,53 @@
               <td style="color:<?= !empty($col['Key']) ? 'var(--accent)' : 'var(--gold-dim)' ?>; font-weight:<?= !empty($col['Key']) ? '600' : '400' ?>; font-size:11px;"><?= e($col['Key'] ?? '') ?></td>
               <td style="color:var(--gold-dim); font-size:11px;"><?= $col['Default'] === null ? '<span style="color:var(--gold-err)">NULL</span>' : e((string) $col['Default']) ?></td>
               <td style="color:var(--gold-dim); font-size:11px;"><?= e($col['Extra'] ?? '') ?></td>
+              <td style="white-space:nowrap;">
+                <button type="button" class="pma-link" style="background:none; border:none; padding:0; font:inherit; cursor:pointer;" onclick='openModifyColumnModal(<?= e(json_encode($col, JSON_HEX_TAG | JSON_HEX_APOS | JSON_HEX_QUOT | JSON_HEX_AMP)) ?>)'>modify</button>
+                <span style="color:var(--gold-dim);"> · </span>
+                <button type="button" class="pma-link pma-link-del" style="background:none; border:none; padding:0; font:inherit; cursor:pointer;" onclick="if(confirm('Drop column <?= e(addslashes($col['Field'])) ?>?')) document.getElementById('pma-drop-col-<?= e($col['Field']) ?>').submit();">drop</button>
+                <form id="pma-drop-col-<?= e($col['Field']) ?>" method="post" action="/admin/database/drop-column/" style="display:none;">
+                  <?= csrf_field() ?>
+                  <input type="hidden" name="table" value="<?= e($activeTable) ?>">
+                  <input type="hidden" name="column_name" value="<?= e($col['Field']) ?>">
+                </form>
+              </td>
             </tr>
           <?php endforeach; ?>
         </tbody>
       </table>
+    </div>
+
+    <!-- Add Column form -->
+    <div style="margin-top:12px; border:1px solid var(--gold-line); border-radius:6px; padding:12px;">
+      <div style="font-family:var(--font-heading); font-size:13px; font-weight:600; color:var(--gold); margin-bottom:10px;">Add Column</div>
+      <form method="post" action="/admin/database/add-column/" style="display:flex; align-items:flex-end; gap:8px; flex-wrap:wrap;">
+        <?= csrf_field() ?>
+        <input type="hidden" name="table" value="<?= e($activeTable) ?>">
+        <div>
+          <label style="font-family:var(--font-mono); font-size:10px; color:var(--gold-muted); display:block; margin-bottom:2px;">Name</label>
+          <input type="text" name="column_name" required style="font-family:var(--font-mono); font-size:12px; padding:5px 8px; background:var(--ink-soft); border:1px solid var(--gold-line); border-radius:4px; color:var(--gold); width:140px;">
+        </div>
+        <div>
+          <label style="font-family:var(--font-mono); font-size:10px; color:var(--gold-muted); display:block; margin-bottom:2px;">Type</label>
+          <input type="text" name="column_type" required placeholder="VARCHAR(255)" style="font-family:var(--font-mono); font-size:12px; padding:5px 8px; background:var(--ink-soft); border:1px solid var(--gold-line); border-radius:4px; color:var(--gold); width:160px;">
+        </div>
+        <div>
+          <label style="font-family:var(--font-mono); font-size:10px; color:var(--gold-muted); display:block; margin-bottom:2px;">NULL</label>
+          <select name="column_null" style="font-family:var(--font-mono); font-size:12px; padding:5px 8px; background:var(--ink-soft); border:1px solid var(--gold-line); border-radius:4px; color:var(--gold);">
+            <option value="NO">NOT NULL</option>
+            <option value="YES">NULL</option>
+          </select>
+        </div>
+        <div>
+          <label style="font-family:var(--font-mono); font-size:10px; color:var(--gold-muted); display:block; margin-bottom:2px;">Default</label>
+          <input type="text" name="column_default" placeholder="NULL" style="font-family:var(--font-mono); font-size:12px; padding:5px 8px; background:var(--ink-soft); border:1px solid var(--gold-line); border-radius:4px; color:var(--gold); width:120px;">
+        </div>
+        <div>
+          <label style="font-family:var(--font-mono); font-size:10px; color:var(--gold-muted); display:block; margin-bottom:2px;">Extra</label>
+          <input type="text" name="column_extra" placeholder="AUTO_INCREMENT" style="font-family:var(--font-mono); font-size:12px; padding:5px 8px; background:var(--ink-soft); border:1px solid var(--gold-line); border-radius:4px; color:var(--gold); width:140px;">
+        </div>
+        <button type="submit" class="pma-btn pma-btn-primary">Add Column</button>
+      </form>
     </div>
 
     <!-- Show CREATE TABLE -->
@@ -270,12 +332,29 @@
             <?php endforeach; ?>
           </tr></thead>
           <tbody>
-            <?php foreach ($tableData as $i => $row): ?>
+            <?php
+              // Determine primary key columns for row operations
+              $pkCols = [];
+              try {
+                $pdoPk = \Core\Database::connection();
+                $pkStmt = $pdoPk->prepare('SHOW KEYS FROM `' . str_replace('`', '', $activeTable) . '` WHERE Key_name = "PRIMARY"');
+                $pkStmt->execute();
+                while ($pkRow = $pkStmt->fetch(\PDO::FETCH_ASSOC)) {
+                  $pkCols[] = $pkRow['Column_name'];
+                }
+              } catch (\Throwable $e) { $pkCols = []; }
+            ?>
+          <?php foreach ($tableData as $i => $row): ?>
               <tr>
                 <td style="text-align:right; color:var(--gold-dim); font-size:10px;"><?= ($page - 1) * $perPage + $i + 1 ?></td>
                 <?php foreach ($row as $val): ?>
                   <td><div class="pma-cell-wrap" title="<?= e((string) $val) ?>"><?= $val === null ? '<span style="color:var(--gold-dim)">NULL</span>' : e(mb_strimwidth((string) $val, 0, 120, '…')) ?></div></td>
                 <?php endforeach; ?>
+                <td style="white-space:nowrap;">
+                  <button type="button" class="pma-link" style="background:none; border:none; padding:0; font:inherit; cursor:pointer;" onclick='openEditRowModal(<?= e(json_encode($row, JSON_HEX_TAG | JSON_HEX_APOS | JSON_HEX_QUOT | JSON_HEX_AMP)) ?>, <?= e(json_encode($pkCols)) ?>)'>edit</button>
+                  <span style="color:var(--gold-dim);"> · </span>
+                  <button type="button" class="pma-link pma-link-del" style="background:none; border:none; padding:0; font:inherit; cursor:pointer;" onclick='confirmDeleteRow(<?= e(json_encode($row, JSON_HEX_TAG | JSON_HEX_APOS | JSON_HEX_QUOT | JSON_HEX_AMP)) ?>, <?= e(json_encode($pkCols)) ?>)'>delete</button>
+                </td>
               </tr>
             <?php endforeach; ?>
           </tbody>
@@ -333,6 +412,156 @@
   </div>
 </div>
 
+<!-- ═══════════════════════════════════════════════════════════════
+     CREATE TABLE MODAL
+     ═══════════════════════════════════════════════════════════════ -->
+<div id="pma-create-table-modal" class="pma-modal" style="display:none; position:fixed; inset:0; z-index:50; align-items:center; justify-content:center; background:rgba(0,0,0,.7);">
+  <div style="width:100%; max-width:680px; margin:0 16px; padding:20px; border-radius:8px; background:var(--ink-panel); border:1px solid var(--gold-line); max-height:85vh; overflow-y:auto;">
+    <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:14px;">
+      <span style="font-family:var(--font-heading); font-size:15px; font-weight:600; color:var(--gold);">Create Table</span>
+      <button onclick="this.closest('.pma-modal').style.display='none'" style="background:none; border:none; color:var(--gold-muted); font-size:18px; cursor:pointer;">&times;</button>
+    </div>
+    <form method="post" action="/admin/database/create-table/">
+      <?= csrf_field() ?>
+      <div style="margin-bottom:12px;">
+        <label style="font-family:var(--font-mono); font-size:11px; color:var(--gold-muted); display:block; margin-bottom:4px;">Table Name</label>
+        <input type="text" name="table_name" required pattern="[a-zA-Z_][a-zA-Z0-9_]*" style="font-family:var(--font-mono); font-size:13px; padding:6px 10px; background:var(--ink-soft); border:1px solid var(--gold-line); border-radius:4px; color:var(--gold); width:280px;">
+      </div>
+      <div style="margin-bottom:10px;">
+        <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:8px;">
+          <span style="font-family:var(--font-mono); font-size:11px; color:var(--gold-muted);">Columns</span>
+          <button type="button" class="pma-btn" style="font-size:11px; padding:4px 10px;" onclick="addCreateTableColumn()">+ Add Column</button>
+        </div>
+        <div id="pma-ct-columns"></div>
+      </div>
+      <div style="display:flex; justify-content:flex-end; gap:8px; margin-top:14px;">
+        <button type="button" onclick="this.closest('.pma-modal').style.display='none'" class="pma-btn">Cancel</button>
+        <button type="submit" class="pma-btn pma-btn-primary">Create Table</button>
+      </div>
+    </form>
+  </div>
+</div>
+
+<!-- ═══════════════════════════════════════════════════════════════
+     INSERT ROW MODAL
+     ═══════════════════════════════════════════════════════════════ -->
+<div id="pma-insert-modal" class="pma-modal" style="display:none; position:fixed; inset:0; z-index:50; align-items:center; justify-content:center; background:rgba(0,0,0,.7);">
+  <div style="width:100%; max-width:560px; margin:0 16px; padding:20px; border-radius:8px; background:var(--ink-panel); border:1px solid var(--gold-line); max-height:85vh; overflow-y:auto;">
+    <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:14px;">
+      <span style="font-family:var(--font-heading); font-size:15px; font-weight:600; color:var(--gold);">Insert Row — <?= e($activeTable) ?></span>
+      <button onclick="this.closest('.pma-modal').style.display='none'" style="background:none; border:none; color:var(--gold-muted); font-size:18px; cursor:pointer;">&times;</button>
+    </div>
+    <form method="post" action="/admin/database/insert-row/">
+      <?= csrf_field() ?>
+      <input type="hidden" name="table" value="<?= e($activeTable) ?>">
+      <?php foreach ($tableCols as $col): ?>
+        <div style="margin-bottom:8px;">
+          <label style="font-family:var(--font-mono); font-size:11px; color:var(--gold-muted); display:block; margin-bottom:2px;">
+            <?= e($col['Field']) ?> <span style="color:var(--gold-dim); font-size:10px;"><?= e($col['Type']) ?></span>
+            <?php if (($col['Key'] ?? '') === 'PRI'): ?><span style="color:var(--accent);"> (PK)</span><?php endif; ?>
+          </label>
+          <input type="text" name="values[<?= e($col['Field']) ?>]" placeholder="<?= ($col['Default'] !== null) ? e((string) $col['Default']) : 'NULL' ?>" style="font-family:var(--font-mono); font-size:12px; padding:5px 8px; background:var(--ink-soft); border:1px solid var(--gold-line); border-radius:4px; color:var(--gold); width:100%;">
+        </div>
+      <?php endforeach; ?>
+      <div style="display:flex; justify-content:flex-end; gap:8px; margin-top:14px;">
+        <button type="button" onclick="this.closest('.pma-modal').style.display='none'" class="pma-btn">Cancel</button>
+        <button type="submit" class="pma-btn pma-btn-primary">Insert Row</button>
+      </div>
+    </form>
+  </div>
+</div>
+
+<!-- ═══════════════════════════════════════════════════════════════
+     EDIT ROW MODAL
+     ═══════════════════════════════════════════════════════════════ -->
+<div id="pma-edit-modal" class="pma-modal" style="display:none; position:fixed; inset:0; z-index:50; align-items:center; justify-content:center; background:rgba(0,0,0,.7);">
+  <div style="width:100%; max-width:560px; margin:0 16px; padding:20px; border-radius:8px; background:var(--ink-panel); border:1px solid var(--gold-line); max-height:85vh; overflow-y:auto;">
+    <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:14px;">
+      <span style="font-family:var(--font-heading); font-size:15px; font-weight:600; color:var(--gold);">Edit Row — <?= e($activeTable) ?></span>
+      <button onclick="this.closest('.pma-modal').style.display='none'" style="background:none; border:none; color:var(--gold-muted); font-size:18px; cursor:pointer;">&times;</button>
+    </div>
+    <form id="pma-edit-form" method="post" action="/admin/database/update-row/">
+      <?= csrf_field() ?>
+      <input type="hidden" name="table" value="<?= e($activeTable) ?>">
+      <div id="pma-edit-columns"></div>
+      <div style="display:flex; justify-content:flex-end; gap:8px; margin-top:14px;">
+        <button type="button" onclick="this.closest('.pma-modal').style.display='none'" class="pma-btn">Cancel</button>
+        <button type="submit" class="pma-btn pma-btn-primary">Save Changes</button>
+      </div>
+    </form>
+  </div>
+</div>
+
+<!-- Delete Row hidden form (JS fills PK fields and submits) -->
+<form id="pma-delete-row-form" method="post" action="/admin/database/delete-row/" style="display:none;">
+  <?= csrf_field() ?>
+  <input type="hidden" name="table" value="<?= e($activeTable) ?>">
+</form>
+
+<!-- ═══════════════════════════════════════════════════════════════
+     RENAME TABLE MODAL
+     ═══════════════════════════════════════════════════════════════ -->
+<div id="pma-rename-modal" class="pma-modal" style="display:none; position:fixed; inset:0; z-index:50; align-items:center; justify-content:center; background:rgba(0,0,0,.7);">
+  <div style="width:100%; max-width:420px; margin:0 16px; padding:20px; border-radius:8px; background:var(--ink-panel); border:1px solid var(--gold-line);">
+    <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:14px;">
+      <span style="font-family:var(--font-heading); font-size:15px; font-weight:600; color:var(--gold);">Rename Table</span>
+      <button onclick="this.closest('.pma-modal').style.display='none'" style="background:none; border:none; color:var(--gold-muted); font-size:18px; cursor:pointer;">&times;</button>
+    </div>
+    <form method="post" action="/admin/database/rename-table/">
+      <?= csrf_field() ?>
+      <input type="hidden" id="pma-rename-old" name="old_name" value="">
+      <div style="margin-bottom:12px;">
+        <label style="font-family:var(--font-mono); font-size:11px; color:var(--gold-muted); display:block; margin-bottom:4px;">New Name</label>
+        <input type="text" id="pma-rename-new" name="new_name" required pattern="[a-zA-Z_][a-zA-Z0-9_]*" style="font-family:var(--font-mono); font-size:13px; padding:6px 10px; background:var(--ink-soft); border:1px solid var(--gold-line); border-radius:4px; color:var(--gold); width:100%;">
+      </div>
+      <div style="display:flex; justify-content:flex-end; gap:8px;">
+        <button type="button" onclick="this.closest('.pma-modal').style.display='none'" class="pma-btn">Cancel</button>
+        <button type="submit" class="pma-btn pma-btn-primary">Rename</button>
+      </div>
+    </form>
+  </div>
+</div>
+
+<!-- ═══════════════════════════════════════════════════════════════
+     MODIFY COLUMN MODAL
+     ═══════════════════════════════════════════════════════════════ -->
+<div id="pma-modify-col-modal" class="pma-modal" style="display:none; position:fixed; inset:0; z-index:50; align-items:center; justify-content:center; background:rgba(0,0,0,.7);">
+  <div style="width:100%; max-width:500px; margin:0 16px; padding:20px; border-radius:8px; background:var(--ink-panel); border:1px solid var(--gold-line);">
+    <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:14px;">
+      <span style="font-family:var(--font-heading); font-size:15px; font-weight:600; color:var(--gold);">Modify Column</span>
+      <button onclick="this.closest('.pma-modal').style.display='none'" style="background:none; border:none; color:var(--gold-muted); font-size:18px; cursor:pointer;">&times;</button>
+    </div>
+    <form method="post" action="/admin/database/modify-column/">
+      <?= csrf_field() ?>
+      <input type="hidden" name="table" value="<?= e($activeTable) ?>">
+      <input type="hidden" id="pma-mc-orig" name="column_name" value="">
+      <div style="margin-bottom:8px;">
+        <label style="font-family:var(--font-mono); font-size:11px; color:var(--gold-muted); display:block; margin-bottom:2px;">Type</label>
+        <input type="text" id="pma-mc-type" name="column_type" required style="font-family:var(--font-mono); font-size:12px; padding:5px 8px; background:var(--ink-soft); border:1px solid var(--gold-line); border-radius:4px; color:var(--gold); width:100%;">
+      </div>
+      <div style="margin-bottom:8px;">
+        <label style="font-family:var(--font-mono); font-size:11px; color:var(--gold-muted); display:block; margin-bottom:2px;">NULL</label>
+        <select id="pma-mc-null" name="column_null" style="font-family:var(--font-mono); font-size:12px; padding:5px 8px; background:var(--ink-soft); border:1px solid var(--gold-line); border-radius:4px; color:var(--gold); width:100%;">
+          <option value="NO">NOT NULL</option>
+          <option value="YES">NULL</option>
+        </select>
+      </div>
+      <div style="margin-bottom:8px;">
+        <label style="font-family:var(--font-mono); font-size:11px; color:var(--gold-muted); display:block; margin-bottom:2px;">Default</label>
+        <input type="text" id="pma-mc-default" name="column_default" style="font-family:var(--font-mono); font-size:12px; padding:5px 8px; background:var(--ink-soft); border:1px solid var(--gold-line); border-radius:4px; color:var(--gold); width:100%;">
+      </div>
+      <div style="margin-bottom:8px;">
+        <label style="font-family:var(--font-mono); font-size:11px; color:var(--gold-muted); display:block; margin-bottom:2px;">Extra</label>
+        <input type="text" id="pma-mc-extra" name="column_extra" placeholder="AUTO_INCREMENT" style="font-family:var(--font-mono); font-size:12px; padding:5px 8px; background:var(--ink-soft); border:1px solid var(--gold-line); border-radius:4px; color:var(--gold); width:100%;">
+      </div>
+      <div style="display:flex; justify-content:flex-end; gap:8px; margin-top:14px;">
+        <button type="button" onclick="this.closest('.pma-modal').style.display='none'" class="pma-btn">Cancel</button>
+        <button type="submit" class="pma-btn pma-btn-primary">Save Changes</button>
+      </div>
+    </form>
+  </div>
+</div>
+
 <script>
   // Close import modal on backdrop click
   document.getElementById('pma-import-modal').addEventListener('click', function(e) {
@@ -348,4 +577,107 @@
     }
     return true;
   }
+
+  // ── Create Table Modal ──────────────────────────────────────────
+  var createTableColCount = 0;
+  function addCreateTableColumn() {
+    var container = document.getElementById('pma-ct-columns');
+    var idx = createTableColCount++;
+    var row = document.createElement('div');
+    row.style.cssText = 'display:flex; gap:6px; align-items:center; margin-bottom:6px;';
+    row.innerHTML =
+      '<input type="text" name="columns[' + idx + '][name]" placeholder="column_name" required style="font-family:var(--font-mono); font-size:12px; padding:5px 8px; background:var(--ink-soft); border:1px solid var(--gold-line); border-radius:4px; color:var(--gold); width:130px;">' +
+      '<input type="text" name="columns[' + idx + '][type]" placeholder="VARCHAR(255)" required style="font-family:var(--font-mono); font-size:12px; padding:5px 8px; background:var(--ink-soft); border:1px solid var(--gold-line); border-radius:4px; color:var(--gold); width:140px;">' +
+      '<select name="columns[' + idx + '][null]" style="font-family:var(--font-mono); font-size:12px; padding:5px; background:var(--ink-soft); border:1px solid var(--gold-line); border-radius:4px; color:var(--gold);"><option value="NO">NOT NULL</option><option value="YES">NULL</option></select>' +
+      '<select name="columns[' + idx + '][key]" style="font-family:var(--font-mono); font-size:12px; padding:5px; background:var(--ink-soft); border:1px solid var(--gold-line); border-radius:4px; color:var(--gold);"><option value="">None</option><option value="PRI">PRIMARY</option><option value="UNI">UNIQUE</option><option value="MUL">INDEX</option></select>' +
+      '<input type="text" name="columns[' + idx + '][default]" placeholder="default" style="font-family:var(--font-mono); font-size:12px; padding:5px 8px; background:var(--ink-soft); border:1px solid var(--gold-line); border-radius:4px; color:var(--gold); width:100px;">' +
+      '<input type="text" name="columns[' + idx + '][extra]" placeholder="EXTRA" style="font-family:var(--font-mono); font-size:12px; padding:5px 8px; background:var(--ink-soft); border:1px solid var(--gold-line); border-radius:4px; color:var(--gold); width:110px;">' +
+      '<button type="button" onclick="this.parentElement.remove()" style="background:none; border:none; color:var(--gold-err); font-size:16px; cursor:pointer;">×</button>';
+    container.appendChild(row);
+  }
+
+  // ── Insert Row Modal ──────────────────────────────────────────
+  function openInsertRowModal() {
+    document.getElementById('pma-insert-modal').style.display = 'flex';
+  }
+
+  // ── Edit Row Modal ────────────────────────────────────────────
+  function openEditRowModal(row, pkCols) {
+    var modal = document.getElementById('pma-edit-modal');
+    var form = document.getElementById('pma-edit-form');
+    var container = document.getElementById('pma-edit-columns');
+    container.innerHTML = '';
+
+    // Add PK hidden fields
+    for (var k = 0; k < pkCols.length; k++) {
+      var pkInput = document.createElement('input');
+      pkInput.type = 'hidden';
+      pkInput.name = 'pk[' + pkCols[k] + ']';
+      pkInput.value = row[pkCols[k]] !== null ? row[pkCols[k]] : 'NULL';
+      container.appendChild(pkInput);
+    }
+
+    // Add editable fields
+    var keys = Object.keys(row);
+    for (var i = 0; i < keys.length; i++) {
+      var col = keys[i];
+      var val = row[col];
+      var isPk = pkCols.indexOf(col) !== -1;
+      var row2 = document.createElement('div');
+      row2.style.cssText = 'margin-bottom:6px;';
+      var label = '<label style="font-family:var(--font-mono); font-size:11px; color:var(--gold-muted); display:block; margin-bottom:2px;">' + col;
+      if (isPk) label += ' <span style="color:var(--accent);">(PK)</span>';
+      label += '</label>';
+      var input;
+      if (val === null) {
+        input = '<input type="text" name="values[' + col + ']" value="" style="font-family:var(--font-mono); font-size:12px; padding:5px 8px; background:var(--ink-soft); border:1px solid var(--gold-line); border-radius:4px; color:var(--gold-dim); width:100%;">' +
+                '<div style="font-size:10px; color:var(--gold-dim); margin-top:2px;">Current: NULL</div>';
+      } else {
+        input = '<input type="text" name="values[' + col + ']" value="' + String(val).replace(/"/g, '&quot;').replace(/</g, '&lt;') + '"' + (isPk ? ' readonly style="font-family:var(--font-mono); font-size:12px; padding:5px 8px; background:rgba(15,15,23,.6); border:1px solid var(--gold-line); border-radius:4px; color:var(--gold-dim); width:100%; cursor:not-allowed;"' : ' style="font-family:var(--font-mono); font-size:12px; padding:5px 8px; background:var(--ink-soft); border:1px solid var(--gold-line); border-radius:4px; color:var(--gold); width:100%;"') + '>';
+      }
+      row2.innerHTML = label + input;
+      container.appendChild(row2);
+    }
+
+    modal.style.display = 'flex';
+  }
+
+  // ── Delete Row ────────────────────────────────────────────────
+  function confirmDeleteRow(row, pkCols) {
+    if (!confirm('Delete this row? This cannot be undone.')) return;
+    var form = document.getElementById('pma-delete-row-form');
+    // Clear previous PK fields
+    var oldPk = form.querySelectorAll('[name^="pk["]');
+    for (var i = 0; i < oldPk.length; i++) oldPk[i].remove();
+    for (var k = 0; k < pkCols.length; k++) {
+      var input = document.createElement('input');
+      input.type = 'hidden';
+      input.name = 'pk[' + pkCols[k] + ']';
+      input.value = row[pkCols[k]] !== null ? row[pkCols[k]] : 'NULL';
+      form.appendChild(input);
+    }
+    form.submit();
+  }
+
+  // ── Rename Table Modal ────────────────────────────────────────
+  // Opened by inline button — values set via onclick
+
+  // ── Modify Column Modal ───────────────────────────────────────
+  function openModifyColumnModal(col) {
+    var modal = document.getElementById('pma-modify-col-modal');
+    document.getElementById('pma-mc-name').value = col.Field || '';
+    document.getElementById('pma-mc-type').value = col.Type || '';
+    document.getElementById('pma-mc-null').value = (col.Null === 'YES') ? 'YES' : 'NO';
+    document.getElementById('pma-mc-default').value = (col.Default !== null && col.Default !== undefined) ? col.Default : '';
+    document.getElementById('pma-mc-extra').value = col.Extra || '';
+    document.getElementById('pma-mc-orig').value = col.Field || '';
+    modal.style.display = 'flex';
+  }
+
+  // ── Generic modal close on backdrop ────────────────────────────
+  document.querySelectorAll('.pma-modal').forEach(function(el) {
+    el.addEventListener('click', function(e) {
+      if (e.target === el) el.style.display = 'none';
+    });
+  });
 </script>

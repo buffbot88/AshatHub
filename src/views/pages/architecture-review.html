@@ -1,0 +1,263 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Architecture Review — ASHAT Hub</title>
+<!-- Static HTML page — not env-aware; link a local build or remove in prod -->
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/tailwindcss@3.4.17/dist/tailwind.min.css">
+<script src="https://cdn.jsdelivr.net/npm/mermaid@10/dist/mermaid.min.js"></script>
+<script>mermaid.initialize({startOnLoad:true,theme:'dark',themeVariables:{primaryColor:'#ff7a45',primaryTextColor:'#1d0f06',primaryBorderColor:'#c9531f',lineColor:'#2a2a31',secondaryColor:'#1f1f25',tertiaryColor:'#17171b',mainBkg:'#17171b',nodeBorder:'#2a2a31',clusterBkg:'#0d0d0f',clusterBorder:'#2a2a31',titleColor:'#e9e9ee',edgeLabelBackground:'#17171b',nodeTextColor:'#e9e9ee'}})</script>
+<style>
+  body { background: #06060b; color: #f5f5fa; font-family: 'Inter', ui-sans-serif, system-ui, sans-serif; }
+  .card { background: #11111a; border: 1px solid #1c1c2a; border-radius: 14px; transition: border-color .15s ease; }
+  .card:hover { border-color: #ff7a4540; }
+  .sep { height: 1px; background: #1c1c2a; margin: 2.5rem 0; }
+  .badge-strong { background: rgba(255,122,69,.12); color: #ff7a45; border: 1px solid rgba(255,122,69,.3); }
+  .badge-worthy { background: rgba(34,211,238,.10); color: #22d3ee; border: 1px solid rgba(34,211,238,.3); }
+  .badge-spec { background: rgba(124,128,151,.10); color: #7b7b93; border: 1px solid rgba(124,128,151,.3); }
+  .code-block { background: #0f0f17; border: 1px solid #1c1c2a; border-radius: 8px; padding: 1rem; font-family: 'JetBrains Mono', ui-monospace, monospace; font-size: 0.8rem; overflow-x: auto; }
+  .highlight { background: rgba(255,122,69,.08); border-left: 3px solid #ff7a45; padding: 0.75rem 1rem; border-radius: 0 8px 8px 0; margin: 1rem 0; }
+  .mermaid-wrapper { background: #0a0a0f; border-radius: 12px; padding: 1.25rem; border: 1px solid #1c1c2a; margin: 1rem 0; }
+  .comparison { display: grid; grid-template-columns: 1fr 1fr; gap: 1.5rem; }
+  @media (max-width: 768px) { .comparison { grid-template-columns: 1fr; } }
+</style>
+</head>
+<body class="p-6 md:p-10 max-w-6xl mx-auto">
+
+<div class="flex items-center justify-between mb-2">
+  <div class="flex items-center gap-3">
+    <h1 class="text-2xl md:text-3xl font-bold font-display tracking-tight">Architecture Review</h1>
+  </div>
+  <span class="text-xs font-mono text-chalk-mute bg-ink-panel px-2 py-1 rounded border border-ink-line">ASHAT Hub · v5.6</span>
+</div>
+<p class="text-sm text-chalk-mute mb-2">Surface friction across 24 modules · 12 controllers · 6 models · 10 core classes · 3 JS files</p>
+<div class="sep"></div>
+
+<div class="mb-8">
+  <h2 class="text-lg font-semibold mb-3">Codebase at a glance</h2>
+  <p class="text-sm text-chalk-soft leading-relaxed mb-4">
+    ASHAT Hub is a browser-based AI coding platform. The PHP backend follows a flat MVC pattern with
+    <strong class="text-chalk">static facades</strong> everywhere — no DI container, no service layer,
+    and no middleware other than the Router's named-middleware stack. Models are anemic SQL wrappers.
+    The only documented seam is <code class="text-accent text-xs">DatabaseInterface</code> (with an
+    <code class="text-accent text-xs">InMemoryDatabase</code> for testing). Controllers read
+    <code class="text-xs">$_POST</code> and <code class="text-xs">$_GET</code> directly.
+    Views mix HTML and PHP with <code class="text-xs">extract()</code>-based variable injection.
+  </p>
+  <div class="grid grid-cols-2 md:grid-cols-5 gap-2 text-center text-xs">
+    <div class="p-3 rounded-lg bg-ink-panel border border-ink-line"><span class="font-bold text-accent text-lg block">12</span>Controllers</div>
+    <div class="p-3 rounded-lg bg-ink-panel border border-ink-line"><span class="font-bold text-accent text-lg block">6</span>Models</div>
+    <div class="p-3 rounded-lg bg-ink-panel border border-ink-line"><span class="font-bold text-accent text-lg block">10</span>Core classes</div>
+    <div class="p-3 rounded-lg bg-ink-panel border border-ink-line"><span class="font-bold text-accent text-lg block">20+</span>Views</div>
+    <div class="p-3 rounded-lg bg-ink-panel border border-ink-line"><span class="font-bold text-accent text-lg block">3</span>JS files</div>
+  </div>
+</div>
+
+<!-- CANDIDATE 1 -->
+<div class="card p-6 mb-6" id="candidate-1">
+  <div class="flex items-start justify-between mb-4">
+    <div><h3 class="text-xl font-semibold mb-1">1. Static Facade Ocean</h3><p class="text-sm text-chalk-mute">Deepen by introducing a proper request context</p></div>
+    <span class="badge-strong text-xs font-mono px-3 py-1 rounded-full">Strong</span>
+  </div>
+  <div class="grid md:grid-cols-2 gap-6 mb-4">
+    <div>
+      <p class="text-xs font-mono uppercase tracking-wider text-chalk-mute mb-2">Files involved</p>
+      <div class="code-block text-xs space-y-0.5">
+        <span class="text-warn">src/Core/Auth.php</span> — static: login, register, logout, user(), check(), role(), hasRole(), requireRole()<br>
+        <span class="text-warn">src/Core/Session.php</span> — static: start(), flash(), csrfToken(), assertCsrf(), destroy()<br>
+        <span class="text-warn">src/Core/Response.php</span> — static: json(), redirect(), back(), jsonBody()<br>
+        <span class="text-warn">src/Core/View.php</span> — static: render(), partial()<br>
+        <span class="text-warn">src/Controllers/*.php</span> — all 12 call these statics directly
+      </div>
+    </div>
+    <div>
+      <p class="text-xs font-mono uppercase tracking-wider text-chalk-mute mb-2">Problem</p>
+      <p class="text-sm text-chalk-soft leading-relaxed">
+        Every controller is coupled to four static facades. There is no way to inject a mock session or test response.
+        <code class="text-xs">Auth::requireRole()</code> has an inline <code class="text-xs">new \Controllers\ErrorController()</code> — it instantiates its own collaborator to show errors.
+        Testing a controller means running PHP's real session. The <strong class="text-chalk">deletion test</strong>: removing any one of these facades would require touching every single controller — they distribute complexity instead of concentrating it.
+      </p>
+    </div>
+  </div>
+  <div class="highlight">
+    <p class="text-sm font-medium mb-1">Solution</p>
+    <p class="text-sm text-chalk-soft">Introduce a <strong>RequestContext</strong> object passed to every controller action. Authenticated user, flash messages, and CSRF token live on the context. The Router creates the context once and injects it. <code class="text-xs">Response::redirect()</code> becomes a method on the context or is returned from the action. This gives a single seam: swap the context factory in tests.</p>
+  </div>
+  <div class="comparison">
+    <div>
+      <p class="text-xs font-mono uppercase tracking-wider text-chalk-mute mb-2">Before</p>
+      <div class="mermaid-wrapper"><div class="mermaid">
+graph TD
+    C1[AccountController]-->|static|Auth; C1-->|static|Session; C1-->|static|Response
+    C2[BuildsController]-->|static|Auth; C2-->|static|Response
+    C3[CommunityController]-->|static|Auth; C3-->|static|Session; C3-->|static|Response
+    subgraph Static Facades; Auth; Session; Response; View; end
+    Auth-->|new|ErrorController; View-->|static|Auth; View-->|static|Session
+    style Auth fill:#8b0000,stroke:#ff4444,color:#fff
+    style Session fill:#8b0000,stroke:#ff4444,color:#fff
+    style Response fill:#8b0000,stroke:#ff4444,color:#fff
+      </div></div>
+    </div>
+    <div>
+      <p class="text-xs font-mono uppercase tracking-wider text-chalk-mute mb-2">After</p>
+      <div class="mermaid-wrapper"><div class="mermaid">
+graph TD
+    Router-->|creates|Ctx[RequestContext]
+    C1[AccountController]-->|receives|Ctx; C2[BuildsController]-->|receives|Ctx; C3[CommunityController]-->|receives|Ctx
+    Ctx-->|has|User; Ctx-->|has|Flash[FlashBag]; Ctx-->|has|CSRF[CsrfToken]
+    C1-->|returns|Resp[ResponseResult]; C2-->|returns|Resp; C3-->|returns|Resp
+    Router-->|sends|Resp; subgraph One Seam; Ctx; end
+    style Ctx fill:#1a4a1a,stroke:#4ade80,color:#fff
+      </div></div>
+    </div>
+  </div>
+</div>
+
+<!-- CANDIDATE 2 -->
+<div class="card p-6 mb-6" id="candidate-2">
+  <div class="flex items-start justify-between mb-4">
+    <div><h3 class="text-xl font-semibold mb-1">2. Anemic Model Layer</h3><p class="text-sm text-chalk-mute">Domain logic lives in controllers; models are just SQL wrappers</p></div>
+    <span class="badge-strong text-xs font-mono px-3 py-1 rounded-full">Strong</span>
+  </div>
+  <div class="grid md:grid-cols-2 gap-6 mb-4">
+    <div>
+      <p class="text-xs font-mono uppercase tracking-wider text-chalk-mute mb-2">Files involved</p>
+      <div class="code-block text-xs space-y-0.5">
+        <span class="text-warn">src/Models/*.php</span> — all 6 are thin SQL wrappers<br>
+        <span class="text-warn">src/Controllers/BuildsController.php</span> — has <code>acceptAgentBuild()</code> (32 lines of validation)<br>
+        <span class="text-warn">src/Controllers/AuthController.php</span> — manual <code>$_POST</code> validation<br>
+        <span class="text-warn">src/Controllers/CommunityController.php</span> — inline validation
+      </div>
+    </div>
+    <div>
+      <p class="text-xs font-mono uppercase tracking-wider text-chalk-mute mb-2">Problem</p>
+      <p class="text-sm text-chalk-soft leading-relaxed">
+        <code class="text-xs">Spec::create()</code> takes raw strings and writes them — no validation.
+        The <code class="text-xs">BuildsController::acceptAgentBuild()</code> is a 32-line validation function
+        embedded in a controller that should be a deep <code class="text-xs">BuildPayload</code> value object.
+        The <strong class="text-chalk">deletion test</strong>: deleting a model file doesn't concentrate logic — it just breaks SQL queries.
+      </p>
+    </div>
+  </div>
+  <div class="highlight">
+    <p class="text-sm font-medium mb-1">Solution</p>
+    <p class="text-sm text-chalk-soft">Extract a <strong>BuildPayload</strong> value object that encapsulates agent-payload validation. Pull validation rules into model-level static methods. Models become the single source of truth for what constitutes valid data.</p>
+  </div>
+</div>
+
+<!-- CANDIDATE 3 -->
+<div class="card p-6 mb-6" id="candidate-3">
+  <div class="flex items-start justify-between mb-4">
+    <div><h3 class="text-xl font-semibold mb-1">3. Route Registration Duplication</h3><p class="text-sm text-chalk-mute">Two independent paths load the same route files</p></div>
+    <span class="badge-worthy text-xs font-mono px-3 py-1 rounded-full">Worth exploring</span>
+  </div>
+  <div class="grid md:grid-cols-2 gap-6 mb-4">
+    <div>
+      <p class="text-xs font-mono uppercase tracking-wider text-chalk-mute mb-2">Files involved</p>
+      <div class="code-block text-xs"><span class="text-warn">src/Core/routes.php</span> requires all 5 route files + registers middleware<br><span class="text-warn">src/Core/Router.php</span> <code>register()</code> also requires all 5 route files</div>
+    </div>
+    <div>
+      <p class="text-xs font-mono uppercase tracking-wider text-chalk-mute mb-2">Problem</p>
+      <p class="text-sm text-chalk-soft leading-relaxed">Two independent paths load the same route files. The early-return guard prevents double-registration, but a developer adding a new route file needs to know about both paths.</p>
+    </div>
+  </div>
+  <div class="highlight"><p class="text-sm text-chalk-soft">Merge middleware registration into <code class="text-xs">Router::register()</code> so there's one loading path.</p></div>
+</div>
+
+<!-- CANDIDATE 4 -->
+<div class="card p-6 mb-6" id="candidate-4">
+  <div class="flex items-start justify-between mb-4">
+    <div><h3 class="text-xl font-semibold mb-1">4. Unvalidated Input Everywhere</h3><p class="text-sm text-chalk-mute">Every controller reinvents <code>$_POST</code> extraction</p></div>
+    <span class="badge-strong text-xs font-mono px-3 py-1 rounded-full">Strong</span>
+  </div>
+  <div class="grid md:grid-cols-2 gap-6 mb-4">
+    <div>
+      <p class="text-xs font-mono uppercase tracking-wider text-chalk-mute mb-2">Files involved</p>
+      <div class="code-block text-xs">All 12 controllers + Auth.php contain variations of:<br><code>trim((string) ($_POST['x'] ?? ''))</code> — ~40 times across the codebase</div>
+    </div>
+    <div>
+      <p class="text-xs font-mono uppercase tracking-wider text-chalk-mute mb-2">Problem</p>
+      <p class="text-sm text-chalk-soft leading-relaxed">Fragile pattern repeated ~40 times. The <code class="text-xs">$_POST['next'] ?? '/default/'</code> pattern is an open redirect waiting to happen — no whitelist. Every controller is shallow: its interface includes raw HTTP input extraction.</p>
+    </div>
+  </div>
+  <div class="highlight">
+    <p class="text-sm font-medium mb-1">Solution</p>
+    <p class="text-sm text-chalk-soft">Introduce a <strong>FormRequest</strong> object. Controllers define typed parameters. The FormRequest base class handles extraction, applies rules, and exposes validated data.</p>
+  </div>
+</div>
+
+<!-- CANDIDATE 5 -->
+<div class="card p-6 mb-6" id="candidate-5">
+  <div class="flex items-start justify-between mb-4">
+    <div><h3 class="text-xl font-semibold mb-1">5. InMemoryDatabase is a 700+ line SQL Parser</h3><p class="text-sm text-chalk-mute">The test seam is as complex as the real adapter</p></div>
+    <span class="badge-worthy text-xs font-mono px-3 py-1 rounded-full">Worth exploring</span>
+  </div>
+  <div class="grid md:grid-cols-2 gap-6 mb-4">
+    <div>
+      <p class="text-xs font-mono uppercase tracking-wider text-chalk-mute mb-2">Files involved</p>
+      <div class="code-block text-xs"><span class="text-warn">src/Core/InMemoryDatabase.php</span> 700+ lines<br><span class="text-warn">src/Core/DatabaseInterface.php</span> 5 methods<br><span class="text-warn">src/Core/PdoDatabase.php</span> ~50 lines</div>
+    </div>
+    <div>
+      <p class="text-xs font-mono uppercase tracking-wider text-chalk-mute mb-2">Problem</p>
+      <p class="text-sm text-chalk-soft leading-relaxet">700-line SQL parser for a 5-method interface. A shallow module: complex implementation behind a simple interface. The <strong class="text-chalk">deletion test</strong>: losing it forces MySQL in CI.</p>
+    </div>
+  </div>
+  <div class="highlight"><p class="text-sm text-chalk-soft">Replace with per-repository fakes (UserRepository, SpecRepository) backed by arrays — no SQL parsing. 700 lines becomes 7 × ~20-line fakes.</p></div>
+</div>
+
+<!-- CANDIDATE 6 -->
+<div class="card p-6 mb-6" id="candidate-6">
+  <div class="flex items-start justify-between mb-4">
+    <div><h3 class="text-xl font-semibold mb-1">6. View Variable Injection via extract()</h3><p class="text-sm text-chalk-mute">Wild variables collide with controller-passed vars</p></div>
+    <span class="badge-worthy text-xs font-mono px-3 py-1 rounded-full">Worth exploring</span>
+  </div>
+  <div class="highlight"><p class="text-sm text-chalk-soft">Abandon <code class="text-xs">extract()</code> and use a dedicated view model class. Eliminates namespace collision and enables type-checking view data.</p></div>
+</div>
+
+<!-- CANDIDATE 7 -->
+<div class="card p-6 mb-6" id="candidate-7">
+  <div class="flex items-start justify-between mb-4">
+    <div><h3 class="text-xl font-semibold mb-1">7. ChatController Does Too Much</h3><p class="text-sm text-chalk-mute">AI proxying OR BrainStem config — pick one</p></div>
+    <span class="badge-spec text-xs font-mono px-3 py-1 rounded-full">Speculative</span>
+  </div>
+  <div class="highlight"><p class="text-sm text-chalk-soft">Move BrainStem config endpoints into <code class="text-xs">AdminController</code>. Extract SSE streaming into <code class="text-xs">SseStreamer</code> utility.</p></div>
+</div>
+
+<!-- CANDIDATE 8 -->
+<div class="card p-6 mb-6" id="candidate-8">
+  <div class="flex items-start justify-between mb-4">
+    <div><h3 class="text-xl font-semibold mb-1">8. JavaScript HTTP Clients Duplicated</h3><p class="text-sm text-chalk-mute">Three JS files, three fetch wrappers</p></div>
+    <span class="badge-spec text-xs font-mono px-3 py-1 rounded-full">Speculative</span>
+  </div>
+  <div class="highlight"><p class="text-sm text-chalk-soft">Consolidate all HTTP into <code class="text-xs">ashatFetch()</code> in <code class="text-xs">app.js</code>. Remove inline fetch calls from <code class="text-xs">agent.js</code> and <code class="text-xs">studio.js</code>.</p></div>
+</div>
+
+<div class="sep"></div>
+
+<div class="bg-ink-panel border border-accent/40 rounded-xl p-6 mb-8">
+  <div class="flex items-center gap-2 mb-3">
+    <h2 class="text-xl font-semibold">Top Recommendation</h2>
+  </div>
+  <p class="text-sm text-chalk-soft leading-relaxed mb-3">
+    <strong class="text-accent">Candidate #1: RequestContext</strong> — then <strong class="text-accent">Candidate #4: FormRequest</strong>.
+  </p>
+  <p class="text-sm text-chalk-soft leading-relaxed">
+    The static facade ocean is the single biggest obstacle to every other improvement. Introducing a RequestContext that the Router injects into controllers would unblock testing (no real sessions), simplify controllers (one import instead of four), and open the door for FormRequest objects because the context naturally carries the input data.
+  </p>
+  <div class="code-block text-xs mt-2">
+$ctx = new RequestContext(user: $user, session: $fakeSession);<br>
+$req = UpdateProfileRequest::from(['display_name' => 'Alice', 'email' => 'a@b.com']);<br>
+$ctrl = new AccountController($ctx);<br>
+$result = $ctrl->updateProfile($req);<br>
+assert($result instanceof RedirectResponse);<br>
+assert($fakeSession->flashes[0] === 'Profile updated.');
+  </div>
+</div>
+
+<div class="text-center text-xs text-chalk-mute py-6 border-t border-ink-line">
+  Architecture Review · ASHAT Hub · Generated 2026-08-01<br>
+  Method: adversarial code reading · Mermaid.js for diagrams · Tailwind CDN for layout
+</div>
+</body>
+</html>

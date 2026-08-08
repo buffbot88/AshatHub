@@ -26,15 +26,9 @@ Thumbs.db
 *.swp
 *.swo
 
-# Build artifacts (in case Tailwind CLI is added later)
-public/css/build/
-public/js/build/
-
 # Temporary dev deps (only needed to recompile public/css/tailwind-prod.css)
 node_modules/
 
-# AshatOS_Old archive should NOT be committed
-AshatOS_Old/
 /.freebuff
 
 # PHPUnit phar (no composer.json in this repo)

@@ -1,4 +1,4 @@
-# Contributing to ASHAT Hub
+# Contributing to Ashat Hosting Platform
 
 Thanks for wanting to help build the ASHAT ecosystem! This project is
 proprietary, so contributions happen at the invitation of the maintainers —
@@ -19,7 +19,7 @@ every change in this repository must honor the vows, especially:
 
 ## Development setup
 
-### ASHAT Hub (PHP platform)
+### Ashat Hosting Platform (PHP platform)
 
 Requirements: PHP 8.1+ (`pdo_mysql`, `openssl`, `mbstring`), MySQL 8 /
 MariaDB 10.5+, Apache or the PHP built-in server.
@@ -51,7 +51,7 @@ are gitignored.
 
 ## Coding standards
 
-### PHP (ASHAT Hub)
+### PHP (Ashat Hosting Platform)
 
 - **PHP 8.1+** syntax only: `never` return type, named arguments,
   `str_starts_with`.

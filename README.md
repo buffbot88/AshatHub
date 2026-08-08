@@ -1,4 +1,4 @@
-# ASHAT Hub
+# Ashat Hosting Platform
 
 The ASHAT AI ecosystem: a browser-based AI coding platform and its inference
 backend, built to be self-hosted.
@@ -7,11 +7,11 @@ This repository contains three pieces:
 
 | Component | Path | Stack | What it is |
 |-----------|------|-------|------------|
-| **ASHAT Hub** | [`projects/AshatHub/`](projects/AshatHub/) | PHP 8.1+ · MySQL/MariaDB · PDO · Tailwind | The web platform — community, docs, Chat Studio, project hosting, admin panel |
+| **Ashat Hosting Platform** | [`projects/AshatHub/`](projects/AshatHub/) | PHP 8.1+ · MySQL/MariaDB · PDO · Tailwind | The web platform — community, docs, Chat Studio, project hosting, admin panel |
 | **ashat-ai** | [`ashat-ai/`](ashat-ai/) | Rust · Axum · tokio | Intent router & inference microservice: OpenAI-style `/v1/chat/completions`, intent classification, request-queue gate (429 when full), local & remote inference backends |
 | **Development vows** | [`VOWS.md`](VOWS.md) | — | The non-negotiable practices every contributor follows |
 
-> **Status:** ASHAT Hub is at **v5.9**. It is proprietary, closed-source
+> **Status:** Ashat Hosting Platform is at **v5.9**. It is proprietary, closed-source
 > software — see [LICENSE](LICENSE).
 
 ---
@@ -42,7 +42,7 @@ This repository contains three pieces:
 
 ## Getting started
 
-### The web platform (ASHAT Hub)
+### The web platform (Ashat Hosting Platform)
 
 Requirements: **PHP 8.1+** (`pdo_mysql`, `openssl`, `mbstring`), **MySQL 8 /
 MariaDB 10.5+**, and Apache *or* the PHP built-in server. No Composer, no
@@ -116,6 +116,6 @@ See [CONTRIBUTING.md](CONTRIBUTING.md) — including the development vows in
 
 ## License
 
-ASHAT Hub is proprietary, closed-source software. All rights reserved — see
+Ashat Hosting Platform is proprietary, closed-source software. All rights reserved — see
 [LICENSE](LICENSE). No part of this project may be copied, modified, or
 redistributed without prior written permission.

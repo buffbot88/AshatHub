@@ -1,0 +1,23 @@
+[server]
+host = "0.0.0.0"
+port = 3000
+
+[models]
+local_model = "../../models/LFM2.5-VL-450M-Q8_0.gguf"
+mmproj = "../../models/mmproj-LFM2.5-VL-450m-Q8_0.gguf"
+max_instances = 2
+cpu_cap = 90
+
+[omega]
+url = "https://ashatneuralhost.agpstudios.org"
+api_key = "WOGAJLhHgRUA1Jz8mGkaKLOpj4tK0yFM9vUDhsBeEr6jEBhZkeJHhayQVtfel9yh"
+auth_header = "X-Ashat-Key"
+model = "LFM2.5-1.2B-Instruct-Q4_K_M.gguf"
+
+[queue]
+max_requests = 32
+max_concurrent = 3
+
+[pool]
+min_instances = 1
+port_base = 3001

@@ -1,0 +1,75 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="theme-color" content="#8fc98a" />
+    <link rel="icon" type="image/svg+xml" href="./favicon.svg" />
+    <title>Paws &amp; Parcels</title>
+    <script type="module" crossorigin src="./assets/index-CbtSCymH.js"></script>
+    <link rel="stylesheet" crossorigin href="./assets/index-D-kCwU8x.css">
+  </head>
+  <body>
+    <div id="game-container">
+      <!-- DOM-over-Canvas UI mounts here (dialogue, login, menus) — Phase 3+. -->
+      <div id="ui-overlay"></div>
+
+      <!-- Phase 2 — Auth gate. Hidden by default; LoginOverlay.show() reveals it. -->
+      <div
+        id="login-overlay"
+        class="login-overlay"
+        hidden
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="login-title"
+      >
+        <div class="login-overlay__backdrop"></div>
+        <article class="login-card" role="document">
+          <svg
+            class="login-card__leaf"
+            viewBox="0 0 64 64"
+            aria-hidden="true"
+          >
+            <path
+              d="M32 6 C 18 12, 14 22, 14 36 C 14 50, 22 58, 32 58 C 42 58, 50 50, 50 36 C 50 22, 46 12, 32 6 Z M 32 10 L 32 56"
+              stroke="#3a5a3a"
+              stroke-width="1.6"
+              fill="rgba(143, 201, 138, 0.55)"
+              stroke-linecap="round"
+              stroke-linejoin="round"
+            />
+          </svg>
+          <h1 id="login-title" class="login-card__title">Paws &amp; Parcels</h1>
+          <p class="login-card__tagline">Tiny couriers. Big deliveries.</p>
+          <button
+            id="login-button"
+            type="button"
+            class="login-btn"
+            aria-describedby="login-status"
+          >
+            <span class="login-btn__icon" aria-hidden="true">
+              <svg viewBox="0 0 24 24">
+                <path
+                  d="M4 6 L 12 13 L 20 6 M 4 6 L 4 18 L 20 18 L 20 6"
+                  stroke="currentColor"
+                  stroke-width="2"
+                  fill="none"
+                  stroke-linecap="round"
+                  stroke-linejoin="round"
+                />
+              </svg>
+            </span>
+            Sign in with ASHAT Hub
+          </button>
+          <p id="login-status" class="login-card__status" aria-live="polite">
+            Sign in with your ASHAT Hub account to start your day as a courier.
+          </p>
+          <p id="login-error" class="login-card__error" aria-live="assertive" hidden></p>
+          <p class="login-card__footnote">
+            A cozy, multiplayer forest. Switch on the kettle — parcels are waiting.
+          </p>
+        </article>
+      </div>
+    </div>
+  </body>
+</html>

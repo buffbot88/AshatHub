@@ -1,0 +1,4 @@
+[2026-08-09T02:09:13+00:00] RuntimeException: probe test exception 12345
+  at /tmp/probe-logger.php:4
+#0 {main}
+

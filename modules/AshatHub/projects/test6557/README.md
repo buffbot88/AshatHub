@@ -1,0 +1,1 @@
+# Tiny Landing Page\n\nThis is a minimal single-page landing site built with vanilla HTML and CSS.

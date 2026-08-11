@@ -38,7 +38,7 @@ final class OAuthServer
             ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
             INSERT IGNORE INTO oauth_clients (client_id, name, redirect_uris) VALUES
               ('paws-and-parcels', 'Paws & Parcels (cute courier MMO)',
-               'http://localhost:5173/oidc-callback.html,http://localhost:3001/api/auth/oidc-callback');
+               'http://localhost:5173/oidc-callback.html,http://localhost:3001/api/auth/oidc-callback,https://pawsandparcels.agpstudios.org/oidc-callback.html');
         ";
         Database::execute($sql);
     }

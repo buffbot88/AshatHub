@@ -1,1 +1,35 @@
-/models
+# AshatPlatform local/runtime data and deployment credentials
+.env
+.env.*
+*.sqlite
+*.sqlite3
+*.db
+*.log
+*.pem
+*.key
+*.crt
+*.csr
+*.p12
+oraclehost_id_rsa
+server_config.json
+
+# Generated/build/dependency/model output
+target/
+models/
+node_modules/
+vendor/
+dist/
+build/
+storage/
+
+# Hosted user projects are not part of AshatPlatform source
+modules/AshatHub/projects/
+# Live service configuration; commit only the redacted example
+crates/alpha-server/config.toml
+
+# Local backup copies are not canonical source
+*.bak*
+*.backup*
+*.orig
+*.old
+*.phase*

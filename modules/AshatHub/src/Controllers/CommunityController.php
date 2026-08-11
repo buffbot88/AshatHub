@@ -2,6 +2,7 @@
 declare(strict_types=1);
 namespace Controllers;
 
+use Core\Database;
 use Core\RequestContext;
 use Data\CategoryLabels;
 use Repositories\RepositoryRegistry;
@@ -19,8 +20,89 @@ final class CommunityController
         $ctx->view('pages/community', [
             'title'    => 'Community Showcase · ' . APP_NAME,
             'projects' => $projects,
+            'websites' => $this->activeWebsites(),
             'labels'   => CategoryLabels::community(),
         ]);
+    }
+
+    /** Active hosting accounts with a live reachability probe, newest first. */
+    private function activeWebsites(): array
+    {
+        $stmt = Database::connection()->query(
+            "SELECT ha.domain, u.username, u.display_name
+               FROM hosting_accounts ha
+               JOIN users u ON u.id = ha.user_id
+              WHERE ha.status = 'active'
+              ORDER BY ha.created_at DESC"
+        );
+        $sites = $stmt->fetchAll(\PDO::FETCH_ASSOC);
+        $probe = $this->probeSites(array_column($sites, 'domain'));
+        foreach ($sites as &$site) {
+            $site['online'] = !empty($probe[$site['domain']]['online']);
+            $site['title']  = $probe[$site['domain']]['title'] ?? null;
+        }
+        unset($site);
+        return $sites;
+    }
+
+    /**
+     * Parallel probes (https, falling back to http): fetch the first bytes of
+     * each site and pull the <title>. A site is online when the server answers
+     * with any HTTP response; the title falls back to null when missing.
+     */
+    private function probeSites(array $domains): array
+    {
+        $result = [];
+        foreach (['https://', 'http://'] as $scheme) {
+            $pending = array_values(array_filter($domains, static fn (string $d): bool => empty($result[$d]['online'])));
+            if (!$pending) {
+                break;
+            }
+            $mh  = curl_multi_init();
+            $chs = [];
+            foreach ($pending as $d) {
+                $ch = curl_init($scheme . $d);
+                curl_setopt_array($ch, [
+                    CURLOPT_RETURNTRANSFER => true,
+                    CURLOPT_RANGE          => '0-8191', // <title> always lives in the head
+                    CURLOPT_FOLLOWLOCATION => true,
+                    CURLOPT_CONNECTTIMEOUT => 3,
+                    CURLOPT_TIMEOUT        => 4,
+                    CURLOPT_SSL_VERIFYPEER => false,
+                    CURLOPT_SSL_VERIFYHOST => 0,
+                ]);
+                curl_multi_add_handle($mh, $ch);
+                $chs[$d] = $ch;
+            }
+            do {
+                curl_multi_exec($mh, $running);
+                if ($running) {
+                    curl_multi_select($mh, 0.5);
+                }
+            } while ($running);
+            foreach ($chs as $d => $ch) {
+                if ((int) curl_getinfo($ch, CURLINFO_RESPONSE_CODE) > 0) {
+                    $result[$d] = [
+                        'online' => true,
+                        'title'  => self::pageTitle((string) curl_multi_getcontent($ch)),
+                    ];
+                }
+                curl_multi_remove_handle($mh, $ch);
+                curl_close($ch);
+            }
+            curl_multi_close($mh);
+        }
+        return $result;
+    }
+
+    /** Extract the <title> from an HTML page, or null when absent/empty. */
+    private static function pageTitle(string $html): ?string
+    {
+        if (!preg_match('/<title[^>]*>(.*?)<\/title>/is', $html, $m)) {
+            return null;
+        }
+        $title = trim(preg_replace('/\s+/u', ' ', html_entity_decode(strip_tags($m[1]), ENT_QUOTES | ENT_HTML5, 'UTF-8')));
+        return $title === '' ? null : mb_substr($title, 0, 120);
     }
 
     public function publisher(RequestContext $ctx, string $username): void

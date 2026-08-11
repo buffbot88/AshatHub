@@ -4,7 +4,9 @@ namespace Controllers;
 
 use Controllers\FormRequests\UpdateProfileRequest;
 use Core\AuthService;
+use Core\GeoLocator;
 use Core\RequestContext;
+use Core\VisitTracker;
 use Repositories\RepositoryRegistry;
 
 /**
@@ -82,10 +84,45 @@ final class AccountController
     {
         $ctx->requireRole('Member', 'Pro', 'Admin');
 
-        $users = self::safeRepo(fn() => RepositoryRegistry::user()->activeWithinHours(2));
         $ctx->view('pages/active_users', [
             'title' => 'Active Users · ' . APP_NAME,
-            'users' => $users,
+            'geo'   => self::geoByLocation(24),
         ]);
+    }
+
+    /**
+     * Count guests (distinct IPs) and members (users with sessions) per
+     * country for the last $hours; highest total first, Unknown last.
+     */
+    private static function geoByLocation(int $hours): array
+    {
+        $locator = new GeoLocator(ASHAT_ROOT . '/storage/geo-cache.json');
+        $buckets = [];
+        $add = static function (array $row, string $column) use (&$buckets, $locator): void {
+            $loc = $locator->countryForIp($row['ip'] ?? null);
+            $code = $loc['code'] ?? 'unknown';
+            if (!isset($buckets[$code])) {
+                $buckets[$code] = ['country' => $loc['country'] ?? 'Unknown', 'members' => 0, 'guests' => 0, 'total' => 0];
+            }
+            $buckets[$code][$column]++;
+            $buckets[$code]['total']++;
+        };
+
+        foreach (self::safeRepo(fn() => RepositoryRegistry::user()->activeMemberIps($hours)) as $row) {
+            $add($row, 'members');
+        }
+        foreach (VisitTracker::guestIps($hours) as $row) {
+            $add($row, 'guests');
+        }
+
+        usort($buckets, static function (array $a, array $b): int {
+            $aUnknown = $a['country'] === 'Unknown';
+            $bUnknown = $b['country'] === 'Unknown';
+            if ($aUnknown !== $bUnknown) {
+                return $aUnknown ? 1 : -1;
+            }
+            return $b['total'] <=> $a['total'] ?: strcasecmp($a['country'], $b['country']);
+        });
+        return $buckets;
     }
 }

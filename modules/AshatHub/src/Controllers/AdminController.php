@@ -1428,10 +1428,10 @@ final class AdminController
         // Short, unique names (MySQL identifiers cap at 32 chars — the old
         // host_ + 32-hex scheme silently failed CREATE USER).
         $dbName = 'host_' . $accountId;
-        $dbUser = 'host_' . $accountId;
+        $dbUser = $username;
         $dbPass = bin2hex(random_bytes(16));
         $ftpPass = bin2hex(random_bytes(16));
-        $ftpUser = 'host_' . $accountId;
+        $ftpUser = $username;
 
         // Provisioning runs as root (sudo): site DB + user, chrooted FTP
         // user, Apache vhost. The app DB user lacks CREATE USER privileges.

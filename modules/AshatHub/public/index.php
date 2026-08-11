@@ -139,5 +139,10 @@ http_response_code(200);
 // Bootstrap (loads .env, config, autoload, session, DB)
 require __DIR__ . '/../config/bootstrap.php';
 
+// Record the visit (guests + members) for the Active Users page — best-effort.
+if (!str_starts_with($_SERVER['REQUEST_URI'] ?? '/', '/api/')) {
+    \Core\VisitTracker::record();
+}
+
 // Hand off to the router
 \Core\Router::dispatch();

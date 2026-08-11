@@ -1,14 +1,13 @@
 <?php
   /** @var Core\ViewContext $view */
-  $users      = $view->users ?? [];
-  $total      = count($users);
-  $roleColors = ['Admin' => '#ff7a45', 'Pro' => '#7cc4e8', 'Member' => '#86868f'];
-
-  // Server-rendered relative times (time_ago) so the orb tooltip always
-  // agrees with the table — no client-side timezone parsing.
-  $usersJson = array_map(fn(array $u): array => $u + [
-      'last_active_rel' => time_ago($u['last_active'] ?? null),
-  ], $users);
+  $geo = $view->geo ?? [];
+  $totals = ['users' => 0, 'members' => 0, 'guests' => 0];
+  foreach ($geo as $g) {
+      $totals['users']   += $g['total'];
+      $totals['members'] += $g['members'];
+      $totals['guests']  += $g['guests'];
+  }
+  $countryCount = count($geo);
 ?>
 <section style="border-bottom: 1px solid var(--gold-line);">
   <div class="container mx-auto px-6 py-12">
@@ -16,8 +15,8 @@
       <div>
         <h1 class="section-title" style="font-size: clamp(28px, 4vw, 40px);">Active Users</h1>
         <p style="color: var(--gold-muted);" class="mt-2">
-          <span class="font-mono" style="color: var(--gold);"><?= $total ?></span>
-          user<?= $total !== 1 ? 's' : '' ?> with active sessions
+          <span class="font-mono" style="color: var(--gold);"><?= $totals['users'] ?></span>
+          user<?= $totals['users'] !== 1 ? 's' : '' ?> by geographical location · last 24 hours
         </p>
       </div>
       <span class="chip-gold">
@@ -27,224 +26,64 @@
   </div>
 </section>
 
-<section class="container mx-auto px-6 py-10 grid lg:grid-cols-5 gap-8">
-  <?php if (empty($users)): ?>
-    <div class="lg:col-span-5 text-center py-20" style="color: var(--gold-muted);">
-      <p class="section-title" style="font-size: 20px; text-align: center;">No active users</p>
-      <p class="text-sm mt-2">Check back when others are online.</p>
-    </div>
-  <?php else: ?>
-    <!-- ─── Left: Ball of Orbs ────────────────────────────────── -->
-    <div class="lg:col-span-3 relative">
-      <canvas id="orb-canvas" class="w-full rounded-xl" style="border: 1px solid var(--gold-line); background: var(--bg-soft); aspect-ratio: 4/3; display: block;"></canvas>
-      <div id="orb-tooltip" class="glass-card-solid absolute pointer-events-none px-3 py-1.5 text-sm"
-           style="background: var(--surface); white-space:nowrap; z-index:10; opacity:0; visibility:hidden;
-                  transform:translate(-50%, -100%); transition: opacity .15s ease, visibility 0s .15s;"></div>
-    </div>
-
-    <!-- ─── Right: Active Sessions ────────────────────────────── -->
-    <div class="lg:col-span-2">
-      <div class="flex items-center justify-between mb-3">
-        <h2 style="font-family: var(--font-heading); font-weight: 600; font-size: 14px; color: var(--gold);">Active Sessions</h2>
-        <span class="text-xs font-mono" style="color: var(--gold-muted);"><?= $total ?></span>
-      </div>
-      <div class="overflow-x-auto rounded-lg glass-card-solid">
-        <table class="w-full text-sm">
-          <thead>
-            <tr class="label-gold" style="background: rgba(15,15,23,0.5);">
-              <th class="text-left py-2 px-3">User</th>
-              <th class="text-left py-2 px-3">Role</th>
-              <th class="text-left py-2 px-3 hidden sm:table-cell">Logged in</th>
-              <th class="text-left py-2 px-3">Last active</th>
-            </tr>
-          </thead>
-          <tbody>
-            <?php foreach ($users as $u): ?>
-              <tr style="border-top: 1px solid var(--gold-line);" onmouseover="this.style.background='rgba(15,15,23,0.3)'" onmouseout="this.style.background=''">
-                <td class="py-2 px-3">
-                  <div class="flex items-center gap-2">
-                    <span class="w-1.5 h-1.5 rounded-full"
-                          style="background: <?= e($roleColors[$u['role']] ?? '#7b7b93') ?>"></span>
-                    <span class="font-medium"><?= e($u['display_name'] ?: $u['username']) ?></span>
-                  </div>
-                  <div class="text-[10px] text-chalk-mute font-mono truncate max-w-[160px]">@<?= e($u['username']) ?></div>
-                </td>
-                <td class="py-2 px-3"><?= role_badge($u['role']) ?></td>
-                <td class="py-2 px-3 text-chalk-soft text-xs hidden sm:table-cell" title="<?= e($u['session_started'] ?? '') ?>"><?= e(time_ago($u['session_started'] ?? null)) ?></td>
-                <td class="py-2 px-3 text-chalk-soft text-xs" title="<?= e($u['last_active'] ?? '') ?>"><?= e(time_ago($u['last_active'] ?? null)) ?></td>
-              </tr>
-            <?php endforeach; ?>
-          </tbody>
-        </table>
-      </div>
-      <p class="text-[10px] font-mono mt-2" style="color: var(--gold-dim);">
-        Sessions are touched on every request; “Last active” is the most recent touch.
-      </p>
-    </div>
-  <?php endif; ?>
+<section class="container mx-auto px-6 py-10 grid grid-cols-2 lg:grid-cols-4 gap-4">
+  <div class="glass-card-solid rounded-lg p-4">
+    <div class="label-gold text-xs mb-1">Members</div>
+    <div class="font-mono text-2xl" style="color: var(--gold);"><?= $totals['members'] ?></div>
+  </div>
+  <div class="glass-card-solid rounded-lg p-4">
+    <div class="label-gold text-xs mb-1">Guests</div>
+    <div class="font-mono text-2xl" style="color: var(--gold);"><?= $totals['guests'] ?></div>
+  </div>
+  <div class="glass-card-solid rounded-lg p-4">
+    <div class="label-gold text-xs mb-1">Countries</div>
+    <div class="font-mono text-2xl" style="color: var(--gold);"><?= $countryCount ?></div>
+  </div>
+  <div class="glass-card-solid rounded-lg p-4">
+    <div class="label-gold text-xs mb-1">Total</div>
+    <div class="font-mono text-2xl" style="color: var(--gold);"><?= $totals['users'] ?></div>
+  </div>
 </section>
 
-<script>
-(function () {
-  var users = <?= json_encode($usersJson, JSON_UNESCAPED_UNICODE) ?>;
-  var roleColors = <?= json_encode($roleColors) ?>;
-  if (!users || users.length === 0) return;
-
-  var canvas = document.getElementById('orb-canvas');
-  var tooltip = document.getElementById('orb-tooltip');
-  if (!canvas) return;
-
-  var ctx = canvas.getContext('2d');
-  if (!ctx) return;
-
-  var dpr = window.devicePixelRatio || 1;
-  var W, H;
-
-  function resize() {
-    var rect = canvas.getBoundingClientRect();
-    W = rect.width;
-    H = rect.height;
-    canvas.width  = W * dpr;
-    canvas.height = H * dpr;
-    ctx.scale(dpr, dpr);
-  }
-  resize();
-  window.addEventListener('resize', resize);
-
-  // ── Orb entities ────────────────────────────────────────────
-  var orbs = users.map(function (u, i) {
-    var color = roleColors[u.role] || '#7b7b93';
-    return {
-      id: i,
-      user: u,
-      color: color,
-      x: 0.15 + Math.random() * 0.70,
-      y: 0.20 + Math.random() * 0.60,
-      vx: (Math.random() - 0.5) * 0.002,
-      vy: (Math.random() - 0.5) * 0.002,
-      radius: 4 + Math.random() * 3,
-      phase: Math.random() * Math.PI * 2,
-      pulseSpeed: 0.5 + Math.random() * 1.0,
-      hovered: false,
-    };
-  });
-
-  // ── Constellation connections ───────────────────────────────
-  function getConnections(threshold) {
-    var lines = [];
-    for (var i = 0; i < orbs.length; i++) {
-      for (var j = i + 1; j < orbs.length; j++) {
-        var dx = (orbs[i].x - orbs[j].x) * W;
-        var dy = (orbs[i].y - orbs[j].y) * H;
-        var dist = Math.sqrt(dx * dx + dy * dy);
-        if (dist < threshold) {
-          lines.push({ i: i, j: j, dist: dist, alpha: 1 - dist / threshold });
-        }
-      }
-    }
-    return lines;
-  }
-
-  // ── Animation loop ──────────────────────────────────────────
-  var mouseX = -1, mouseY = -1;
-  canvas.addEventListener('mousemove', function (e) {
-    var rect = canvas.getBoundingClientRect();
-    mouseX = (e.clientX - rect.left) / W;
-    mouseY = (e.clientY - rect.top) / H;
-  });
-  canvas.addEventListener('mouseleave', function () {
-    mouseX = -1; mouseY = -1;
-    tooltip.style.visibility = 'hidden';
-    tooltip.style.opacity = '0';
-  });
-
-  var time = 0;
-
-  function draw() {
-    time += 0.016;
-    ctx.clearRect(0, 0, W, H);
-
-    // Update positions
-    orbs.forEach(function (o) {
-      o.x += o.vx;
-      o.y += o.vy;
-      // Bounce off edges (bottom bound leaves room for the name label)
-      if (o.x < 0.05 || o.x > 0.95) o.vx *= -1;
-      if (o.y < 0.15 || o.y > 0.80) o.vy *= -1;
-      // Keep in bounds
-      o.x = Math.max(0.04, Math.min(0.96, o.x));
-      o.y = Math.max(0.10, Math.min(0.82, o.y));
-
-      // Hover detection
-      if (mouseX >= 0 && mouseY >= 0) {
-        var dx = (o.x - mouseX) * W;
-        var dy = (o.y - mouseY) * H;
-        o.hovered = Math.sqrt(dx * dx + dy * dy) < o.radius + 8;
-      } else {
-        o.hovered = false;
-      }
-    });
-
-    // Connections
-    var connections = getConnections(200);
-    connections.forEach(function (c) {
-      ctx.beginPath();
-      ctx.moveTo(orbs[c.i].x * W, orbs[c.i].y * H);
-      ctx.lineTo(orbs[c.j].x * W, orbs[c.j].y * H);
-      ctx.strokeStyle = 'rgba(124, 128, 151, ' + (c.alpha * 0.25) + ')';
-      ctx.lineWidth = 1;
-      ctx.stroke();
-    });
-
-    // Draw orbs + always-on name labels
-    orbs.forEach(function (o) {
-      var pulse = 1 + 0.15 * Math.sin(time * o.pulseSpeed + o.phase);
-      var r = o.radius * pulse;
-      var cx = o.x * W;
-      var cy = o.y * H;
-      var label = o.user.display_name || o.user.username;
-
-      // Flat halo (no radial gradient — plain translucent circle)
-      ctx.beginPath();
-      ctx.arc(cx, cy, r * 3, 0, Math.PI * 2);
-      ctx.fillStyle = o.color + '22';
-      ctx.fill();
-
-      // Core
-      ctx.beginPath();
-      ctx.arc(cx, cy, r, 0, Math.PI * 2);
-      ctx.fillStyle = o.hovered ? o.color : o.color + 'dd';
-      ctx.fill();
-
-      // Highlight ring on hover
-      if (o.hovered) {
-        ctx.beginPath();
-        ctx.arc(cx, cy, r + 3, 0, Math.PI * 2);
-        ctx.strokeStyle = o.color + '88';
-        ctx.lineWidth = 1.5;
-        ctx.stroke();
-
-        tooltip.textContent = label + ' · active ' + (o.user.last_active_rel || 'recently');
-        tooltip.style.visibility = 'visible';
-        tooltip.style.opacity = '1';
-        tooltip.style.left = cx + 'px';
-        tooltip.style.top = (cy - r - 12) + 'px';
-      } else if (!orbs.some(function (o) { return o.hovered; })) {
-        tooltip.style.opacity = '0';
-        tooltip.style.visibility = 'hidden';
-      }
-
-      // Name label under the orb
-      ctx.font = '10px "JetBrains Mono", monospace';
-      ctx.textAlign = 'center';
-      ctx.textBaseline = 'top';
-      ctx.fillStyle = 'rgba(179, 179, 189, 0.85)';
-      ctx.fillText(label, cx, cy + r + 6);
-    });
-
-    requestAnimationFrame(draw);
-  }
-
-  draw();
-})();
-</script>
+<section class="container mx-auto px-6 py-10">
+  <div class="flex items-center justify-between mb-3">
+    <h2 style="font-family: var(--font-heading); font-weight: 600; font-size: 14px; color: var(--gold);">By Location</h2>
+    <span class="text-xs font-mono" style="color: var(--gold-muted);">
+      <?= $countryCount ?> countr<?= $countryCount !== 1 ? 'ies' : 'y' ?> · highest first
+    </span>
+  </div>
+  <?php if (empty($geo)): ?>
+    <div class="text-center py-16 rounded-lg glass-card-solid" style="color: var(--gold-muted);">
+      <p class="section-title" style="font-size: 20px;">No active users</p>
+      <p class="text-sm mt-2">Guests are counted from when this tracker went live.</p>
+    </div>
+  <?php else: ?>
+    <div class="overflow-x-auto rounded-lg glass-card-solid">
+      <table class="w-full text-sm">
+        <thead>
+          <tr class="label-gold" style="background: rgba(15,15,23,0.5);">
+            <th class="text-left py-2 px-3 w-10">#</th>
+            <th class="text-left py-2 px-3">Country</th>
+            <th class="text-right py-2 px-3">Guests</th>
+            <th class="text-right py-2 px-3">Members</th>
+            <th class="text-right py-2 px-3">Total</th>
+          </tr>
+        </thead>
+        <tbody>
+          <?php foreach ($geo as $i => $g): ?>
+            <tr style="border-top: 1px solid var(--gold-line);">
+              <td class="py-2 px-3 font-mono text-chalk-soft text-xs"><?= $i + 1 ?></td>
+              <td class="py-2 px-3 font-medium"><?= e($g['country']) ?></td>
+              <td class="py-2 px-3 text-right font-mono"><?= $g['guests'] ?></td>
+              <td class="py-2 px-3 text-right font-mono"><?= $g['members'] ?></td>
+              <td class="py-2 px-3 text-right font-mono" style="color: var(--gold);"><?= $g['total'] ?></td>
+            </tr>
+          <?php endforeach; ?>
+        </tbody>
+      </table>
+    </div>
+    <p class="text-[10px] font-mono mt-2" style="color: var(--gold-dim);">
+      Guests = distinct IPs, members = users with live sessions. Private IPs are not tracked.
+    </p>
+  <?php endif; ?>
+</section>

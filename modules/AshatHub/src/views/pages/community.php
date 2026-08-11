@@ -3,7 +3,10 @@
   $activeCat = $_GET['cat'] ?? 'all';
   $projects  = $view->projects ?? [];
   $labels    = $view->labels ?? [];
+  $websites  = $view->websites ?? [];
+  $tab       = ($_GET['tab'] ?? 'projects') === 'websites' ? 'websites' : 'projects';
   $__user    = $view->__user ?? null;
+  $tabOn     = 'background: rgba(255,215,0,0.12); border-color: var(--gold); color: var(--gold-light);';
 ?>
 
 <section style="border-bottom: 1px solid var(--gold-line);">
@@ -11,14 +14,26 @@
     <div class="flex items-end justify-between flex-wrap gap-4 mb-8">
       <div>
         <h1 class="section-title" style="font-size: clamp(28px, 4vw, 40px);">Community Showcase</h1>
-        <p style="color: var(--gold-muted);" class="mt-2">Projects built with ASHAT, submitted by the community.</p>
+        <p style="color: var(--gold-muted);" class="mt-2"><?= $tab === 'websites' ? 'Websites hosted on ASHAT Hub, with live status.' : 'Projects built with ASHAT, submitted by the community.' ?></p>
       </div>
-      <?php if ($__user ?? null): ?>
-        <button id="btn-show-submit" class="btn-gold">+ Submit your project</button>
-      <?php else: ?>
-        <a href="/login/" class="btn-outline">Sign in to submit</a>
+      <?php if ($tab === 'projects'): ?>
+        <?php if ($__user ?? null): ?>
+          <button id="btn-show-submit" class="btn-gold">+ Submit your project</button>
+        <?php else: ?>
+          <a href="/login/" class="btn-outline">Sign in to submit</a>
+        <?php endif; ?>
       <?php endif; ?>
     </div>
+
+    <!-- Tab bar: Projects | Websites -->
+    <div class="flex gap-2 mb-8" role="tablist" aria-label="Showcase sections">
+      <a href="/community/" role="tab" aria-selected="<?= $tab === 'projects' ? 'true' : 'false' ?>"
+         class="chip-gold" style="<?= $tab === 'projects' ? $tabOn : '' ?>">Projects</a>
+      <a href="/community/?tab=websites" role="tab" aria-selected="<?= $tab === 'websites' ? 'true' : 'false' ?>"
+         class="chip-gold" style="<?= $tab === 'websites' ? $tabOn : '' ?>">Websites</a>
+    </div>
+
+    <?php if ($tab === 'projects'): ?>
 
     <!-- Submission form (hidden by default) -->
     <?php if ($__user ?? null): ?>
@@ -116,6 +131,35 @@
           </a>
         <?php endforeach; ?>
       </div>
+    <?php endif; ?>
+
+    <?php else: ?>
+
+    <!-- Websites tab -->
+    <?php if (empty($websites)): ?>
+      <div style="color: var(--gold-muted); text-align: center; padding: 64px 0;">
+        <div class="text-4xl mb-4">🌐</div>
+        <p class="section-title" style="font-size: 20px; text-align: center;">No websites hosted yet</p>
+        <p class="text-sm mt-2">Websites hosted on ASHAT Hub will appear here with live status.</p>
+      </div>
+    <?php else: ?>
+      <div class="grid md:grid-cols-2 gap-5">
+        <?php foreach ($websites as $w): ?>
+          <a href="https://<?= e($w['domain']) ?>" target="_blank" rel="noopener"
+             class="glass-card-solid block p-6" style="color: inherit;">
+            <div class="flex items-start justify-between gap-3">
+              <h3 class="text-base font-semibold break-all" style="color: var(--gold-text);"><?= e($w['title'] ?: $w['domain']) ?></h3>
+              <span class="chip-gold" style="font-size: 11px; text-transform: uppercase; letter-spacing: 1px; white-space: nowrap;">
+                <span class="inline-block w-2 h-2 rounded-full mr-1.5 align-middle" style="background: <?= $w['online'] ? '#22c55e' : '#ef4444' ?>;"></span>
+                <?= $w['online'] ? 'Online' : 'Offline' ?>
+              </span>
+            </div>
+            <p class="text-xs mt-1" style="color: var(--text-dim);"><?= e($w['domain']) ?> · by <?= e($w['display_name'] ?: $w['username']) ?></p>
+          </a>
+        <?php endforeach; ?>
+      </div>
+    <?php endif; ?>
+
     <?php endif; ?>
   </div>
 </section>

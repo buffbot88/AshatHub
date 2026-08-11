@@ -109,7 +109,12 @@ final class Router
                 $ctx     = RequestContext::fromGlobals();
 
                 // CSRF check for non-GET (OPTIONS/CORS preflights carry no token)
-                if ($method !== 'GET' && $method !== 'HEAD' && $method !== 'OPTIONS') {
+                // POST /api/oauth/token is a PKCE-protected server-to-server exchange
+                // (no browser session, so no CSRF token); the interactive authorize
+                // login POST still enforces CSRF.
+                $isSafeMethod = in_array($method, ['GET', 'HEAD', 'OPTIONS'], true);
+                $isTokenExchange = $method === 'POST' && $uri === '/api/oauth/token';
+                if (!$isSafeMethod && !$isTokenExchange) {
                     $ctx->assertCsrf();
                 }
 
@@ -266,6 +271,14 @@ final class Router
 
     private function handleException(Throwable $e): void
     {
+        // Log the full stack trace (class, message, file:line, chained
+        // causes) before responding — this catch would otherwise swallow
+        // 500s with no trace anywhere. Mirrors bootstrap's uncaught-
+        // exception logger; guarded for tests that build Routers without
+        // bootstrap loaded.
+        if (function_exists('ashat_log_exception')) {
+            \ashat_log_exception($e);
+        }
         $ctrl = new \Controllers\ErrorController();
         if ($this->isJson()) {
             $ctrl->showJson(500, $e->getMessage());

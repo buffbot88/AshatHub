@@ -90,6 +90,10 @@ final class PdoUserRepository implements UserRepository
         $lifetime = defined('SESSION_LIFETIME') ? (int) SESSION_LIFETIME : 7200;
         return $this->db->fetchAll(
             "SELECT u.id, u.username, u.display_name, u.role, u.last_login_at,
+                    (SELECT s2.ip FROM sessions s2
+                      WHERE s2.user_id = u.id
+                      ORDER BY s2.created_at DESC, s2.id DESC
+                      LIMIT 1) AS ip,
                     MAX(s.created_at) AS session_started,
                     DATE_SUB(MAX(s.expires_at), INTERVAL ? SECOND) AS last_active
              FROM users u
@@ -99,6 +103,23 @@ final class PdoUserRepository implements UserRepository
              ORDER BY session_started DESC
              LIMIT 50",
             [$lifetime, $hours]
+        );
+    }
+
+    /**
+     * Most recent session IP per user with an unexpired session in the window.
+     */
+    public function activeMemberIps(int $hours): array
+    {
+        return $this->db->fetchAll(
+            "SELECT (SELECT s2.ip FROM sessions s2
+                      WHERE s2.user_id = s.user_id
+                      ORDER BY s2.created_at DESC, s2.id DESC
+                      LIMIT 1) AS ip
+             FROM sessions s
+             WHERE s.expires_at > DATE_SUB(NOW(), INTERVAL ? HOUR)
+             GROUP BY s.user_id",
+            [$hours]
         );
     }
 

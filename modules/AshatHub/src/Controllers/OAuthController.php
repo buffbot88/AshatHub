@@ -44,14 +44,14 @@ final class OAuthController
     private function readAuthorizeParams(RequestContext $ctx): ?array
     {
         $method = (string) $ctx->server('REQUEST_METHOD', 'GET');
-        $src = $method === 'POST' ? 'postData' : 'queryData';
-        $bag = $ctx->$src() ?? [];
-        $clientId    = trim((string) ($bag['client_id'] ?? ''));
-        $redirectUri = trim((string) ($bag['redirect_uri'] ?? ''));
-        $state       = trim((string) ($bag['state'] ?? ''));
-        $challenge   = trim((string) ($bag['code_challenge'] ?? ''));
-        $methodParam = strtoupper(trim((string) ($bag['code_challenge_method'] ?? 'S256')));
-        $responseType = trim((string) ($bag['response_type'] ?? 'code'));
+        $isPost = $method === 'POST';
+        $get = fn (string $k, string $d = '') => (string) ($isPost ? $ctx->str($k, $d) : $ctx->query($k, $d));
+        $clientId     = trim($get('client_id'));
+        $redirectUri  = trim($get('redirect_uri'));
+        $state        = trim($get('state'));
+        $challenge    = trim($get('code_challenge'));
+        $methodParam  = strtoupper(trim($get('code_challenge_method', 'S256')));
+        $responseType = trim($get('response_type', 'code'));
 
         if ($responseType !== 'code') return null;
         if ($clientId === '' || $redirectUri === '' || $challenge === '' || $state === '') return null;

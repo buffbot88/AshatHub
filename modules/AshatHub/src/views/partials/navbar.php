@@ -2,9 +2,11 @@
 <header class="sticky top-0 z-40" style="background: var(--bg); border-bottom: 1px solid var(--line);">
   <div class="container mx-auto px-6 h-14 flex items-center gap-6">
     <a href="/" class="flex items-center gap-2 group shrink-0">
-      <img srcset="<?= e(asset('/images/lion-logo-32.png')) ?> 1x, <?= e(asset('/images/lion-logo-48.png')) ?> 2x"
-           src="<?= e(asset('/images/lion-logo-32.png')) ?>"
-           alt="ASHAT" width="24" height="24" class="rounded-md">
+      <svg class="brand-emblem-sm" viewBox="0 0 120 120" aria-hidden="true" focusable="false">
+        <polygon class="be-sm-hex" points="60,8 107,35 107,85 60,112 13,85 13,35"/>
+        <path class="be-sm-a" d="M60 40 L44 82 L53 82 L60 66 L67 82 L76 82 Z"/>
+        <line class="be-sm-bar" x1="51" y1="70" x2="69" y2="70"/>
+      </svg>
       <span class="font-display font-semibold text-chalk group-hover:text-accent transition">
         ASHAT<span class="text-accent">Hub</span>
       </span>

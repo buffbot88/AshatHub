@@ -1,0 +1,13 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 120 120" width="64" height="64">
+  <defs>
+    <linearGradient id="ashGold" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#f3dca0"/>
+      <stop offset="0.5" stop-color="#e7c178"/>
+      <stop offset="1" stop-color="#c98f3a"/>
+    </linearGradient>
+  </defs>
+  <polygon points="60,8 107,35 107,85 60,112 13,85 13,35"
+           fill="none" stroke="url(#ashGold)" stroke-width="3"/>
+  <path d="M60 40 L44 82 L53 82 L60 66 L67 82 L76 82 Z" fill="url(#ashGold)"/>
+  <line x1="51" y1="70" x2="69" y2="70" stroke="#0b0f15" stroke-width="5"/>
+</svg>

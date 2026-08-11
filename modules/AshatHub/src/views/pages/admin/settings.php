@@ -184,18 +184,20 @@
     <div class="p-6 rounded-xl bg-ink-panel border border-ink-line" id="github-update-card">
       <div class="flex items-center justify-between flex-wrap gap-2 mb-1">
         <h2 class="text-lg font-display font-semibold">Update from GitHub</h2>
-        <a href="https://github.com/buffbot88/AshatHub" target="_blank" rel="noopener"
+        <a href="https://github.com/buffbot88/AshatHostingPlatform" target="_blank" rel="noopener"
            class="text-xs font-mono text-chalk-mute hover:text-accent transition inline-flex items-center gap-1.5">
           <svg class="w-3.5 h-3.5" fill="currentColor" viewBox="0 0 24 24"><path d="M12 0C5.374 0 0 5.373 0 12c0 5.302 3.438 9.8 8.207 11.387.599.111.793-.261.793-.577v-2.234c-3.338.726-4.033-1.416-4.033-1.416-.546-1.387-1.333-1.756-1.333-1.756-1.089-.745.083-.729.083-.729 1.205.084 1.839 1.237 1.839 1.237 1.07 1.834 2.807 1.304 3.492.997.107-.775.418-1.305.762-1.604-2.665-.305-5.467-1.334-5.467-5.931 0-1.311.469-2.381 1.236-3.221-.124-.303-.535-1.524.117-3.176 0 0 1.008-.322 3.301 1.23A11.509 11.509 0 0112 5.803c1.02.005 2.047.138 3.006.404 2.291-1.552 3.297-1.23 3.297-1.23.653 1.653.242 2.874.118 3.176.77.84 1.235 1.911 1.235 3.221 0 4.609-2.807 5.624-5.479 5.921.43.372.823 1.102.823 2.222v3.293c0 .319.192.694.801.576C20.566 21.797 24 17.3 24 12c0-6.627-5.373-12-12-12z"/></svg>
-          <span>buffbot88/AshatHub</span>
+          <span>buffbot88/AshatHostingPlatform</span>
         </a>
       </div>
       <p class="text-sm text-chalk-mute mb-4">
-        Syncs the whole repository from the <code class="text-xs">main</code> branch archive
-        &mdash; no shell access or git required. Changed files are overwritten, new files are
-        created, and files removed from the repo are cleaned up locally.
-        Protected files (<code class="text-xs">.env</code>, <code class="text-xs">config/server_config.json</code>, <code class="text-xs">config/conn.php</code>, <code class="text-xs">storage/</code>) are never touched.
+        Syncs only the Ashat Hub module from the <code class="text-xs">main</code> branch archive
+        &mdash; no shell access or git required. Only paths under
+        <code class="text-xs">modules/AshatHub/</code> are eligible. Runtime data, configs,
+        projects, dependencies, logs, credentials, and feature branches are never touched.
       </p>
+
+      <p class="text-xs text-chalk-mute mb-4">Apply is enabled only after a fresh preview and is bound to the reviewed <code class="text-xs">main</code> commit.</p>
 
       <!-- Status line -->
       <div id="github-status-line" class="flex items-center gap-3 mb-5 text-xs font-mono">
@@ -296,7 +298,7 @@
             📖 Setup instructions
           </summary>
           <ol class="mt-2 space-y-1.5 pl-4 list-decimal leading-relaxed">
-            <li>Go to your GitHub repo: <code class="text-chalk">github.com/buffbot88/AshatHub</code></li>
+            <li>Go to your GitHub repo: <code class="text-chalk">github.com/buffbot88/AshatHostingPlatform</code></li>
             <li>Click <strong>Settings</strong> → <strong>Webhooks</strong> → <strong>Add webhook</strong></li>
             <li>Paste the <strong>Webhook URL</strong> (shown above) into the <em>Payload URL</em> field</li>
             <li>Set <strong>Content type</strong> to <code class="text-chalk">application/json</code></li>
@@ -383,6 +385,7 @@
   // ── State ────────────────────────────────────────────────────────
   let busy = false;
   let pendingApply = false;
+  let pendingSha = '';
   const CACHE_KEY = 'ashat.github_check';
   const CACHE_TTL = 60000; // 60 seconds
 
@@ -441,6 +444,7 @@
   // ── Render check result into the DOM (shared by cache + fresh) ──
   function renderCheckResult(data) {
     if (!data.ok) {
+      pendingSha = '';
       setDot('bg-err', false);
       statusText.textContent = data.summary || 'Check failed.';
       if (data.error) showOutput(data.error, true);
@@ -449,6 +453,7 @@
     }
 
     if (data.behind === 0) {
+      pendingSha = '';
       setDot('bg-ok', false);
       statusText.textContent = 'Up to date \u2705';
       pendingApply = false;
@@ -456,6 +461,7 @@
     }
 
     // ── New commits available ───────────────────────────────────
+    pendingSha = typeof data.latest_sha === 'string' ? data.latest_sha : '';
     setDot('bg-accent', false);
     statusText.textContent = data.summary || data.behind + ' new commit(s) available';
 
@@ -491,7 +497,7 @@
     }
 
     summary.classList.remove('hidden');
-    pendingApply = true;
+    pendingApply = pendingSha !== '';
   }
 
   // ── Check for updates (GET, no exec needed) ─────────────────────
@@ -627,6 +633,7 @@
     try {
       const body = new URLSearchParams();
       body.set('_csrf', csrf);
+      body.set('latest_sha', pendingSha);
 
       const r = await fetch('/admin/settings/github-apply/', {
         method: 'POST',
@@ -669,6 +676,7 @@
         statusText.textContent = data.summary || 'Update complete.';
         if (data.output) showOutput(data.output);
         pendingApply = false;
+        pendingSha = '';
         applyLabel.textContent = 'Apply Updates';
         // Invalidate cache so the next auto-check fetches fresh
         invalidateCache();
@@ -679,7 +687,9 @@
         if (data.error) errMsg.push('\u26A0 ' + data.error);
         if (data.output) errMsg.push('\u2500\u2500 Output \u2500\u2500\n' + data.output);
         showOutput(errMsg.join('\n\n'), true);
-        applyLabel.textContent = 'Retry Apply';
+        pendingApply = false;
+        pendingSha = '';
+        applyLabel.textContent = 'Apply Updates';
       }
     } catch (err) {
       setDot('bg-err', false);
@@ -692,7 +702,9 @@
         '3. Check PHP error logs for max_execution_time limits',
         true
       );
-      applyLabel.textContent = 'Retry Apply';
+      pendingApply = false;
+      pendingSha = '';
+      applyLabel.textContent = 'Apply Updates';
     }
 
     applyIcon.innerHTML = '<svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">' +

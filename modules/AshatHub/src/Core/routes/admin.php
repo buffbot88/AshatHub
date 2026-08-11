@@ -16,6 +16,10 @@ $router->group('/admin', ['middleware' => ['admin-gate']], function () use ($rou
     $router->post('/projects/approve', [\Controllers\AdminController::class, 'approveProject']);
     $router->post('/projects/reject',  [\Controllers\AdminController::class, 'rejectProject']);
 
+    // Main-only Ashat Hub update control
+    $router->get('/settings/github-check', [\Controllers\AdminController::class, 'githubCheck']);
+    $router->post('/settings/github-apply', [\Controllers\AdminController::class, 'githubApply']);
+
     // System settings
     $router->get('/settings',       [\Controllers\AdminController::class, 'settings']);
     $router->post('/settings/brainstem',      [\Controllers\AdminController::class, 'updateBrainstem']);

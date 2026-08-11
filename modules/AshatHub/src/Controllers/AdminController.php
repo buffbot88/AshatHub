@@ -1452,4 +1452,37 @@ final class AdminController
             $docRoot, $accountId,
         ]);
     }
+
+    /** Return a safe, structured preview of the main-only Ashat Hub update. */
+    public function githubCheck(RequestContext $ctx): void
+    {
+        $result = (new \Core\GitUpdater())->check();
+        $ctx->jsonResponse($this->githubUpdatePayload($result));
+    }
+
+    /** Apply the approved Ashat Hub module update from production main only. */
+    public function githubApply(RequestContext $ctx): void
+    {
+        $expectedSha = trim($ctx->str('latest_sha'));
+        if ($expectedSha === '') {
+            $ctx->jsonResponse($this->githubUpdatePayload([
+                'ok' => false,
+                'summary' => 'Fresh preview required.',
+                'error' => 'A fresh update preview is required before applying.',
+            ]), 400);
+        }
+        $result = (new \Core\GitUpdater())->zipUpdate($expectedSha);
+        $ctx->jsonResponse($this->githubUpdatePayload($result));
+    }
+
+    /** Add deployment identity without exposing credentials or runtime data. */
+    private function githubUpdatePayload(array $result): array
+    {
+        $result['repository'] = 'buffbot88/AshatHostingPlatform';
+        $result['branch'] = 'main';
+        $result['source_root'] = 'modules/AshatHub';
+        $result['update_mode'] = 'ashat-hub-main-only';
+        return $result;
+    }
+
 }

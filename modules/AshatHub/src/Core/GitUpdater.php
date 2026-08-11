@@ -27,8 +27,11 @@ final class GitUpdater
 
     /** GitHub repository owner/name. */
     private string $repoOwner = 'buffbot88';
-    private string $repoName  = 'AshatHub';
+    private string $repoName  = 'AshatHostingPlatform';
     private string $branch    = 'main';
+
+    /** Remote repository prefix mapped onto the local Ashat Hub module root. */
+    private const SOURCE_PREFIX = 'modules/AshatHub/';
 
     /** Files/directories that should NEVER be overwritten or deleted. */
     private const PROTECTED_PATHS = [
@@ -36,6 +39,12 @@ final class GitUpdater
         '/.env.local',
         '/config/conn.php',
         '/config/server_config.json',
+        '/projects/',
+        '/vendor/',
+        '/dist/',
+        '/build/',
+        '/target/',
+        '/models/',
         '/storage/',
         '/.git/',
         '/node_modules/',
@@ -92,7 +101,9 @@ final class GitUpdater
 
         // ── Read stored state ──────────────────────────────────────
         $state = $this->readState();
-        $lastSha = $state['last_commit_sha'] ?? '';
+        $lastSha = ($state['repository'] ?? '') === $this->repositoryKey()
+            ? (string) ($state['last_commit_sha'] ?? '')
+            : '';
 
         // ── GitHub Compare API: single call for commits + files ────
         // If we have a stored SHA, the compare endpoint returns ALL
@@ -140,10 +151,12 @@ final class GitUpdater
             $changedFiles = [];
             $rawFiles = $compare['files'] ?? [];
             foreach ($rawFiles as $file) {
-                $path = $file['filename'] ?? '';
-                if ($path !== '' && !$this->isProtected($path)) {
-                    $changedFiles[$path] = [
-                        'path'       => $path,
+                $path = (string) ($file['filename'] ?? '');
+                $localPath = $this->remoteToLocalPath($path);
+                if ($localPath !== null && !$this->isProtected($localPath)) {
+                    $changedFiles[$localPath] = [
+                        'path'       => $localPath,
+                        'remote_path'=> $path,
                         'status'     => $file['status'] ?? 'modified',
                         'additions'  => $file['additions'] ?? 0,
                         'deletions'  => $file['deletions'] ?? 0,
@@ -265,9 +278,10 @@ final class GitUpdater
         $log = [];
 
         foreach ($files as $file) {
-            $relativePath = $file['path'];
+            $relativePath = (string) ($file['path'] ?? '');
+            $remotePath = (string) ($file['remote_path'] ?? $this->remotePath($relativePath));
             $localPath = $this->repoPath . '/' . $relativePath;
-            $status = $file['status'];
+            $status = $file['status'] ?? 'modified';
 
             try {
                 if ($status === 'removed') {
@@ -287,7 +301,8 @@ final class GitUpdater
                 }
 
                 // Download the file from raw.githubusercontent.com
-                $rawUrl = "https://raw.githubusercontent.com/{$this->repoOwner}/{$this->repoName}/{$this->branch}/{$relativePath}";
+                $encodedRemotePath = implode('/', array_map('rawurlencode', explode('/', $remotePath)));
+                $rawUrl = "https://raw.githubusercontent.com/{$this->repoOwner}/{$this->repoName}/{$this->branch}/{$encodedRemotePath}";
                 $content = $this->httpGet($rawUrl);
 
                 if ($content === null) {
@@ -314,6 +329,7 @@ final class GitUpdater
         $this->saveState([
             'last_commit_sha' => $check['latest_sha'],
             'last_updated'    => date('c'),
+            'repository'      => $this->repositoryKey(),
         ]);
 
         $output = implode("\n", $log);
@@ -346,7 +362,7 @@ final class GitUpdater
      *
      * @return array{ok: bool, output: string, summary: string, files_updated: int, files_created: int, files_deleted: int, files_unchanged: int, latest_sha: string, error?: string}
      */
-    public function zipUpdate(): array
+    public function zipUpdate(?string $expectedSha = null): array
     {
         // ── Check HTTP fetch capability ────────────────────────────
         $httpCheck = $this->checkHttpAvailable();
@@ -354,24 +370,8 @@ final class GitUpdater
             return $httpCheck;
         }
 
-        // ── Download the full branch archive ───────────────────────
-        // https://github.com/{owner}/{repo}/archive/refs/heads/{branch}.zip
-        // redirects to codeload.github.com and contains every tracked file
-        // under a single top-level folder named "{repo}-{branch}".
-        $zipUrl = "https://github.com/{$this->repoOwner}/{$this->repoName}/archive/refs/heads/{$this->branch}.zip";
-        $zip    = $this->downloadArchive($zipUrl);
-
-        if ($zip === null || $zip === '') {
-            return [
-                'ok'      => false,
-                'summary' => 'Failed to download the repository archive.',
-                'error'   => 'Could not download main.zip from GitHub. The server may be blocking outgoing connections or the archive request timed out.',
-                'output'  => '', 'files_updated' => 0, 'files_created' => 0,
-                'files_deleted' => 0, 'files_unchanged' => 0, 'latest_sha' => '',
-            ];
-        }
-
-        // ── Best-effort: resolve the tip commit SHA (keeps check() working)
+        // Resolve the production tip before downloading anything so an Apply
+        // request is bound to the exact SHA shown in the admin preview.
         $latestSha = '';
         $tip = $this->githubGet(
             "https://api.github.com/repos/{$this->repoOwner}/{$this->repoName}/commits/{$this->branch}"
@@ -379,8 +379,48 @@ final class GitUpdater
         if (is_array($tip) && !empty($tip['sha'])) {
             $latestSha = (string) $tip['sha'];
         }
+        if ($expectedSha !== null && $expectedSha !== '') {
+            if ($latestSha === '') {
+                return [
+                    'ok' => false, 'summary' => 'Could not verify the production revision.',
+                    'error' => 'GitHub did not return the current main commit; nothing was applied.',
+                    'output' => '', 'files_updated' => 0, 'files_created' => 0,
+                    'files_deleted' => 0, 'files_unchanged' => 0, 'latest_sha' => '',
+                ];
+            }
+            if (!hash_equals($expectedSha, $latestSha)) {
+                return [
+                    'ok' => false, 'summary' => 'Update preview is stale.',
+                    'error' => 'main changed after the preview; run Check for Updates again.',
+                    'output' => '', 'files_updated' => 0, 'files_created' => 0,
+                    'files_deleted' => 0, 'files_unchanged' => 0, 'latest_sha' => $latestSha,
+                ];
+            }
+        }
 
-        // ── Apply the archive to the local tree ────────────────────
+        if ($latestSha === '') {
+            return [
+                'ok' => false, 'summary' => 'Could not determine the production revision.',
+                'error' => 'GitHub did not return a commit SHA; nothing was applied.',
+                'output' => '', 'files_updated' => 0, 'files_created' => 0,
+                'files_deleted' => 0, 'files_unchanged' => 0, 'latest_sha' => '',
+            ];
+        }
+
+        // Download an immutable commit archive only after the expected
+        // production SHA is verified; refs/heads/main could move mid-request.
+        $zipUrl = "https://github.com/{$this->repoOwner}/{$this->repoName}/archive/{$latestSha}.zip";
+        $zip = $this->downloadArchive($zipUrl);
+        if ($zip === null || $zip === '') {
+            return [
+                'ok' => false, 'summary' => 'Failed to download the repository archive.',
+                'error' => 'Could not download main.zip from GitHub. The server may be blocking outgoing connections or the archive request timed out.',
+                'output' => '', 'files_updated' => 0, 'files_created' => 0,
+                'files_deleted' => 0, 'files_unchanged' => 0, 'latest_sha' => $latestSha,
+            ];
+        }
+
+        // Apply the archive to the local Ashat Hub module tree.
         $result = $this->applyArchive($zip, $latestSha);
 
         // Only advance the stored commit when the apply actually succeeded,
@@ -389,6 +429,7 @@ final class GitUpdater
             $this->saveState([
                 'last_commit_sha' => $latestSha,
                 'last_updated'    => date('c'),
+                'repository'      => $this->repositoryKey(),
             ]);
         }
 
@@ -420,8 +461,9 @@ final class GitUpdater
         $archivePaths = [];
         $topLevelDirs = [];
         foreach ($entries as $entry) {
-            $rel = $this->archivePath($entry['path']);
-            if ($rel === '' || $this->isProtected($rel)) continue;
+            $remotePath = $this->archivePath($entry['path']);
+            $rel = $this->remoteToLocalPath($remotePath);
+            if ($rel === null || $this->isProtected($rel)) continue;
             $archivePaths[$rel] = true;
             $top = str_contains($rel, '/') ? explode('/', $rel, 2)[0] : '';
             if ($top !== '') $topLevelDirs[$top] = true;
@@ -434,8 +476,9 @@ final class GitUpdater
         $log       = [];
 
         foreach ($entries as $entry) {
-            $rel = $this->archivePath($entry['path']);
-            if ($rel === '' || $this->isProtected($rel)) continue;
+            $remotePath = $this->archivePath($entry['path']);
+            $rel = $this->remoteToLocalPath($remotePath);
+            if ($rel === null || $this->isProtected($rel)) continue;
 
             $localPath = $this->repoPath . '/' . $rel;
             $dir = dirname($localPath);
@@ -470,7 +513,7 @@ final class GitUpdater
         $deleted = 0;
         foreach ($this->collectLocalFiles() as $rel) {
             if (isset($archivePaths[$rel])) continue;
-            if ($this->isCleanupExcluded($rel)) continue;
+            if ($this->isCleanupExcluded($rel) || $this->isProtected($rel)) continue;
 
             // Prune files under a top-level folder the repo tracks (either
             // present in the archive or a known source dir), so unrelated
@@ -703,6 +746,26 @@ final class GitUpdater
     /**
      * True when a repo-relative path is gitignored/local-only (cleanup-skip).
      */
+    /** Convert a remote repository path to a local Ashat Hub module path. */
+    private function remoteToLocalPath(string $remotePath): ?string
+    {
+        $path = ltrim(str_replace('\\', '/', trim($remotePath)), '/');
+        if (!str_starts_with($path, self::SOURCE_PREFIX)) return null;
+        $local = substr($path, strlen(self::SOURCE_PREFIX));
+        return ($local === '' || str_contains($local, '..')) ? null : $local;
+    }
+
+    /** Convert a local module path to its remote repository path. */
+    private function remotePath(string $localPath): string
+    {
+        return self::SOURCE_PREFIX . ltrim(str_replace('\\', '/', $localPath), '/');
+    }
+
+    private function repositoryKey(): string
+    {
+        return $this->repoOwner . '/' . $this->repoName . '@' . $this->branch;
+    }
+
     private function isCleanupExcluded(string $path): bool
     {
         foreach (self::CLEANUP_EXCLUDE as $excluded) {
@@ -787,10 +850,17 @@ final class GitUpdater
      */
     private function isProtected(string $path): bool
     {
+        $normalized = ltrim(str_replace('\\', '/', $path), '/');
+        $segments = explode('/', $normalized);
+        $basename = end($segments) ?: '';
+        $protectedSegments = ['storage', 'projects', 'node_modules', 'vendor', 'dist', 'build', 'target', 'models', '.git'];
+        foreach ($segments as $segment) {
+            if (in_array($segment, $protectedSegments, true)) return true;
+        }
+        if ($basename === 'server_config.json' || $basename === '.env' || str_starts_with($basename, '.env.')) return true;
+        if (preg_match('/\\.(sqlite3?|db|log|pem|key|crt|csr|p12)$/i', $basename) === 1) return true;
         foreach (self::PROTECTED_PATHS as $protected) {
-            if (str_starts_with($path, ltrim($protected, '/'))) {
-                return true;
-            }
+            if (str_starts_with($normalized, ltrim($protected, '/'))) return true;
         }
         return false;
     }

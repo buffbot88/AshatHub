@@ -39,7 +39,7 @@
   var headerInfo   = document.getElementById('chat-header-info');
   var backendStatusEl = document.getElementById('chat-backend-status');
 
-
+  
   // Chat Mode
   var MODE_KEY = 'ashat.chat_mode';
   var currentMode = (function () {

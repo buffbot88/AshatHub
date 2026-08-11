@@ -1,0 +1,324 @@
+/* ═══════════════════════════════════════════════════════════════════
+   ASHAT Hub — OMEGA HUD (full dark overhaul)
+   Loaded last → wins over app.css + tailwind tokens.
+   Palette mirrored from ashatnueralhost telemetry (scene.ts COLORS).
+   Dark-only. Mild glow + grid + lamps. No light mode.
+   ponytail: flat surfaces kept; glow is decorative, reduced-motion safe.
+   ═══════════════════════════════════════════════════════════════════ */
+
+:root {
+  /* Surfaces — deep near-black, layered */
+  --bg:           #05070a;
+  --bg-soft:      #0a0d12;
+  --surface:      #0b0f15;
+  --surface-2:    #121925;
+  --surface-3:    #1c2431;
+  --line:         #1c2431;
+  --line-soft:    #141a24;
+
+  /* Text */
+  --text:         #e8edf4;
+  --text-soft:    #a3aebd;
+  --text-mute:    #6b7684;
+  --text-dim:     #3d4754;
+
+  /* Accent + HUD secondary */
+  --accent:        #ff7a45;
+  --accent-hover:  #ff9468;
+  --accent-deep:   #c9531f;
+  --accent-soft:   rgba(255, 122, 69, 0.12);
+  --accent-ink:    #1d0f06;
+  --cyan:          #39c2d6;
+
+  /* Status (telemetry parity) */
+  --ok:   #3ddc97;
+  --warn: #f2b23e;
+  --err:  #ff5d5d;
+
+  /* Elevation */
+  --shadow-card: 0 1px 2px rgba(0,0,0,.4);
+  --shadow-pop:  0 18px 40px rgba(0,0,0,.55), 0 0 0 1px rgba(255,255,255,.04);
+  --ring-accent: 0 0 0 3px rgba(255,122,69,.22);
+  --glow-accent: 0 0 22px rgba(255,122,69,.35);
+  --glow-cyan:   0 0 22px rgba(57,194,214,.30);
+
+  /* Legacy gold aliases → follow app.css var() refs automatically */
+}
+
+/* ── Tailwind utility overrides: Plainspoken → Omega HUD + Olympus ──
+   Views use hardcoded Tailwind color classes; :root var overrides
+   don't reach them. Force the palette here. Colors only — safe, no
+   layout/overflow impact. ponytail: mirrors site-theme.css technique. */
+.text-chalk      { color: var(--text) !important; }
+.text-chalk-soft { color: var(--text-soft) !important; }
+.text-chalk-mute { color: var(--text-mute) !important; }
+.text-chalk-dim  { color: var(--text-dim) !important; }
+.text-ink-deep   { color: var(--bg) !important; }
+.text-accent     { color: var(--accent) !important; }
+.text-ok         { color: var(--ok) !important; }
+.text-warn       { color: var(--warn) !important; }
+.text-err        { color: var(--err) !important; }
+
+/* warm Olympus edge on every hairline (was cold grey #2a2a31) */
+.border-ink-line { border-color: rgba(231, 193, 120, 0.16) !important; }
+.border-accent   { border-color: var(--accent) !important; }
+.border-err      { border-color: var(--err) !important; }
+.border-warn     { border-color: var(--warn) !important; }
+.border-ok       { border-color: var(--ok) !important; }
+
+.bg-ink          { background-color: var(--bg) !important; }
+.bg-ink-soft     { background-color: var(--bg-soft) !important; }
+.bg-ink-deep     { background-color: #05070a !important; }
+.bg-ink-line     { background-color: var(--line) !important; }
+.bg-ink-panel    { background: linear-gradient(180deg, #0d1219, #0b0f15) !important;
+                   box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.03) !important; }
+.bg-chalk        { background-color: var(--text) !important; }
+.bg-accent       { background-color: var(--accent) !important; }
+.bg-accent-soft  { background-color: var(--accent-soft) !important; }
+.bg-ok           { background-color: var(--ok) !important; }
+.bg-warn         { background-color: var(--warn) !important; }
+.bg-err          { background-color: var(--err) !important; }
+
+/* ── Page field: deep space + accent vignette + telemetry grid ──── */
+html, body {
+  background-color: var(--bg) !important;
+  background-image:
+    radial-gradient(1200px 600px at 50% -10%, rgba(255,122,69,.10), transparent 60%),
+    linear-gradient(rgba(28,36,49,.16) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(28,36,49,.16) 1px, transparent 1px) !important;
+  background-size: auto, 56px 56px, 56px 56px !important;
+  background-attachment: fixed;
+  color: var(--text);
+}
+
+/* ── Selection / scrollbar ──────────────────────────────────────── */
+::selection { background: var(--accent); color: var(--accent-ink); }
+::-webkit-scrollbar-thumb { background: var(--surface-3); border-radius: 6px; border: 2px solid var(--bg); }
+::-webkit-scrollbar-thumb:hover { background: var(--text-dim); }
+
+/* ── Header: flat dark + accent underglow line ──────────────────── */
+header {
+  background: rgba(8,10,14,.82) !important;
+  backdrop-filter: blur(10px);
+  border-bottom: 1px solid var(--line) !important;
+  box-shadow: 0 1px 0 rgba(255,122,69,.18), 0 8px 24px rgba(0,0,0,.35) !important;
+}
+header .text-chalk,
+header .text-chalk-soft { color: var(--text) !important; }
+header nav a { color: var(--text-soft) !important; transition: color .15s ease, text-shadow .15s ease; }
+header nav a:hover { color: var(--accent) !important; text-shadow: 0 0 14px rgba(255,122,69,.5); }
+header .text-accent, header .group:hover .text-accent { color: var(--accent) !important; }
+header .chip-gold { background: var(--surface-2); border-color: var(--line); color: var(--text-soft); }
+
+/* status lamp in header — HUD pulse */
+@keyframes omegaPulse { 0%,100%{opacity:1} 50%{opacity:.45} }
+header .bg-ok { box-shadow: 0 0 8px var(--ok); animation: omegaPulse 3s ease-in-out infinite; }
+
+/* ── Cards: flat but with hairline + hover lift/glow ───────────── */
+.glass-card, .glass-card-solid {
+  background: var(--surface) !important;
+  border: 1px solid var(--line) !important;
+  border-radius: 14px;
+  box-shadow: var(--shadow-card);
+  transition: border-color .15s ease, transform .15s ease, box-shadow .15s ease;
+}
+.glass-card:hover, .glass-card-solid:hover {
+  border-color: rgba(255,122,69,.5) !important;
+  transform: translateY(-2px);
+  box-shadow: 0 8px 28px rgba(0,0,0,.45), var(--glow-accent);
+}
+
+/* ── Buttons ───────────────────────────────────────────────────── */
+.btn-gold {
+  background: var(--accent) !important;
+  color: var(--accent-ink) !important;
+  border: 1px solid transparent !important;
+  border-radius: 8px;
+  font-weight: 600;
+  box-shadow: 0 0 0 rgba(255,122,69,0);
+  transition: background .15s ease, transform .15s ease, box-shadow .15s ease !important;
+}
+.btn-gold:hover { background: var(--accent-hover) !important; transform: translateY(-1px); box-shadow: var(--glow-accent); }
+.btn-gold:focus-visible { outline: none; box-shadow: var(--ring-accent); }
+
+.btn-outline {
+  background: transparent !important;
+  color: var(--text) !important;
+  border: 1px solid var(--line) !important;
+  border-radius: 8px;
+  transition: border-color .15s ease, color .15s ease, box-shadow .15s ease !important;
+}
+.btn-outline:hover { border-color: var(--accent) !important; color: var(--accent) !important; box-shadow: var(--glow-accent); }
+
+/* ── Chips / labels ────────────────────────────────────────────── */
+.chip-gold {
+  background: var(--surface-2) !important;
+  border: 1px solid var(--line) !important;
+  color: var(--text-soft) !important;
+}
+.chip-gold .dot { background: var(--ok); box-shadow: 0 0 8px var(--ok); }
+.label-gold { color: var(--text-mute) !important; letter-spacing: .14em; }
+.text-accent, .dark .text-accent { color: var(--accent) !important; }
+.text-cyan,  .dark .text-cyan  { color: var(--cyan) !important; }
+
+/* ── Inputs ────────────────────────────────────────────────────── */
+.field, input.field {
+  background: var(--surface-2) !important;
+  border: 1px solid var(--line) !important;
+  color: var(--text) !important;
+  border-radius: 8px;
+}
+.field:focus, input.field:focus { border-color: var(--accent) !important; box-shadow: var(--ring-accent) !important; }
+.field::placeholder { color: var(--text-dim); }
+
+/* ── Links ─────────────────────────────────────────────────────── */
+.link-accent { color: var(--accent) !important; }
+.link-accent:hover { text-shadow: 0 0 12px rgba(255,122,69,.5); }
+.link-danger { color: var(--err) !important; }
+
+/* ── Section heading glow ──────────────────────────────────────── */
+.section-title { color: var(--text) !important; }
+
+/* ── Chat panes: dark, seamed ──────────────────────────────────── */
+.chat-pane-center { background: rgba(11,15,21,.45) !important; }
+.chat-right-pane > div, #chat-mode-tabs { background: var(--surface) !important; }
+.fallback-editor { background: var(--surface-2) !important; }
+
+/* ── Mermaid (architecture page) → HUD vars (inline JS unchanged) ─ */
+.mermaid { filter: drop-shadow(0 0 10px rgba(0,0,0,.4)); }
+
+/* ═══════════════════════════════════════════════════════════════════
+   OLYMPUS layer — Greek-divine accent over the dark HUD.
+   Gold secondary (not replacing the Omega orange primary), marble
+   stone texture, carved corner ticks, inscribed serif glow.
+   "A bit": restrained, decorative only.
+   ponytail: pure CSS, no markup, reduced-motion safe.
+   ═══════════════════════════════════════════════════════════════════ */
+:root {
+  --gold:        #e7c178;
+  --gold-bright: #f3dca0;
+  --gold-soft:   rgba(231, 193, 120, 0.14);
+  --gold-line:   rgba(231, 193, 120, 0.35);
+  --gold-glow:   0 0 22px rgba(231, 193, 120, 0.35);
+}
+
+/* ── Marble stone wash (fixed overlay, behind content) ─────────── */
+body::before {
+  content: '';
+  position: fixed;
+  inset: 0;
+  z-index: -1;
+  pointer-events: none;
+  background:
+    radial-gradient(900px 500px at 85% 12%, rgba(231,193,120,0.05), transparent 60%),
+    radial-gradient(700px 700px at 10% 90%, rgba(255,255,255,0.03), transparent 60%),
+    radial-gradient(500px 300px at 50% 30%, rgba(57,194,214,0.04), transparent 60%);
+}
+
+/* ── Eyebrows + chips → Olympian gold ──────────────────────────── */
+.label-gold { color: var(--gold) !important; letter-spacing: 0.16em; }
+.chip-gold {
+  border-color: var(--gold-line) !important;
+  color: var(--gold-bright) !important;
+  box-shadow: inset 0 0 0 1px rgba(231,193,120,0.06);
+}
+.chip-gold .dot { background: var(--gold); box-shadow: var(--gold-glow); }
+
+/* ── Inscribed serif glow on headings (divine) ─────────────────── */
+.section-title {
+  text-shadow: 0 0 26px rgba(231, 193, 120, 0.28);
+}
+main h1 em { text-shadow: 0 0 28px rgba(231, 193, 120, 0.5); }
+
+/* ── Carved corner ticks on cards (classical framing) ──────────── */
+.glass-card, .glass-card-solid { position: relative; }
+.glass-card::before, .glass-card-solid::before,
+.glass-card::after,  .glass-card-solid::after {
+  content: '';
+  position: absolute;
+  width: 12px; height: 12px;
+  border: 1px solid var(--gold-line);
+  opacity: 0.5;
+  pointer-events: none;
+  transition: opacity .15s ease;
+}
+.glass-card::before, .glass-card-solid::before { top: 8px; left: 8px; border-right: 0; border-bottom: 0; }
+.glass-card::after,  .glass-card-solid::after  { bottom: 8px; right: 8px; border-left: 0; border-top: 0; }
+.glass-card:hover::before, .glass-card-solid:hover::before,
+.glass-card:hover::after,  .glass-card-solid:hover::after { opacity: 1; }
+
+/* ── Header: gold hairline beneath the orange underglow ────────── */
+header {
+  box-shadow:
+    0 1px 0 rgba(255,122,69,0.18),
+    0 2px 0 var(--gold-line),
+    0 10px 28px rgba(0,0,0,0.4) !important;
+}
+
+/* ── Buttons: gold rim on hover (orange stays the fill) ───────── */
+.btn-gold:hover { box-shadow: var(--glow-accent), 0 0 0 1px var(--gold-line); }
+
+/* ── Olympus brand mark (hero center) ───────────────────────────── */
+.brand-center {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  margin-bottom: 2rem;
+}
+.brand-emblem {
+  width: clamp(76px, 10vw, 108px);
+  height: auto;
+  filter: drop-shadow(0 0 14px rgba(231, 193, 120, 0.45));
+}
+.be-hex { fill: rgba(231, 193, 120, 0.05); stroke: url(#ashGold); stroke-width: 1.4; opacity: 0.7; }
+.be-a   { fill: url(#ashGold); }
+.be-bar { stroke: #0b0f15; stroke-width: 4; }
+.be-node {
+  fill: #f3dca0;
+  filter: drop-shadow(0 0 6px rgba(231, 193, 120, 0.9));
+}
+.brand-word {
+  font-family: var(--font-heading);
+  font-weight: 700;
+  font-size: clamp(34px, 6vw, 54px);
+  letter-spacing: 0.08em;
+  line-height: 1;
+  margin-top: 0.5rem;
+  background: linear-gradient(180deg, #f3dca0, #e7c178 55%, #c98f3a);
+  -webkit-background-clip: text;
+  background-clip: text;
+  -webkit-text-fill-color: transparent;
+  color: transparent;
+  filter: drop-shadow(0 0 18px rgba(231, 193, 120, 0.35));
+}
+.brand-word span {
+  font-size: 0.5em;
+  letter-spacing: 0.02em;
+  -webkit-text-fill-color: var(--accent);
+  color: var(--accent);
+  background: none;
+  filter: none;
+  margin-left: 0.25em;
+}
+
+/* ── Small brand emblem (nav / footer / login) ─────────────────── */
+.brand-emblem-sm {
+  width: 1.6em;
+  height: 1.6em;
+  flex: none;
+  display: block;
+}
+.be-sm-hex { fill: none; stroke: var(--gold); stroke-width: 5; opacity: 0.7; }
+.be-sm-a   { fill: var(--gold); }
+.be-sm-bar { stroke: #0b0f15; stroke-width: 7; }
+
+/* ── Reduced motion ────────────────────────────────────────────── */
+@media (prefers-reduced-motion: reduce) {
+  header, header .bg-ok, .glass-card, .glass-card-solid, .btn-gold, .btn-outline {
+    animation: none !important;
+    transition: none !important;
+  }
+  header { backdrop-filter: none; }
+  .section-title, main h1 em { text-shadow: none !important; }
+  body::before { display: none; }
+}

@@ -9,8 +9,7 @@
   <title>Ashat Hub - <?= e($view->__title) ?></title>
 
   <!-- Favicon: lion PNG (32px) for modern browsers; SVG A-mark for the rest -->
-  <link rel="icon" type="image/png" sizes="32x32" href="<?= e(asset('/images/lion-logo-32.png')) ?>">
-  <link rel="icon" type="image/svg+xml"          href="<?= e(asset('/images/favicon.svg')) ?>">
+  <link rel="icon" type="image/svg+xml" href="<?= e(asset('/images/favicon.svg')) ?>">
 
   <!-- Google Fonts: Newsreader (editorial serif display) + Inter (UI) + JetBrains Mono -->
   <link rel="preconnect" href="https://fonts.googleapis.com">
@@ -28,8 +27,8 @@
   <!-- Project styles (Plainspoken design system) -->
   <link rel="stylesheet" href="<?= e(asset('/css/app.css')) ?>">
 
-  <!-- Site theme: vB3-style light palette (soft) — loaded last so it wins -->
-  <link rel="stylesheet" href="<?= e(asset('/css/site-theme.css')) ?>">
+  <!-- Site theme: Omega HUD dark + Olympus layer (loaded last; site-theme.css kept for revert) -->
+  <link rel="stylesheet" href="<?= e(asset('/css/omega-hud.css')) ?>">
 
   <!-- Core JS helpers (ashatFetch / ashatToast / ASHAT.escapeHtml).
        Loaded with defer IN THE HEAD so it runs BEFORE any page-body

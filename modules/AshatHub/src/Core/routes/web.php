@@ -4,6 +4,9 @@ declare(strict_types=1);
 // ─── Home ──────────────────────────────────────────────────────────
 $router->get('/',                [\Controllers\HomeController::class,     'index']);
 
+// ─── Galileo Studio ──────────────────────────────────────────────
+$router->get('/galileo',         [\Controllers\GalileoStudioController::class, 'index']);
+
 // ─── Community ─────────────────────────────────────────────────────
 $router->get('/community',       [\Controllers\CommunityController::class, 'index']);
 $router->post('/community/submit',[\Controllers\CommunityController::class, 'submit']);

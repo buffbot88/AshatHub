@@ -140,7 +140,7 @@
           Builds are served server-side by the ASHAT chain — no API keys needed.
         </p>
         <p class="text-xs font-mono" style="color: var(--gold-muted);">
-          Brainstorm/Build: Omega (Beta/Delta disabled)
+          Coding: Omega / Beta / Delta via Galileo Studio
         </p>
       </div>
 

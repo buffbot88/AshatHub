@@ -39,9 +39,25 @@ $router->group('/api', function () use ($router) {
     $router->group('', ['middleware' => ['auth']], function () use ($router) {
         $router->get('/context',      [\Controllers\ApiController::class,    'context']);
 
-        // ─── Chain: brainstorm (Omega slot) + gated build pipeline ──
-        $router->post('/brainstorm',       [\Controllers\BrainstormController::class,   'run']);
-        $router->post('/build/pipeline',   [\Controllers\BuildPipelineController::class, 'pipeline']);
+        // ─── Galileo Studio API ────────────────────────────────────
+        $router->group('/galileo', function () use ($router) {
+            $router->post('/chat',              [\Controllers\GalileoChatController::class,    'chat']);
+            $router->post('/chat/stream',        [\Controllers\GalileoChatController::class,    'stream']);
+            $router->get('/projects',            [\Controllers\GalileoStudioController::class,  'projects']);
+            $router->get('/conversations/{projectId}', [\Controllers\GalileoStudioController::class, 'conversations']);
+
+            // Agent jobs
+            $router->post('/agents/jobs',        [\Controllers\GalileoAgentController::class,   'submit']);
+            $router->get('/agents/jobs/{id}',    [\Controllers\GalileoAgentController::class,   'status']);
+            $router->get('/agents/jobs/{id}/events', [\Controllers\GalileoAgentController::class, 'events']);
+            $router->post('/agents/jobs/{id}/cancel', [\Controllers\GalileoAgentController::class, 'cancel']);
+
+            // Preview
+            $router->post('/preview/start',      [\Controllers\GalileoPreviewController::class, 'start']);
+            $router->post('/preview/restart',    [\Controllers\GalileoPreviewController::class, 'restart']);
+            $router->post('/preview/stop',       [\Controllers\GalileoPreviewController::class, 'stop']);
+            $router->get('/preview/status',      [\Controllers\GalileoPreviewController::class, 'status']);
+        });
 
         // ─── Files (per-user project repo — all authenticated roles) ──
         $router->group('/files', function () use ($router) {

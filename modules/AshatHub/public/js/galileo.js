@@ -1,0 +1,730 @@
+/* ═══════════════════════════════════════════════════════════════════════
+   Galileo Studio — Bolt-style Frontend
+   ═══════════════════════════════════════════════════════════════════════
+   Split-pane layout: Chat (left) | Workbench (right)
+   Workbench views: Source (file tree + Monaco), Preview, Terminal, Changes
+   ═══════════════════════════════════════════════════════════════════════ */
+(function () {
+  'use strict';
+
+  // ── State ──────────────────────────────────────────────────────
+  const S = {
+    userId: null, projectId: null, projectName: '',
+    projects: [], files: [],
+
+    conversationId: null,
+    messages: [],
+    conversations: [],
+
+    activeView: 'source',
+    openFiles: [],      // [{path, content, lang}]
+    activeFile: null,
+
+    changes: [],        // [{path, type}]
+    terminalLines: [],
+
+    previewUrl: null,
+    previewStatus: 'stopped',
+
+    isSending: false,
+    sidebarOpen: false,
+
+    storageKey: 'ashat.galileo',
+    monacoReady: false,
+    monacoEditor: null,
+    monacoModels: {},   // path -> model
+  };
+
+  // ── CSRF ───────────────────────────────────────────────────────
+  const meta = document.querySelector('meta[name="csrf-token"]');
+  const CSRF = meta ? meta.content : '';
+
+  // ── API ────────────────────────────────────────────────────────
+  async function api(url, opts = {}) {
+    const o = Object.assign({
+      headers: { 'X-Requested-With': 'XMLHttpRequest', 'X-CSRF-Token': CSRF, 'Accept': 'application/json' },
+      credentials: 'same-origin',
+    }, opts);
+    if (o.body && typeof o.body === 'object' && !(o.body instanceof FormData)) {
+      if (!o.headers['Content-Type']) o.headers['Content-Type'] = 'application/json';
+      o.body = JSON.stringify(o.body);
+    }
+    const r = await fetch(url, o);
+    const ct = r.headers.get('content-type') || '';
+    const d = ct.includes('application/json') ? await r.json() : await r.text();
+    if (!r.ok && r.status !== 304) { const e = new Error('fail'); e.status = r.status; e.payload = d; throw e; }
+    return d;
+  }
+
+  // SSE chat stream
+  function chatStream(message) {
+    return new Promise(async (resolve, reject) => {
+      try {
+        const resp = await fetch('/api/galileo/chat', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': CSRF, 'X-Requested-With': 'XMLHttpRequest' },
+          credentials: 'same-origin',
+          body: JSON.stringify({
+            project_id: S.projectId,
+            conversation_id: S.conversationId,
+            message: message,
+            active_file: S.activeFile || '',
+          }),
+        });
+        if (!resp.ok) return reject(new Error('Chat failed'));
+        const reader = resp.body.getReader();
+        const dec = new TextDecoder();
+        let buf = '', result = { type: 'conversation', content: '', files: [], plan: '' };
+        let currentEvent = '';
+        while (true) {
+          const { done, value } = await reader.read();
+          if (done) break;
+          buf += dec.decode(value, { stream: true });
+          const lines = buf.split('\n');
+          buf = lines.pop();
+          for (const line of lines) {
+            const trimmed = line.trim();
+            if (trimmed === '') {
+              // Blank line = end of event block, reset
+              currentEvent = '';
+              continue;
+            }
+            if (trimmed.startsWith('event: ')) {
+              currentEvent = trimmed.slice(7).trim();
+              continue;
+            }
+            if (trimmed.startsWith('data: ')) {
+              try {
+                const data = JSON.parse(trimmed.slice(6));
+                handleEvent({ event: currentEvent, data: data }, result);
+              } catch (e) {}
+            }
+          }
+        }
+        resolve(result);
+      } catch (err) { reject(err); }
+    });
+  }
+
+  function handleEvent(ev, result) {
+    const t = ev.event || ev.type;
+    if (t === 'progress') {
+      addAgentEvent(ev.data?.message || 'Working...', 'progress');
+      termLine(ev.data?.message || '');
+    } else if (t === 'done') {
+      if (ev.data?.type === 'coding_result') {
+        result.type = 'coding_result';
+        result.files = ev.data.files || [];
+        result.plan = ev.data.plan || '';
+        result.saved = ev.data.saved || 0;
+        result.issues = ev.data.issues || [];
+        for (const f of result.files) {
+          const ex = S.changes.find(c => c.path === f.path);
+          if (ex) ex.type = 'modified'; else S.changes.push({ path: f.path, type: 'created' });
+        }
+        termLine('✓ Built ' + result.saved + ' file(s)');
+        if (result.plan) termLine('Plan: ' + result.plan);
+      } else {
+        result.type = 'conversation';
+        result.content = ev.data?.content || '';
+      }
+    } else if (t === 'error') {
+      result.type = 'error';
+      result.content = ev.data?.message || 'Error';
+      termLine('Error: ' + result.content, 'error');
+    }
+  }
+
+  // ── DOM helpers ────────────────────────────────────────────────
+  const $ = id => document.getElementById(id);
+  const esc = s => String(s).replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+
+  function scrollToBottom() {
+    const el = $('gsChatScroll');
+    if (el) setTimeout(() => el.scrollTop = el.scrollHeight, 30);
+  }
+
+  // ── Boot ───────────────────────────────────────────────────────
+  window.GS = {};
+
+  GS.boot = function (data) {
+    S.userId = data.userId;
+    S.projectId = data.projectId;
+    S.projectName = data.projectName;
+    S.projects = data.projects || [];
+    S.files = data.files || [];
+
+    loadConversations();
+    renderConvList();
+    renderFileTree();
+    initSplitter();
+    initMonaco();
+
+    document.addEventListener('keydown', e => {
+      if (e.key === 'Escape') { closeSidebar(); closeProjectDropdown(); }
+    });
+
+    setTimeout(() => { const i = $('gsInput'); if (i) i.focus(); }, 100);
+  };
+
+  // ── Chat ───────────────────────────────────────────────────────
+  GS.send = function () {
+    const input = $('gsInput');
+    if (!input) return;
+    const msg = input.value.trim();
+    if (!msg || S.isSending) return;
+    input.value = '';
+    GS.autoResize(input);
+
+    const w = $('gsWelcome');
+    if (w) w.style.display = 'none';
+
+    addMsg('user', msg);
+
+    if (!S.conversationId) {
+      S.conversationId = 'conv_' + Date.now();
+      S.messages = [];
+    }
+
+    S.isSending = true;
+    updateSendBtn();
+    setStatus('building', 'Building...');
+
+    const typing = addTyping();
+
+    chatStream(msg).then(r => {
+      removeTyping(typing);
+      if (r.type === 'error') {
+        addMsg('galileo', 'Error: ' + r.content);
+        setStatus('error', 'Error');
+      } else if (r.type === 'coding_result') {
+        let txt = r.plan || 'Done!';
+        if (r.files?.length) {
+          txt += '\n\n' + r.files.length + ' file(s):';
+          for (const f of r.files) txt += '\n• ' + f.path;
+        }
+        if (r.issues?.length) {
+          txt += '\n\nWarnings:';
+          for (const i of r.issues) txt += '\n• ' + i;
+        }
+        addMsg('galileo', txt);
+        setStatus('ready', 'Ready');
+        refreshFiles();
+        updateChangesBadge();
+        // Auto-switch to preview if files created
+        if (r.files?.length) GS.switchView('preview');
+      } else {
+        addMsg('galileo', r.content);
+        setStatus('ready', 'Ready');
+      }
+      saveConv();
+    }).catch(() => {
+      removeTyping(typing);
+      addMsg('galileo', 'Connection error. Please try again.');
+      setStatus('error', 'Offline');
+    }).finally(() => {
+      S.isSending = false;
+      updateSendBtn();
+    });
+  };
+
+  GS.handleKey = function (e) {
+    if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); GS.send(); }
+  };
+
+  GS.sendSuggestion = function (t) {
+    const i = $('gsInput');
+    if (i) { i.value = t; GS.send(); }
+  };
+
+  // ── Messages ───────────────────────────────────────────────────
+  function addMsg(role, content) {
+    const c = $('gsChatMessages');
+    if (!c) return;
+    const d = document.createElement('div');
+    d.className = 'gs-msg';
+    const isAI = role === 'galileo';
+    d.innerHTML =
+      '<div class="gs-msg-avatar ' + (isAI ? 'ai' : 'user') + '">' + (isAI ? '◈' : 'U') + '</div>' +
+      '<div class="gs-msg-body">' +
+        '<div class="gs-msg-name ' + (isAI ? 'ai' : '') + '">' + (isAI ? 'Galileo' : 'You') + '</div>' +
+        '<div class="gs-msg-text">' + fmtMsg(content) + '</div>' +
+      '</div>';
+    c.appendChild(d);
+    S.messages.push({ role, content, ts: Date.now() });
+    scrollToBottom();
+  }
+
+  function addAgentEvent(msg, type) {
+    const c = $('gsChatMessages');
+    if (!c) return;
+    const d = document.createElement('div');
+    d.className = 'gs-agent-event';
+    d.innerHTML = type === 'progress'
+      ? '<div class="spinner"></div> ' + esc(msg)
+      : '<span class="check">✓</span> ' + esc(msg);
+    c.appendChild(d);
+    scrollToBottom();
+  }
+
+  function addTyping() {
+    const c = $('gsChatMessages');
+    if (!c) return null;
+    const d = document.createElement('div');
+    d.className = 'gs-msg';
+    d.setAttribute('data-typing', '');
+    d.innerHTML =
+      '<div class="gs-msg-avatar ai">◈</div>' +
+      '<div class="gs-msg-body"><div class="gs-msg-name ai">Galileo</div>' +
+      '<div class="gs-typing"><div class="gs-typing-dot"></div><div class="gs-typing-dot"></div><div class="gs-typing-dot"></div></div></div>';
+    c.appendChild(d);
+    scrollToBottom();
+    return d;
+  }
+
+  function removeTyping(el) { if (el?.parentNode) el.parentNode.removeChild(el); }
+
+  function fmtMsg(t) {
+    if (!t) return '';
+    let h = esc(t);
+    h = h.replace(/```(\w*)\n([\s\S]*?)```/g, '<pre><code>$2</code></pre>');
+    h = h.replace(/`([^`]+)`/g, '<code>$1</code>');
+    h = h.replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>');
+    h = h.replace(/\n/g, '<br>');
+    return h;
+  }
+
+  // ── Status ─────────────────────────────────────────────────────
+  function setStatus(type, label) {
+    const d = $('gsStatusDot'), l = $('gsStatusLabel');
+    if (d) { d.className = 'gs-status-dot'; if (type === 'building') d.classList.add('building'); if (type === 'error') d.classList.add('error'); }
+    if (l) l.textContent = label;
+  }
+
+  function updateSendBtn() { const b = $('gsSendBtn'); if (b) b.disabled = S.isSending; }
+
+  // ── Splitter ───────────────────────────────────────────────────
+  function initSplitter() {
+    const splitter = $('gsSplitter');
+    const chatPanel = $('gsChatPanel');
+    if (!splitter || !chatPanel) return;
+
+    let dragging = false, startX, startW;
+
+    splitter.addEventListener('mousedown', e => {
+      dragging = true;
+      startX = e.clientX;
+      startW = chatPanel.offsetWidth;
+      splitter.classList.add('dragging');
+      document.body.style.cursor = 'col-resize';
+      document.body.style.userSelect = 'none';
+      e.preventDefault();
+    });
+
+    document.addEventListener('mousemove', e => {
+      if (!dragging) return;
+      const dx = e.clientX - startX;
+      const newW = Math.max(320, Math.min(startW + dx, window.innerWidth - 440));
+      chatPanel.style.width = newW + 'px';
+    });
+
+    document.addEventListener('mouseup', () => {
+      if (!dragging) return;
+      dragging = false;
+      splitter.classList.remove('dragging');
+      document.body.style.cursor = '';
+      document.body.style.userSelect = '';
+    });
+  }
+
+  // ── Workbench Views ────────────────────────────────────────────
+  GS.switchView = function (view) {
+    S.activeView = view;
+    document.querySelectorAll('.gs-wb-tab').forEach(t => t.classList.toggle('active', t.getAttribute('data-view') === view));
+    document.querySelectorAll('.gs-wb-view').forEach(v => v.classList.toggle('active', v.getAttribute('data-view') === view));
+
+    if (view === 'source' && S.monacoEditor) {
+      setTimeout(() => S.monacoEditor.layout(), 50);
+    }
+    if (view === 'terminal') {
+      renderTerminal();
+    }
+    if (view === 'changes') {
+      renderChanges();
+    }
+  };
+
+  // ── File Tree ──────────────────────────────────────────────────
+  function renderFileTree() {
+    const container = $('gsFileTree');
+    if (!container) return;
+
+    const tree = {};
+    for (const f of S.files) {
+      const parts = f.path.split('/');
+      let cur = tree;
+      for (let i = 0; i < parts.length - 1; i++) {
+        if (!cur[parts[i]]) cur[parts[i]] = { _dir: true, _children: {} };
+        cur = cur[parts[i]]._children;
+      }
+      cur[parts[parts.length - 1]] = { _path: f.path, _lang: f.language };
+    }
+
+    container.innerHTML = renderTreeNodes(tree, 0);
+    container.querySelectorAll('.gs-file-node[data-path]').forEach(el => {
+      el.addEventListener('click', () => openFile(el.getAttribute('data-path')));
+    });
+  }
+
+  function renderTreeNodes(tree, depth) {
+    let html = '';
+    const entries = Object.entries(tree).sort(([a, va], [b, vb]) => {
+      if (va._dir && !vb._dir) return -1;
+      if (!va._dir && vb._dir) return 1;
+      return a.localeCompare(b);
+    });
+    for (const [name, node] of entries) {
+      const indent = '<span class="indent"></span>'.repeat(depth);
+      if (node._dir) {
+        html += '<div class="gs-file-node folder">' + indent + '📁 ' + esc(name) + '</div>';
+        html += '<div>' + renderTreeNodes(node._children, depth + 1) + '</div>';
+      } else {
+        const icon = fileIcon(name);
+        const active = node._path === S.activeFile ? ' active' : '';
+        html += '<div class="gs-file-node' + active + '" data-path="' + esc(node._path) + '">' + indent + icon + ' ' + esc(name) + '</div>';
+      }
+    }
+    return html;
+  }
+
+  function fileIcon(name) {
+    const ext = name.split('.').pop().toLowerCase();
+    const m = { js:'📄',jsx:'⚛️',ts:'📘',tsx:'⚛️',html:'🌐',css:'🎨',json:'📋',md:'📝',php:'🐘',py:'🐍',vue:'💚' };
+    return m[ext] || '📄';
+  }
+
+  function openFile(path) {
+    S.activeFile = path;
+
+    // Highlight in tree
+    document.querySelectorAll('.gs-file-node').forEach(el => {
+      el.classList.toggle('active', el.getAttribute('data-path') === path);
+    });
+
+    // Fetch content
+    api('/api/files/read?path=' + encodeURIComponent(path)).then(data => {
+      const content = data.content || data.file?.content || '';
+      const lang = data.language || data.file?.language || '';
+      const ext = path.split('.').pop().toLowerCase();
+
+      let of = S.openFiles.find(f => f.path === path);
+      if (!of) {
+        of = { path, content, lang };
+        S.openFiles.push(of);
+      } else {
+        of.content = content;
+      }
+
+      renderEditorTabs();
+
+      // Set Monaco content
+      if (S.monacoReady && window.monaco) {
+        const model = getOrCreateModel(path, content, lang);
+        S.monacoEditor.setModel(model);
+      }
+    }).catch(() => {});
+  }
+
+  // ── Editor Tabs ────────────────────────────────────────────────
+  function renderEditorTabs() {
+    const c = $('gsEditorTabs');
+    if (!c) return;
+    c.innerHTML = '';
+    for (const f of S.openFiles) {
+      const t = document.createElement('button');
+      t.className = 'gs-editor-tab' + (f.path === S.activeFile ? ' active' : '');
+      t.innerHTML = '<span>' + esc(f.path.split('/').pop()) + '</span><span class="close">✕</span>';
+      t.addEventListener('click', (e) => {
+        if (e.target.classList.contains('close')) {
+          closeFile(f.path);
+        } else {
+          openFile(f.path);
+        }
+      });
+      c.appendChild(t);
+    }
+  }
+
+  function closeFile(path) {
+    S.openFiles = S.openFiles.filter(f => f.path !== path);
+    if (S.activeFile === path) {
+      S.activeFile = S.openFiles.length ? S.openFiles[S.openFiles.length - 1].path : null;
+      if (S.activeFile) openFile(S.activeFile);
+    }
+    renderEditorTabs();
+  }
+
+  // ── Monaco Editor ──────────────────────────────────────────────
+  function initMonaco() {
+    if (typeof require === 'undefined' || !require.config) return;
+    require.config({ paths: { vs: 'https://cdn.jsdelivr.net/npm/monaco-editor@0.45.0/min/vs' } });
+    require(['vs/editor/editor.main'], function () {
+      S.monacoReady = true;
+      S.monacoEditor = monaco.editor.create($('gsMonaco'), {
+        value: '',
+        language: 'javascript',
+        theme: 'vs-dark',
+        minimap: { enabled: false },
+        fontSize: 13,
+        fontFamily: "'JetBrains Mono', 'Fira Code', monospace",
+        lineNumbers: 'on',
+        scrollBeyondLastLine: false,
+        automaticLayout: true,
+        padding: { top: 12 },
+        renderLineHighlight: 'gutter',
+        scrollbar: { verticalScrollbarSize: 6, horizontalScrollbarSize: 6 },
+      });
+
+      // Save on Ctrl+S
+      S.monacoEditor.addCommand(monaco.KeyMod.CtrlCmd | monaco.KeyCode.KeyS, () => {
+        saveCurrentFile();
+      });
+    });
+  }
+
+  function getOrCreateModel(path, content, lang) {
+    if (S.monacoModels[path]) {
+      S.monacoModels[path].setValue(content);
+      return S.monacoModels[path];
+    }
+    const langMap = { js: 'javascript', jsx: 'javascript', ts: 'typescript', tsx: 'typescript',
+      html: 'html', css: 'css', json: 'json', md: 'markdown', php: 'php', py: 'python' };
+    const model = monaco.editor.createModel(content, langMap[lang] || lang);
+    S.monacoModels[path] = model;
+    return model;
+  }
+
+  function saveCurrentFile() {
+    if (!S.activeFile || !S.monacoEditor) return;
+    const content = S.monacoEditor.getValue();
+    api('/api/files', {
+      method: 'POST',
+      body: { path: S.activeFile, content },
+    }).then(() => {
+      const of = S.openFiles.find(f => f.path === S.activeFile);
+      if (of) of.content = content;
+      termLine('$ saved ' + S.activeFile);
+    }).catch(() => {
+      termLine('Failed to save ' + S.activeFile, 'error');
+    });
+  }
+
+  // ── Preview ────────────────────────────────────────────────────
+  GS.startPreview = function () {
+    api('/api/galileo/preview/start', { method: 'POST', body: { project_id: S.projectId } })
+      .then(d => {
+        if (d.url) {
+          S.previewUrl = d.url;
+          S.previewStatus = d.status;
+          $('gsPreviewFrame').src = d.url;
+          $('gsPreviewFrame').style.display = 'block';
+          $('gsPreviewEmpty').style.display = 'none';
+          $('gsPreviewUrl').textContent = d.url;
+        }
+      }).catch(() => alert('Failed to start preview'));
+  };
+
+  GS.refreshPreview = function () {
+    if (S.previewUrl) {
+      $('gsPreviewFrame').src = S.previewUrl;
+    }
+  };
+
+  GS.openExternal = function () {
+    if (S.previewUrl) window.open(S.previewUrl, '_blank');
+  };
+
+  // ── Terminal ───────────────────────────────────────────────────
+  function termLine(text, type) {
+    S.terminalLines.push({ text, type: type || 'info', ts: Date.now() });
+    if (S.activeView === 'terminal') renderTerminal();
+  }
+
+  function renderTerminal() {
+    const c = $('gsTerminal');
+    if (!c) return;
+    if (!S.terminalLines.length) {
+      c.innerHTML = '<span style="color:var(--gs-text-dim)">Terminal output will appear here.</span>';
+      return;
+    }
+    c.innerHTML = S.terminalLines.map(l => {
+      const cls = l.type === 'error' ? 'error' : l.text.startsWith('$ ') ? 'prompt' : l.type === 'success' ? 'success' : 'info';
+      return '<div class="gs-term-line ' + cls + '">' + esc(l.text) + '</div>';
+    }).join('');
+    c.scrollTop = c.scrollHeight;
+  }
+
+  // ── Changes ────────────────────────────────────────────────────
+  function updateChangesBadge() {
+    const b = $('gsChangesBadge');
+    if (b) {
+      if (S.changes.length) { b.textContent = S.changes.length; b.style.display = 'flex'; }
+      else b.style.display = 'none';
+    }
+  }
+
+  function renderChanges() {
+    const c = $('gsChangesContainer');
+    if (!c) return;
+    if (!S.changes.length) {
+      c.innerHTML = '<div class="gs-changes-header">No changes yet</div>';
+      return;
+    }
+    let html = '<div class="gs-changes-header">' + S.changes.length + ' file(s) changed</div>';
+    for (const ch of S.changes) {
+      html += '<div class="gs-change-row" onclick="GS.openChangeFile(\'' + esc(ch.path) + '\')">' +
+        '<span class="gs-change-tag ' + ch.type + '">' + (ch.type === 'created' ? 'new' : ch.type === 'deleted' ? 'del' : 'mod') + '</span>' +
+        '<span>' + esc(ch.path) + '</span></div>';
+    }
+    c.innerHTML = html;
+  }
+
+  GS.openChangeFile = function (path) {
+    openFile(path);
+    GS.switchView('source');
+  };
+
+  // ── File Refresh ───────────────────────────────────────────────
+  function refreshFiles() {
+    api('/api/context').then(d => {
+      if (d.context?.files) {
+        S.files = d.context.files.map(f => ({ path: f.path, language: f.language, size: (f.content || '').length }));
+        renderFileTree();
+      }
+    }).catch(() => {});
+  }
+
+  GS.syncFiles = function () { refreshFiles(); termLine('$ files synced', 'success'); };
+
+  // ── Conversations ──────────────────────────────────────────────
+  function convKey() { return S.storageKey + '.conversations.' + S.projectId; }
+
+  function loadConversations() {
+    try { S.conversations = JSON.parse(localStorage.getItem(convKey()) || '[]'); } catch { S.conversations = []; }
+  }
+
+  function saveConv() {
+    if (!S.conversationId) return;
+    let c = S.conversations.find(x => x.id === S.conversationId);
+    if (!c) {
+      c = { id: S.conversationId, title: S.messages[0]?.content?.substring(0, 50) || 'Chat', created_at: Date.now(), messages: [] };
+      S.conversations.unshift(c);
+    }
+    c.messages = S.messages;
+    c.updated_at = Date.now();
+    const first = S.messages.find(m => m.role === 'user');
+    if (first) c.title = first.content.substring(0, 50);
+    try { localStorage.setItem(convKey(), JSON.stringify(S.conversations)); } catch {}
+    renderConvList();
+  }
+
+  function renderConvList() {
+    const c = $('gsConvList');
+    if (!c) return;
+    c.innerHTML = '';
+    for (const conv of S.conversations) {
+      const d = document.createElement('div');
+      d.className = 'gs-conv-item' + (conv.id === S.conversationId ? ' active' : '');
+      d.textContent = conv.title;
+      d.onclick = () => loadConv(conv.id);
+      c.appendChild(d);
+    }
+  }
+
+  function loadConv(id) {
+    const conv = S.conversations.find(c => c.id === id);
+    if (!conv) return;
+    S.conversationId = id;
+    S.messages = conv.messages || [];
+    const c = $('gsChatMessages');
+    if (c) c.innerHTML = '';
+    if (!S.messages.length) {
+      if (c) c.innerHTML = welcomeHTML();
+    } else {
+      for (const m of S.messages) addMsg(m.role, m.content);
+    }
+    renderConvList();
+    scrollToBottom();
+    closeSidebar();
+  }
+
+  GS.newChat = function () {
+    S.conversationId = null;
+    S.messages = [];
+    S.changes = [];
+    updateChangesBadge();
+    const c = $('gsChatMessages');
+    if (c) c.innerHTML = welcomeHTML();
+    renderConvList();
+    closeSidebar();
+    const i = $('gsInput'); if (i) i.focus();
+  };
+
+  function welcomeHTML() {
+    return '<div class="gs-welcome" id="gsWelcome"><div class="gs-welcome-box">' +
+      '<div class="gs-welcome-icon">◈</div>' +
+      '<h2>What do you want to build?</h2>' +
+      '<p>Describe your app, ask a question, or request a change.</p>' +
+      '<div class="gs-suggestions">' +
+        '<div class="gs-suggestion" onclick="GS.sendSuggestion(\'Build a dashboard for monitoring servers\')">Dashboard app</div>' +
+        '<div class="gs-suggestion" onclick="GS.sendSuggestion(\'Create a todo app with auth\')">Todo + auth</div>' +
+        '<div class="gs-suggestion" onclick="GS.sendSuggestion(\'Build a landing page\')">Landing page</div>' +
+      '</div></div></div>';
+  }
+
+  // ── Sidebar ────────────────────────────────────────────────────
+  GS.toggleSidebar = function () {
+    S.sidebarOpen = !S.sidebarOpen;
+    $('gsSidebar')?.classList.toggle('open', S.sidebarOpen);
+  };
+
+  function closeSidebar() {
+    S.sidebarOpen = false;
+    $('gsSidebar')?.classList.remove('open');
+  }
+
+  // ── Project Dropdown ───────────────────────────────────────────
+  GS.toggleProjectDropdown = function () {
+    $('gsProjectDropdown')?.classList.toggle('open');
+  };
+
+  function closeProjectDropdown() {
+    $('gsProjectDropdown')?.classList.remove('open');
+  }
+
+  GS.switchProject = function (id) {
+    window.location.href = '/galileo?project=' + encodeURIComponent(id);
+  };
+
+  GS.newProject = function () {
+    const name = prompt('Project name:');
+    if (!name) return;
+    const slug = name.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
+    window.location.href = '/galileo?project=' + encodeURIComponent(slug);
+  };
+
+  document.addEventListener('click', e => {
+    const dd = $('gsProjectDropdown');
+    const btn = $('gsProjectBtn');
+    if (dd && btn && !dd.contains(e.target) && !btn.contains(e.target)) {
+      dd.classList.remove('open');
+    }
+  });
+
+  // ── Auto-resize ────────────────────────────────────────────────
+  GS.autoResize = function (el) {
+    el.style.height = 'auto';
+    el.style.height = Math.min(el.scrollHeight, 120) + 'px';
+  };
+
+})();

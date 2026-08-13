@@ -14,6 +14,7 @@
     </a>
 
     <nav class="flex items-center gap-5 text-sm text-chalk-soft">
+      <a href="/galileo/" class="hover:text-accent transition" style="font-weight:600;">Studio</a>
       <a href="/community/" class="hover:text-accent transition">Community</a>
       <a href="/docs/" class="hover:text-accent transition">Documentation</a>
       <a href="/support/" class="hover:text-accent transition">Support</a>
@@ -35,6 +36,7 @@
              background: var(--surface); border: 1px solid var(--line); border-radius: var(--gold-radius-lg);
              box-shadow: var(--shadow-pop); z-index: 50; overflow: hidden;">
           <div style="border-top: 1px solid var(--line); margin: 4px 0;"></div>
+          <a href="/galileo/" class="block px-4 py-2.5 text-sm" style="color: var(--text-soft); font-weight:600;" onmouseover="this.style.background='var(--surface-2)'" onmouseout="this.style.background=''">Studio</a>
           <a href="/hosting/" class="block px-4 py-2.5 text-sm" style="color: var(--text-soft);" onmouseover="this.style.background='var(--surface-2)'" onmouseout="this.style.background=''">Hosting</a>
           <a href="/account/" class="block px-4 py-2.5 text-sm" style="color: var(--text-soft);" onmouseover="this.style.background='var(--surface-2)'" onmouseout="this.style.background=''">Account</a>
           <a href="https://discord.gg/mRtUe7J372" class="block px-4 py-2.5 text-sm" style="color: var(--text-soft);" onmouseover="this.style.background='var(--surface-2)'" onmouseout="this.style.background=''">Discord</a>

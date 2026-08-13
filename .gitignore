@@ -1,0 +1,32 @@
+# Secrets and local config
+.env
+.env.*
+*.pem
+*.key
+*.crt
+*.csr
+*.p12
+*_rsa
+id_rsa
+modules/AshatHub/config/server_config.json
+
+# Runtime data
+storage/
+projects/
+node_modules/
+vendor/
+dist/
+build/
+target/
+models/
+
+# Editor and OS junk
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+
+# Backups
+*.bak
+*.bak.*
+*.phase*bak

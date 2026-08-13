@@ -29,7 +29,13 @@ function isProtected(string $path): bool {
     }
     if ($basename === 'server_config.json' || $basename === '.env' || str_starts_with($basename, '.env.')) return true;
     if (preg_match('/\.(sqlite3?|db|log|pem|key|crt|csr|p12)$/i', $basename) === 1) return true;
+    if (preg_match('/(^|\/)(?:.*\.bak(?:\..*)?|.*\.phase\w*bak|.*_rsa(?:\.pub)?|id_rsa(?:\.pub)?)$/i', $path) === 1) return true;
     return false;
+}
+
+function isPushJunk(string $path): bool {
+    $path = ltrim(str_replace('\\', '/', $path), '/');
+    return preg_match('/(^|\/)(?:.*\.bak(?:\..*)?|.*\.phase\w*bak|.*_rsa(?:\.pub)?|id_rsa(?:\.pub)?)$/i', $path) === 1;
 }
 
 function walk(string $root, string $rel = ''): array {
@@ -126,7 +132,12 @@ $remote = [];
 foreach ($tree as $entry) {
     if (($entry['type'] ?? '') !== 'blob') continue;
     $path = (string) ($entry['path'] ?? '');
-    if ($path === '' || isProtected($path)) continue;
+    if ($path === '') continue;
+    if (isPushJunk($path)) {
+        $remote[$path] = (string) ($entry['sha'] ?? '');
+        continue;
+    }
+    if (isProtected($path)) continue;
     $remote[$path] = (string) ($entry['sha'] ?? '');
 }
 

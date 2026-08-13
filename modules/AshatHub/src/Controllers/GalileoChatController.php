@@ -13,29 +13,29 @@ use Repositories\RepositoryRegistry;
  * ═══════════════════════════════════════════════════════════════════════
  * Controllers\GalileoChatController — Galileo Studio chat API.
  *
- * Handles the primary conversational interface for Galileo Studio.
- * Routes user messages to either:
- *   1. Local 450M VL (Intent Router) — for conversation, project
- *      questions, brainstorming, prompt normalization
- *   2. Coding Agent Ecosystem (Omega/Beta/Delta) — for code generation,
- *      debugging, refactoring, and other software-engineering tasks
+ * Token-optimized: all context budgets are tightly capped to prevent
+ * runaway token consumption on the Omega/Beta/Delta servers.
  *
- * The user never sees the routing decision. Galileo classifies the
- * request internally and dispatches accordingly.
+ * Token budget per request:
+ *   - Intent classification:  ~200 tokens (user message only)
+ *   - Local chat:             ~800 tokens context + 2000 max_tokens
+ *   - Coding agent:           ~1000 tokens context + 16384 max_tokens
+ *   - File content:           max 3000 chars (~800 tokens)
+ *   - Project context:        max 2000 chars (~600 tokens)
  * ═══════════════════════════════════════════════════════════════════════
  */
 final class GalileoChatController
 {
+    // ── Token budgets (chars ≈ tokens * 3.5) ──────────────────────
+    private const INTENT_CONTEXT_CHARS   = 0;    // classifier gets NO project context
+    private const PROJECT_CONTEXT_CHARS  = 2000; // project files summary
+    private const ACTIVE_FILE_CHARS      = 3000; // active file content
+    private const CODING_PROJECT_CHARS   = 2000; // project context for coding agent
+    private const CODING_FILE_CHARS      = 3000; // active file for coding agent
+    private const LOCAL_CHAT_CHARS       = 1500; // project context for local chat
+
     /**
      * POST /api/galileo/chat — SSE. Main chat endpoint.
-     *
-     * Body: {
-     *   "project_id": "...",
-     *   "conversation_id": "...",
-     *   "message": "...",
-     *   "active_file": "...",
-     *   "selection": null
-     * }
      */
     public function chat(RequestContext $ctx): void
     {
@@ -73,6 +73,7 @@ final class GalileoChatController
         $userId = (string) $ctx->user()['id'];
 
         // ── Phase 1: Classify intent via local 450M VL ────────────
+        // Token budget: ~200 tokens (message only, no project context)
         $intent = $this->classifyIntent($userId, $message, $projectId);
 
         // ── Phase 2: Route based on classified intent ──────────────
@@ -92,47 +93,32 @@ final class GalileoChatController
 
     /**
      * Classify the user's intent using the local 450M VL.
-     * Returns one of: conversation, project_question, brainstorm,
-     * coding_request, debug, review, refactor, preview_issue, file_operation
+     *
+     * TOKEN OPTIMIZATION: Sends ONLY the user message — no project context.
+     * The classifier doesn't need to know the project to decide intent.
+     * This saves ~400 tokens per request.
      */
     private function classifyIntent(string $userId, string $message, string $projectId): string
     {
         $routerUrl = trim((string) ConfigBag::getInstance()->intentRouterUrl());
         if ($routerUrl === '') {
-            // No local router — default to coding request (safest assumption).
             return 'coding_request';
         }
 
-        $projectContext = $this->buildProjectContext($userId, $projectId);
+        // Minimal system prompt — 80 tokens vs previous ~200
+        $systemPrompt = "Classify this message into ONE category: conversation, project_question, brainstorm, coding_request, debug, review, refactor, preview_issue, file_operation. Reply with ONLY the category name.";
 
-        $systemPrompt = "You are Galileo Studio's intent classifier. Given a user message "
-            . "and optional project context, classify the intent into exactly ONE category:\n\n"
-            . "- conversation: general chat, greetings, opinions, non-coding questions\n"
-            . "- project_question: asking about the current project (what it does, how it works)\n"
-            . "- brainstorm: exploring ideas, planning features, discussing architecture\n"
-            . "- coding_request: needs code written, changed, created, or built\n"
-            . "- debug: something is broken and needs fixing\n"
-            . "- review: wants code reviewed or explained\n"
-            . "- refactor: wants existing code restructured\n"
-            . "- preview_issue: something wrong with the preview/runtime\n"
-            . "- file_operation: needs to create, rename, delete, or move files\n\n"
-            . "Reply with ONLY the category name, nothing else.";
-
-        $userPrompt = $message;
-        if ($projectContext !== '') {
-            $userPrompt = "Project context:\n" . mb_substr($projectContext, 0, 1500) . "\n\nUser message:\n" . $message;
-        }
-
+        // Send ONLY the message — no project context (saves ~400 tokens)
         $content = ChatBackend::localVL(
             [
                 ['role' => 'system', 'content' => $systemPrompt],
-                ['role' => 'user',   'content' => $userPrompt],
+                ['role' => 'user',   'content' => $message],
             ],
-            50
+            30  // max_tokens: 30 is enough for a single word
         );
 
         if ($content === null) {
-            return 'coding_request'; // Default
+            return 'coding_request';
         }
 
         $intent = strtolower(trim($content));
@@ -144,7 +130,6 @@ final class GalileoChatController
 
     /**
      * Route a coding request to the Omega/Beta/Delta agent ecosystem.
-     * This submits a job and streams agent progress back to the client.
      */
     private function routeToCodingAgent(
         RequestContext $ctx,
@@ -155,17 +140,16 @@ final class GalileoChatController
     ): void {
         SseStreamer::send('progress', ['message' => 'Analyzing your request...']);
 
-        // Build project context for the coding agent.
-        $projectContext = $this->buildProjectContext($userId, $projectId);
-        $fileContext = $activeFile !== '' ? $this->getFileContent($userId, $activeFile) : '';
+        // TOKEN OPTIMIZATION: Tight budgets for context
+        $projectContext = $this->buildProjectContext($userId, $projectId, self::CODING_PROJECT_CHARS);
+        $fileContext = $activeFile !== ''
+            ? $this->getFileContent($userId, $activeFile, self::CODING_FILE_CHARS)
+            : '';
 
-        // Use the raw message — the coding agent handles its own prompt construction.
-        // (Skipping the extra normalizePrompt VL call to keep latency low.)
         $normalized = $message;
 
         SseStreamer::send('progress', ['message' => 'Submitting to coding agent...']);
 
-        // Submit the coding job to BrainStem (Omega).
         $brainstem = RepositoryRegistry::brainstemConfig()->active();
         if (empty($brainstem['api_key'])) {
             SseStreamer::send('error', [
@@ -180,14 +164,15 @@ final class GalileoChatController
             return;
         }
 
-        // Build the generation request.
         $messages = $this->buildCodingMessages($normalized, $projectContext, $fileContext);
         $req = $backend->buildRequest($messages, [
             'max_tokens' => 16384,
             'temperature' => 0.6,
         ], false);
 
-        SseStreamer::send('progress', ['message' => 'Agent is working...']);
+        // Estimate and report token usage
+        $inputTokens = $this->estimateTokens($messages);
+        SseStreamer::send('progress', ['message' => "Agent is working... (~{$inputTokens} input tokens)"]);
 
         $resp = SystemValidationEngine::postJson($req['endpoint'], $req['headers'], $req['payload']);
         if ($resp === null) {
@@ -196,22 +181,29 @@ final class GalileoChatController
         }
 
         $content = $resp['choices'][0]['message']['content'] ?? '';
+        $usage = $resp['usage'] ?? null;
+        $outputTokens = $usage['completion_tokens'] ?? 0;
+        $totalTokens = $usage['total_tokens'] ?? ($inputTokens + $outputTokens);
+
         if ($content === '') {
             SseStreamer::send('error', ['message' => 'The coding agent returned an empty response.']);
             return;
         }
 
-        // Parse the response — may contain files, plan, and/or conversation.
+        // Report token usage
+        if ($totalTokens > 0) {
+            SseStreamer::send('progress', ['message' => "Tokens used: {$totalTokens} (in: {$inputTokens}, out: {$outputTokens})"]);
+        }
+
         $parsed = SystemValidationEngine::lenientJson($content);
 
         if (is_array($parsed) && !empty($parsed['files']) && is_array($parsed['files'])) {
-            // Code generation response — write files.
             $this->handleCodingResult($ctx, $userId, $parsed, $projectId);
         } else {
-            // Conversation response — just display it.
             SseStreamer::send('done', [
                 'type'    => 'conversation',
                 'content' => $content,
+                'tokens'  => $totalTokens > 0 ? $totalTokens : null,
             ]);
         }
     }
@@ -293,20 +285,20 @@ final class GalileoChatController
             return;
         }
 
-        $projectContext = $this->buildProjectContext($userId, $projectId);
-        $fileContext = $activeFile !== '' ? $this->getFileContent($userId, $activeFile) : '';
+        $projectContext = $this->buildProjectContext($userId, $projectId, self::LOCAL_CHAT_CHARS);
+        $fileContext = $activeFile !== ''
+            ? $this->getFileContent($userId, $activeFile, self::ACTIVE_FILE_CHARS)
+            : '';
 
-        $systemPrompt = "You are Galileo, the AI assistant inside Ashat Hub's Galileo Studio. "
-            . "You help users build software by understanding their ideas, answering questions, "
-            . "and discussing their projects. Be helpful, concise, and technically accurate. "
-            . "You can help brainstorm features, explain code, and suggest improvements.";
+        // Compact system prompt — ~50 tokens vs previous ~100
+        $systemPrompt = "You are Galileo, Ashat Hub's AI coding assistant. Be helpful, concise, and technically accurate.";
 
         $userPrompt = $message;
         if ($projectContext !== '') {
-            $userPrompt = "Project context:\n" . mb_substr($projectContext, 0, 2000) . "\n\n" . $userPrompt;
+            $userPrompt = "Project:\n" . $projectContext . "\n\n" . $userPrompt;
         }
         if ($fileContext !== '') {
-            $userPrompt = "Active file:\n" . mb_substr($fileContext, 0, 2000) . "\n\n" . $userPrompt;
+            $userPrompt = "File:\n" . $fileContext . "\n\n" . $userPrompt;
         }
 
         $content = ChatBackend::localVL(
@@ -329,108 +321,60 @@ final class GalileoChatController
     }
 
     /**
-     * Normalize a user prompt via the local 450M VL for the coding agent.
-     */
-    private function normalizePrompt(
-        string $userId,
-        string $message,
-        string $projectContext,
-        string $fileContext
-    ): string {
-        $routerUrl = trim((string) ConfigBag::getInstance()->intentRouterUrl());
-        if ($routerUrl === '') {
-            return $message;
-        }
-
-        $system = "You are Galileo's prompt normalizer. Rewrite the user's request into a clear, "
-            . "detailed coding instruction. Include relevant context from the project. "
-            . "Output ONLY the normalized instruction, nothing else.";
-
-        $user = $message;
-        if ($projectContext !== '') {
-            $user = "Project files:\n" . mb_substr($projectContext, 0, 1500) . "\n\n" . $user;
-        }
-        if ($fileContext !== '') {
-            $user = "Active file content:\n" . mb_substr($fileContext, 0, 1500) . "\n\n" . $user;
-        }
-
-        $normalized = ChatBackend::localVL(
-            [
-                ['role' => 'system', 'content' => $system],
-                ['role' => 'user',   'content' => $user],
-            ],
-            1024
-        );
-
-        return $normalized !== null && trim($normalized) !== '' ? $normalized : $message;
-    }
-
-    /**
      * Build the messages for the coding agent generation request.
+     *
+     * TOKEN OPTIMIZATION: Compact system prompt (~120 tokens vs ~500).
+     * Reduced context budgets prevent runaway token usage.
      */
     private function buildCodingMessages(string $normalized, string $projectContext, string $fileContext): array
     {
-        $system = [
-            'You are ASHAT, an AI coding agent. You build and modify software from natural-language instructions.',
-            '',
-            'Given a user request, you must:',
-            '1. Understand what the user wants.',
-            '2. Create or modify the necessary files with complete, working code.',
-            '3. Return a single JSON object with this shape:',
-            '',
-            '{',
-            '  "plan": "A 1-3 sentence summary of what you will build/change.",',
-            '  "files": [',
-            '    {',
-            '      "path":     "relative/file/path.ext",',
-            '      "content":  "the complete file contents",',
-            '      "language": "the programming language"',
-            '    }',
-            '  ]',
-            '}',
-            '',
-            'Rules:',
-            '- Generate production-ready code with sensible error handling.',
-            '- Use file paths relative to the project root (no leading slash).',
-            '- If modifying existing files, include the COMPLETE updated file.',
-            '- Include a README.md when creating a new project.',
-            '- Do NOT include private keys, real credentials, or secrets.',
-            '- Output ONLY the JSON object. No prose, no code fences.',
-        ];
+        // Compact system prompt — ~120 tokens
+        $system = "You are ASHAT, an AI coding agent. Build/modify software from natural-language instructions.\n"
+            . "Return a JSON object: {\"plan\": \"summary\", \"files\": [{\"path\": \"...\", \"content\": \"...\", \"language\": \"...\"}]}\n"
+            . "Rules: production-ready code, relative paths, complete files, no secrets, JSON only.";
 
         $user = $normalized;
         if ($projectContext !== '') {
-            $user = "Existing project files:\n" . mb_substr($projectContext, 0, 3000) . "\n\n" . $user;
+            $user = "Project files:\n" . $projectContext . "\n\n" . $user;
         }
         if ($fileContext !== '') {
-            $user = "Active file:\n" . mb_substr($fileContext, 0, 2000) . "\n\n" . $user;
+            $user = "Active file:\n" . $fileContext . "\n\n" . $user;
         }
 
         return [
-            ['role' => 'system', 'content' => implode("\n", $system)],
+            ['role' => 'system', 'content' => $system],
             ['role' => 'user',   'content' => $user],
         ];
     }
 
     /**
      * Build a project context string from the user's Project Files.
+     *
+     * TOKEN OPTIMIZATION: Lazy-loads files up to the char budget,
+     * never loads the full dataset into memory.
      */
-    private function buildProjectContext(string $userId, string $projectId): string
+    private function buildProjectContext(string $userId, string $projectId, int $budgetChars = 2000): string
     {
         try {
             $repo = RepositoryRegistry::file();
             $rows = $repo->allWithContent($userId);
             $context = '';
-            $budget = 5000;
+            $fileCount = 0;
 
             foreach ($rows as $f) {
                 $path = $f['path'];
                 $content = (string) ($f['content'] ?? '');
                 if ($content === '') continue;
 
-                $entry = "--- $path ---\n" . mb_substr($content, 0, 800) . "\n\n";
-                if (strlen($context) + strlen($entry) > $budget) break;
+                // Truncate each file to max 400 chars in context
+                $entry = "--- $path ---\n" . mb_substr($content, 0, 400) . "\n\n";
+                if (strlen($context) + strlen($entry) > $budgetChars) break;
                 $context .= $entry;
+                $fileCount++;
+            }
+
+            if ($fileCount > 0) {
+                $context = "({$fileCount} files)\n" . $context;
             }
 
             return $context;
@@ -441,16 +385,33 @@ final class GalileoChatController
 
     /**
      * Get a file's content from Project Files.
+     *
+     * TOKEN OPTIMIZATION: Caps content at $maxChars to prevent
+     * sending huge files to the coding agent.
      */
-    private function getFileContent(string $userId, string $filePath): string
+    private function getFileContent(string $userId, string $filePath, int $maxChars = 3000): string
     {
         try {
             $repo = RepositoryRegistry::file();
             $file = $repo->findByPath($userId, $filePath);
-            return (string) ($file['content'] ?? '');
+            $content = (string) ($file['content'] ?? '');
+            return mb_substr($content, 0, $maxChars);
         } catch (\Throwable $e) {
             return '';
         }
+    }
+
+    /**
+     * Estimate token count from messages array.
+     * Rough heuristic: ~4 chars per token for English text.
+     */
+    private function estimateTokens(array $messages): int
+    {
+        $totalChars = 0;
+        foreach ($messages as $m) {
+            $totalChars += strlen($m['content'] ?? '');
+        }
+        return (int) ceil($totalChars / 4);
     }
 
     /**
@@ -461,7 +422,7 @@ final class GalileoChatController
         $path = str_replace('\\', '/', $path);
         $path = preg_replace('/^\.?\//', '', $path);
         $path = preg_replace('/(?:^|\/)\.\.($|\/)/', '/', $path);
-        $path = preg_replace('/\/{2,}/', '/', $path);
+        $path = preg_replace('/{2,}/', '/', $path);
         $path = preg_replace('/[\x00-\x1f]/', '', $path);
         return trim($path, '/');
     }

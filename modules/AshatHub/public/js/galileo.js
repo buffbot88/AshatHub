@@ -133,6 +133,10 @@
       result.content = ev.data?.message || 'Error';
       termLine('Error: ' + result.content, 'error');
     }
+    // Track token usage from agent responses
+    if (ev.data?.tokens) {
+      result.tokens = ev.data.tokens;
+    }
   }
 
   // ── DOM helpers ────────────────────────────────────────────────

@@ -2,9 +2,9 @@
 <section class="container mx-auto px-6 py-16 grid md:grid-cols-2 gap-10 items-center max-w-4xl">
   <div>
     <h1 class="section-title mb-3" style="font-size: clamp(28px, 4vw, 36px);">Create your account</h1>
-    <p style="color: var(--gold-muted);">Free to start. Build in Chat and keep your project files in one place.</p>
+    <p style="color: var(--gold-muted);">Free to start. Build projects and keep your project files in one place.</p>
     <ul class="mt-8 space-y-3 text-sm" style="color: var(--gold-muted);">
-      <li class="flex gap-3"><span style="color: var(--gold);">✓</span> Open Chat and refine project specs.</li>
+      <li class="flex gap-3"><span style="color: var(--gold);">✓</span> Refine project specs and plans.</li>
       <li class="flex gap-3"><span style="color: var(--gold);">✓</span> Save project files to your account.</li>
       <li class="flex gap-3"><span style="color: var(--gold);">✓</span> Join the community and ship projects.</li>
       <li class="flex gap-3" style="color: var(--gold-dim);"><span>+</span> Pro: connect your own AI provider.</li>

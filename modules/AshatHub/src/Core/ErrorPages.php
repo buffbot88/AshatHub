@@ -42,11 +42,10 @@ final class ErrorPages
             ],
             403 => [
                 'title'       => 'You don’t have access',
-                'description' => 'This area is for members only. Sign in to your account to keep using Chat.',
+                'description' => 'This area is for members only. Sign in to your account to continue.',
                 'tone'        => 'err',
                 'actions'     => [
-                    ['label' => 'Open Chat',         'href' => '/chat/',     'kind' => 'primary'],
-                    ['label' => 'Open account',       'href' => '/account/'],
+                    ['label' => 'Open account',       'href' => '/account/', 'kind' => 'primary'],
                     ['label' => '← Back to home',     'href' => '/'],
                 ],
             ],
@@ -55,8 +54,8 @@ final class ErrorPages
                 'description' => 'We couldn’t find that URL. The page may have moved, been renamed, or never existed in the first place.',
                 'tone'        => 'accent',
                 'actions'     => [
-                    ['label' => 'Open Chat',       'href' => '/chat/',    'kind' => 'primary'],
-                    ['label' => 'Browse docs',    'href' => '/docs/'],
+                    ['label' => 'Browse docs',    'href' => '/docs/', 'kind' => 'primary'],
+                    ['label' => 'Open community', 'href' => '/community/'],
                     ['label' => '← Back to home', 'href' => '/'],
                 ],
             ],

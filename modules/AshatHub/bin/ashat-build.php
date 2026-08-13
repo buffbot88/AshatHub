@@ -2,9 +2,9 @@
 <?php
 /**
  * ═══════════════════════════════════════════════════════════════════════
- * ASHAT Hub — Chat Studio Build mode CLI (bin/ashat-build.php)
+ * ASHAT Hub — Build CLI (bin/ashat-build.php)
  *
- * Rebuilds the browser-only Chat Studio "Build" tab as a terminal tool.
+ * Exposes the browser build pipeline as a terminal tool.
  * The web flow (assistant.js → /api/brainstorm/ + /api/build/pipeline/)
  * becomes three commands:
  *

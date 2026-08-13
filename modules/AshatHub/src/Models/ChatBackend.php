@@ -3,240 +3,109 @@ declare(strict_types=1);
 namespace Models;
 
 use Core\ConfigBag;
+use Core\SystemValidationEngine;
 
-/**
- * ═══════════════════════════════════════════════════════════════════════
- * Models\ChatBackend — value object that represents "how to talk to this
- * AI backend."
- *
- * Encapsulates the backend selection logic (BrainStem > offline) and
- * request construction (endpoint URL, headers, payload) so that the two
- * chat endpoints (non-streaming + SSE streaming) share one seam instead
- * of duplicating ~50 lines each.
- *
- * Usage:
- *   $backend = ChatBackend::select(BrainstemConfig::active());
- *   if (!$backend->isAvailable()) { /* 502 * / }
- *   $req = $backend->buildRequest($messages, $body, $stream);
- *   // $req = ['endpoint' => ..., 'headers' => [...], 'payload' => [...]]
- * ═══════════════════════════════════════════════════════════════════════
- */
 final class ChatBackend
 {
-    /** Display label for the BrainStem Neural Host's default model. */
-    private const BRAINSTEM_MODEL_LABEL = 'LFM2.5 1.2B Instruct';
-
-    /** Actual model ID sent to the Neural Host API. */
-    private const BRAINSTEM_MODEL_ID = 'LFM2.5-1.2B-Instruct-Q8_0.gguf';
-
-    /** Default BrainStem display label (used when no model is configured). */
-    public static function defaultBrainstemLabel(): string
-    {
-        return self::BRAINSTEM_MODEL_LABEL;
-    }
-
-    /** Default BrainStem model id sent to the Neural Host API. */
-    public static function defaultBrainstemId(): string
-    {
-        return self::BRAINSTEM_MODEL_ID;
-    }
-
-    /** Label for the local intent router's 450M VL model. */
-    public static function defaultIntentRouterLabel(): string
-    {
-        return 'LFM2.5 450M VL';
-    }
-
-    /** Label for the local vision model. */
-    public static function defaultVisionLabel(): string
-    {
-        return 'LFM2.5 450M VL (vision)';
-    }
-
+    private string $backend;
     private string $endpoint;
-    private array  $headers;
-    private string $defaultModel;
-    private bool   $available;
-    /** Whether the upstream backend supports SSE streaming. */
-    private bool   $streaming;
-    /** Machine name of the resolved backend (brainstem|byo|none). */
-    private string $backendName;
-    /** Human label of the model that actually serves the request. */
-    private string $modelLabel;
+    private string $apiKey;
+    private string $model;
+    private bool $streaming;
 
-    private function __construct(
-        string $endpoint,
-        array  $headers,
-        string $defaultModel,
-        bool   $available,
-        bool   $streaming = true,
-        string $backendName = 'none',
-        string $modelLabel = ''
-    ) {
-        $this->endpoint     = $endpoint;
-        $this->headers      = $headers;
-        $this->defaultModel = $defaultModel;
-        $this->available    = $available;
-        $this->streaming    = $streaming;
-        $this->backendName  = $backendName;
-        $this->modelLabel   = $modelLabel;
-    }
-
-    /**
-     * Select the active backend: Chat mode forces the local 450M VL
-     * (model=local); otherwise BrainStem Neural Host (server-side).
-     * BYOK is currently disabled.
-     */
-    public static function select(?array $brainstemActive, ?array $byoConfig = null, string $model = ''): self
+    private function __construct(string $backend, string $endpoint, string $apiKey = '', string $model = '', bool $streaming = false)
     {
-        // Chat mode → local intent router (alpha-server, pooled 450M VL).
-        // No auth, SSE-capable; the browser's image parts flow through
-        // unchanged so the VL model can see them.
-        if ($model === 'local') {
-            return new self(
-                ConfigBag::getInstance()->intentRouterUrl() . '/v1/chat/completions',
-                ['Content-Type: application/json'],
-                'local',
-                true,
-                // alpha-server returns plain JSON for local inference (no
-                // SSE relay) — the hub does a non-streaming round trip.
-                false,
-                'local',
-                self::defaultIntentRouterLabel()
-            );
-        }
-
-        // BrainStem Neural Host (DB config > .env)
-        // The Neural Host uses X-Ashat-Key auth.
-        // Streaming is NOT supported (stream: false) — forced to false.
-        if ($brainstemActive && ($brainstemActive['api_key'] ?? '') !== '') {
-            $model = trim((string) ($brainstemActive['model'] ?? ''));
-            return new self(
-                $brainstemActive['url'] . '/v1/chat/completions',
-                [
-                    'Content-Type: application/json',
-                    'X-Ashat-Key: ' . $brainstemActive['api_key'],
-                ],
-                $model !== '' ? $model : self::BRAINSTEM_MODEL_ID,
-                true,
-                false,  // BrainStem does NOT support streaming (stream: false)
-                'brainstem',
-                $model !== '' ? $model : self::BRAINSTEM_MODEL_LABEL
-            );
-        }
-
-        // No backend available
-        return new self('', [], '', false, false, 'none', '');
+        $this->backend = $backend;
+        $this->endpoint = rtrim($endpoint, '/');
+        $this->apiKey = $apiKey;
+        $this->model = $model;
+        $this->streaming = $streaming;
     }
 
-    /** Whether a backend was resolved. */
+    public static function select(?array $brainstem = null, $byoConfig = null, string $mode = ''): self
+    {
+        if ($mode === 'local') {
+            $url = rtrim(ConfigBag::getInstance()->intentRouterUrl(), '/');
+            return new self('local', $url . '/v1/chat', '', self::defaultIntentRouterLabel(), false);
+        }
+
+        $brainstem = is_array($brainstem) ? $brainstem : [];
+        $url = trim((string) ($brainstem['url'] ?? ConfigBag::getInstance()->brainstemUrl()));
+        $key = trim((string) ($brainstem['api_key'] ?? ConfigBag::getInstance()->brainstemKey()));
+        $model = trim((string) ($brainstem['model'] ?? '')) ?: self::defaultBrainstemLabel();
+        return new self('brainstem', rtrim($url, '/') . '/v1/chat/completions', $key, $model, false);
+    }
+
     public function isAvailable(): bool
     {
-        return $this->available;
+        return $this->endpoint !== '' && $this->endpoint !== '/v1/chat/completions' && $this->endpoint !== '/v1/chat';
     }
 
-    /** Whether the upstream backend supports SSE streaming. */
+    public function backendName(): string
+    {
+        return $this->backend;
+    }
+
+    public function modelLabel(): string
+    {
+        return $this->model;
+    }
+
     public function supportsStreaming(): bool
     {
         return $this->streaming;
     }
 
-    /** Machine name of the resolved backend (brainstem|byo|none). */
-    public function backendName(): string
+    public function buildRequest(array $messages, array $options = [], bool $stream = false): array
     {
-        return $this->backendName;
-    }
-
-    /** Human label of the model that actually serves the request. */
-    public function modelLabel(): string
-    {
-        return $this->modelLabel;
-    }
-
-    /**
-     * Build the normalized request array for any endpoint.
-     *
-     * @param array $messages  Conversation messages [{role, content}, ...]
-     * @param array $opts      User-supplied overrides (max_tokens, temperature, top_p)
-     * @param bool  $stream    Whether to request SSE streaming
-     *
-     * @return array{endpoint:string, headers:string[], payload:array}
-     */
-    public function buildRequest(array $messages, array $opts, bool $stream = false): array
-    {
-        // BrainStem context window is 4096 tokens; cap max_tokens accordingly.
-        $maxTokens = (int) ($opts['max_tokens'] ?? 1024);
-        if ($maxTokens > 4096) {
-            $maxTokens = 4096;
+        $headers = ['Content-Type: application/json'];
+        if ($this->apiKey !== '') {
+            $headers[] = 'Authorization: Bearer ' . $this->apiKey;
         }
 
         $payload = [
-            'model'       => $this->defaultModel,
-            'messages'    => $messages,
-            'max_tokens'  => $maxTokens,
-            'temperature' => (float) ($opts['temperature'] ?? 0.7),
-            'top_p'       => (float) ($opts['top_p'] ?? 0.95),
+            'model' => trim((string) ($options['model'] ?? '')) ?: $this->model,
+            'messages' => $messages,
+            'temperature' => isset($options['temperature']) ? (float) $options['temperature'] : 0.7,
+            'max_tokens' => isset($options['max_tokens']) ? (int) $options['max_tokens'] : 2048,
         ];
-
-        // Honor the stream flag: the local backend streams SSE deltas,
-        // BrainStem callers always pass false.
-        $payload['stream'] = $stream;
+        if ($stream) {
+            $payload['stream'] = true;
+        }
 
         return [
             'endpoint' => $this->endpoint,
-            'headers'  => $this->headers,
-            'payload'  => $payload,
+            'headers' => $headers,
+            'payload' => $payload,
         ];
     }
 
-    /**
-     * One local round-trip through the 450M VL (Intent Router) — shared
-     * by the brainstorm controller, the build pipeline's intent
-     * summarizer and the build CLI. Plain JSON (alpha-server returns one
-     * completion per request), with retry/backoff on transient 429
-     * (queue full) and 5xx (model loading) responses — the same policy
-     * the chat path uses.
-     *
-     * @return ?string accumulated message text, or null on hard failure
-     */
     public static function localVL(array $messages, int $maxTokens = 1500): ?string
     {
-        $backend = self::select(null, null, 'local');
-        if (!$backend->isAvailable()) {
+        $url = rtrim(ConfigBag::getInstance()->intentRouterUrl(), '/') . '/v1/chat';
+        $resp = SystemValidationEngine::postJson($url, ['Content-Type: application/json'], [
+            'messages' => $messages,
+            'temperature' => 0.2,
+            'max_tokens' => $maxTokens,
+        ]);
+        if (!is_array($resp)) {
             return null;
         }
-        $req = $backend->buildRequest($messages, ['max_tokens' => $maxTokens, 'temperature' => 0.6], false);
+        return (string) ($resp['choices'][0]['message']['content'] ?? '');
+    }
 
-        $attempt = 0;
-        while (true) {
-            $attempt++;
-            $ctx = stream_context_create([
-                'http' => [
-                    'method'        => 'POST',
-                    'header'        => $req['headers'],
-                    'content'       => json_encode($req['payload'], JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES),
-                    'timeout'       => 120,
-                    'ignore_errors' => true,
-                ],
-            ]);
-            $raw = @file_get_contents($req['endpoint'], false, $ctx);
-            $status = 0;
-            if (preg_match('/\s(\d{3})\s/', $http_response_header[0] ?? '', $m)) $status = (int) $m[1];
+    public static function defaultIntentRouterLabel(): string
+    {
+        return 'Local 450M VL';
+    }
 
-            if ($raw === false) {
-                return null; // connection-level failure — fail fast
-            }
-            if ($status === 0 || ($status >= 200 && $status < 300)) {
-                $decoded = json_decode($raw, true);
-                if (!is_array($decoded)) return null;
-                $content = $decoded['choices'][0]['message']['content'] ?? '';
-                return $content !== '' ? $content : null;
-            }
-            if ($attempt < 4 && ($status === 429 || $status >= 500)) {
-                sleep($attempt === 1 ? 2 : ($attempt === 2 ? 4 : 8));
-                continue;
-            }
-            return null;
-        }
+    public static function defaultVisionLabel(): string
+    {
+        return 'Local Vision Check';
+    }
+
+    public static function defaultBrainstemLabel(): string
+    {
+        return 'BrainStem';
     }
 }

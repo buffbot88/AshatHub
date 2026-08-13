@@ -10,7 +10,7 @@ cpu_cap = 90
 
 [omega]
 url = "https://ashatneuralhost.agpstudios.org"
-api_key = "CHANGE_ME_IN_ENVIRONMENT"
+api_key = "WOGAJLhHgRUA1Jz8mGkaKLOpj4tK0yFM9vUDhsBeEr6jEBhZkeJHhayQVtfel9yh"
 auth_header = "X-Ashat-Key"
 model = "LFM2.5-1.2B-Instruct-Q4_K_M.gguf"
 

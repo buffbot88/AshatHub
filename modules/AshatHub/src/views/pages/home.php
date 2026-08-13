@@ -37,12 +37,12 @@
     </h1>
 
     <p class="mt-6 text-lg max-w-2xl mx-auto leading-relaxed" style="color: var(--text-soft);">
-      A free browser-based AI coding platform with tiny hosting spots. Chat with the AI to build your project, then deploy it to a free hosting slot in seconds.
+      A free browser-based AI coding platform with tiny hosting spots. Build your project, then deploy it to a free hosting slot in seconds.
     </p>
 
     <div class="mt-9 flex justify-center gap-3 flex-wrap">
-      <a href="/chat/" class="btn-gold inline-flex items-center gap-2 px-5 py-3 text-sm">Start Chatting</a>
-      <a href="/docs/" class="btn-outline inline-flex items-center gap-2 px-5 py-3 text-sm">Read the docs</a>
+      <a href="/docs/" class="btn-gold inline-flex items-center gap-2 px-5 py-3 text-sm">Read the docs</a>
+      <a href="/community/" class="btn-outline inline-flex items-center gap-2 px-5 py-3 text-sm">Browse community</a>
     </div>
 
     <p class="mt-10 text-xs font-mono" style="color: var(--text-dim);">

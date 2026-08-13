@@ -65,7 +65,7 @@
       <h2 style="font-family: var(--font-heading); font-weight: 600; font-size: 20px; color: var(--gold);">Stack</h2>
       <pre class="glass-card-solid rounded-lg px-4 py-3 text-sm font-mono overflow-x-auto" style="color: var(--gold-text);"><?= e($p['stack'] ?: '—') ?></pre>
       <h2 style="font-family: var(--font-heading); font-weight: 600; font-size: 20px; color: var(--gold);">Get started</h2>
-      <p style="color: var(--gold-text);">Visit the live demo to spin up this project. From there, you can adapt it to your own use case in Chat.</p>
+      <p style="color: var(--gold-text);">Visit the live demo to spin up this project. From there, you can adapt it to your own use case in your workspace.</p>
     </article>
   </div>
 
@@ -100,11 +100,6 @@
     <div class="glass-card-solid p-5">
       <div class="label-gold mb-3">Links</div>
       <div class="space-y-2 text-sm">
-        <?php if ($isOwner): ?>
-          <a href="/chat/?project=<?= rawurlencode($p['slug']) ?>&title=<?= rawurlencode($p['title']) ?>" style="color: var(--accent); display: block; font-weight: 600;" onmouseover="this.style.color='var(--accent-hover)'" onmouseout="this.style.color='var(--accent)'">Open in Chat →</a>
-        <?php else: ?>
-          <a href="/chat/?project=<?= rawurlencode($p['slug']) ?>&title=<?= rawurlencode($p['title']) ?>" style="color: var(--gold); display: block;" onmouseover="this.style.color='var(--gold-light)'" onmouseout="this.style.color='var(--gold)'">Build in Chat →</a>
-        <?php endif; ?>
         <a href="/community/" style="color: var(--gold-text); display: block;" onmouseover="this.style.color='var(--gold)'" onmouseout="this.style.color='var(--gold-text)'">More in Community →</a>
       </div>
     </div>
@@ -112,8 +107,7 @@
     <?php if ($isOwner): ?>
       <div class="glass-card-solid p-5">
         <div class="label-gold mb-3">Your Project</div>
-        <p class="text-xs leading-relaxed" style="color: var(--text-mute);">This is your published project. Edit or delete it using the buttons above. Your project files are available in Chat.</p>
-        <a href="/chat/?project=<?= rawurlencode($p['slug']) ?>&title=<?= rawurlencode($p['title']) ?>" class="mt-3 inline-block btn-outline text-xs">Open project files →</a>
+        <p class="text-xs leading-relaxed" style="color: var(--text-mute);">This is your published project. Edit or delete it using the buttons above.</p>
       </div>
     <?php endif; ?>
   </aside>

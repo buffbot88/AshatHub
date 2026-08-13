@@ -9,10 +9,9 @@ use Repositories\RepositoryRegistry;
  * ═══════════════════════════════════════════════════════════════════════
  * Controllers\ApiController — JSON-only health + session info.
  *
- * Domain-specific endpoints (files, chat, admin config) are now
- * extracted into their own controllers:
+ * Domain-specific endpoints (files, admin config) are now extracted
+ * into their own controllers:
  *   - FilesController
- *   - ChatController
  *
  * Route middleware is declared separately so controllers remain focused
  * on data handling without inline authorization checks.
@@ -88,7 +87,7 @@ final class ApiController
 
     /**
      * Return a combined project context summary (files only) for the
-     * authenticated user. Used by Chat to inject awareness of the user's
+     * authenticated user. Used by the build tools to inject awareness of the user's
      * existing Project Files into the AI's context.
      */
     public function context(RequestContext $ctx): void
@@ -96,7 +95,7 @@ final class ApiController
         $userId = (string) $ctx->user()['id'];
 
         // Format files: keep path, language, generated, modified_at, and a
-        // bounded content excerpt so the Chat AI can actually debug the
+        // bounded content excerpt so the build tools can actually inspect the
         // user's real code (not just file names). Content is capped per file
         // and in total so the model context stays provider-friendly; a
         // single query fetches rows (including content) to avoid N+1.

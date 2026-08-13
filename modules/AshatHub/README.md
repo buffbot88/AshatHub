@@ -14,7 +14,6 @@ A browser-based AI coding platform, rewritten from the original React SPA into *
 | Web server   | Apache (mod_rewrite **or** ErrorDocument) or PHP built-in (`php -S`) |
 | Database     | **MySQL 8 / MariaDB 10.5+** via **PDO** with prepared statements |
 | Front-end    | Server-rendered PHP with Tailwind Play CDN + vanilla JS         |
-| Editor       | Monaco Editor via AMD CDN (Chat file editor)                    |
 | Sessions     | Native PHP sessions (server-side, signed)                       |
 | Auth         | `password_hash()` + `password_verify()` + CSRF tokens           |
 
@@ -28,12 +27,12 @@ No build step. No bundler. Drop the folder on a PHP-capable host and run.
 │   ├── index.php          ← Front Controller — all requests go here
 │   ├── .htaccess          ← Apache rewrite rules
 │   ├── css/app.css        ← Custom styles (Plainspoken design system)
-│   ├── js/                ← Vanilla JS (app.js, agent.js, assistant.js)
+│   ├── js/                ← Vanilla JS assets
 │   └── assets/            ← logo, favicon
 ├── src/
 │   ├── Core/              ← Router, Database, Auth, View, Session, ZipHelper (+ routes/*.php)
-│   ├── Models/            ← ChatBackend
-│   ├── Controllers/       ← 13 controllers (Home, Auth, Community, Docs, Account, Admin, Api, Chat, ChatPage, Files, Support, Error, OAuth)
+│   ├── Models/            ← Internal backend helpers
+│   ├── Controllers/       ← Home, Auth, Community, Docs, Account, Admin, Api, Files, Support, Error, OAuth
 │   ├── Repositories/      ← PDO + InMemory data access (User, Session, File, …)
 │   ├── Data/              ← CategoryLabels
 │   └── views/             ← Layouts (header.php, footer.php) + page views
@@ -44,7 +43,7 @@ No build step. No bundler. Drop the folder on a PHP-capable host and run.
 ├── db/
 │   ├── schema.sql             ← MySQL schema + seed data (full-access setup)
 │   ├── schema-tables-only.sql ← tables + seeds only (shared-hosting setup)
-│   └── docs-chat-studio-seed.sql ← fresh Chat Studio docs articles seed
+│   └── docs-chat-studio-seed.sql ← docs articles seed
 ├── router.php             ← Built-in PHP server fallback
 ├── .htaccess              ← Apache rules for shared-hosting / flat deploy
 ├── index.php              ← Entry point when project is in webroot
@@ -197,7 +196,6 @@ If the home page returns a plain 500, three diagnostic paths ship with the proje
 | `/community/user/:name`    | Publisher page    | Every project one user has published      |
 | `/docs/`                   | Docs index        | Articles grouped by category             |
 | `/docs/:slug`              | Docs article      | Markdown rendered to HTML                |
-| `/chat/`                   | Chat              | Brainstorm with the AI, build specs, generate files into your Project Files, edit with Monaco, export Markdown |
 | `/account/`                | Account           | Tabs: Profile / My Projects / Settings    |
 | `/account/active-users/`   | Active Users      | Who's online — orb viz + model usage (all members) |
 | `/admin/`                  | Admin panel       | Tabbed dashboard / users / support / settings |
@@ -205,41 +203,6 @@ If the home page returns a plain 500, three diagnostic paths ship with the proje
 | `/login/`                  | Login             | Sign in                                  |
 | `/logout/`                 | Logout            | Sign out                                 |
 | `/api/health`              | API: health       | JSON                                     |
-
-## Chat Studio Build CLI
-
-The Chat Studio's Build mode is also available from the terminal via
-`bin/ashat-build.php` (or the `bin/ashat-build` wrapper). There is NO
-`Spec.md`/`Build.md` gate — builds take natural language directly:
-
-```
-php bin/ashat-build.php build "a tiny landing page with a hero and a green button" --out ./myapp --json
-php bin/ashat-build.php brainstorm "a tiny landing page with a hero and a green button" --out ./myapp
-php bin/ashat-build.php status --out ./myapp
-```
-
-- **`brainstorm <idea…>`** — turns the idea into `Spec.md` + `Build.md` via
-  the local 450M VL (Intent Router). Both docs are optional artifacts —
-  never a gate.
-- **`build <idea…>`** — the no-gate pipeline. A natural-language idea is
-  summarized into a spec by the local 450M VL (written as a `Spec.md`
-  artifact); with no idea it falls back to an existing `Spec.md`
-  (`--spec/--plan` override). The spec then goes to the remote coding
-  agent (BrainStem/Omega) — the Neural Host cuts SSE connections at
-  ~120 s, so long generations auto-continue — followed by the same
-  validation the web pipeline uses (static syntax gates, the local 350M
-  debug pass, the VL visual check) and the validated files are written
-  into `--out`. `--json` prints a machine-readable result to stdout.
-- **`status`** — prints the project-doc state (informational; always
-  exits `0`).
-
-Model roles: the local 450M VL handles brainstorm + intent summarization;
-Omega/Beta/Delta (BrainStem Neural Host) are code-generation agents only.
-
-Config resolves from `config/server_config.json` → `.env` → defaults
-(`BRAINSTEM_URL` / `BRAINSTEM_KEY` / `INTENT_ROUTER_URL`), exactly like the
-web bootstrap; `--url` / `--key` / `--model` override per invocation.
-Run `php bin/ashat-build.php help` for the full reference.
 
 ## Security
 
@@ -249,7 +212,7 @@ Run `php bin/ashat-build.php help` for the full reference.
 - **SQLi**: every query via PDO prepared statements.
 - **Sessions**: signed by PHP, `HttpOnly`, `SameSite=Lax`, optional `Secure` flag.
 - **BYO API keys**: stored **only in the user's browser** (`localStorage["ashat.api"]`). The server never sees them.
-- **Roles**: `Member` (default), `Pro`, `Admin` — Admin routes use `admin-gate`. Pro is now tied to the Advanced Downloadable Client; every web feature (Chat, files, BYO API, Active Users) is open to all members.
+- **Roles**: `Member` (default), `Pro`, `Admin` — Admin routes use `admin-gate`. Pro is now tied to the Advanced Downloadable Client; every web feature (files, BYO API, Active Users) is open to all members.
 
 
 ## License

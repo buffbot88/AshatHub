@@ -33,13 +33,10 @@ $router->group('/api', function () use ($router) {
     });
 
     // ─── Protected routes (authenticated users) ──────────────
-    // Chat, context, and the per-user project file manager are open to
-    // ALL authenticated roles (Member, Pro, Admin) — everyone gets one
+    // Context and the per-user project file manager are open to all
+    // authenticated roles (Member, Pro, Admin) — everyone gets one
     // project repo to work in.
     $router->group('', ['middleware' => ['auth']], function () use ($router) {
-        $router->post('/chat',        [\Controllers\ChatController::class,   'chat']);
-        $router->post('/chat/stream', [\Controllers\ChatController::class,   'chatStream']);
-        $router->get('/chat/resolve', [\Controllers\ChatController::class,   'resolve']);
         $router->get('/context',      [\Controllers\ApiController::class,    'context']);
 
         // ─── Chain: brainstorm (Omega slot) + gated build pipeline ──

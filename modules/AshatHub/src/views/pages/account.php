@@ -45,7 +45,6 @@
     <div class="glass-card-solid p-5">
       <div class="label-gold mb-3">Quick links</div>
       <ul class="space-y-2 text-sm">
-        <li><a href="/chat/" class="link-accent">Open Chat →</a></li>
         <li><a href="/account/active-users/" class="link-accent">Active users →</a></li>
         <li>
           <form method="post" action="/logout/" class="inline">
@@ -97,8 +96,7 @@
 
         <?php if (empty($myProjects)): ?>
           <p class="text-sm py-3" style="color: var(--text-mute);">
-            You haven't published any projects yet. Build one in
-            <a href="/chat/" class="link-accent">Chat</a>, then submit it from the
+            You haven't published any projects yet. Build one in your project workspace, then submit it from the
             <a href="/community/" class="link-accent">Community</a> page.
           </p>
         <?php else: ?>
@@ -118,7 +116,6 @@
                   </div>
                 </div>
                 <div class="flex items-center gap-2 shrink-0">
-                  <a href="/chat/?project=<?= rawurlencode($p['slug']) ?>&title=<?= rawurlencode($p['title']) ?>" class="btn-outline text-xs" style="padding: 4px 10px;">Open in Chat</a>
                   <a href="/community/project/<?= e($p['slug']) ?>/edit" class="btn-outline text-xs" style="padding: 4px 10px;">Edit</a>
                   <form method="post" action="/community/project/<?= e($p['slug']) ?>/delete" class="inline" onsubmit="return confirm('Delete this published project?')">
                     <?= csrf_field() ?>
@@ -140,10 +137,10 @@
       <div class="glass-card-solid p-6">
         <h2 style="font-family: var(--font-heading); font-weight: 600; font-size: 18px; color: var(--gold);" class="mb-1">AI Chain</h2>
         <p class="text-sm mb-2" style="color: var(--gold-muted);">
-          Chat and builds are served server-side by the ASHAT chain — no API keys needed.
+          Builds are served server-side by the ASHAT chain — no API keys needed.
         </p>
         <p class="text-xs font-mono" style="color: var(--gold-muted);">
-          Chat: local 450M VL &middot; Brainstorm/Build: Omega (Beta/Delta disabled)
+          Brainstorm/Build: Omega (Beta/Delta disabled)
         </p>
       </div>
 

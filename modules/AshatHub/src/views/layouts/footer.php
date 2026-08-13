@@ -17,7 +17,6 @@
 		  </a>
 
 		  <nav style="display: flex; align-items: center; font-size: 13px;" aria-label="Footer navigation">
-			<a href="/chat/"     style="margin-left: 20px; color: var(--gold-muted); text-decoration: none;" class="hover:text-accent transition">Chat</a>
 			<a href="/docs/"     style="margin-left: 20px; color: var(--gold-muted); text-decoration: none;" class="hover:text-accent transition">Docs</a>
 			<a href="/community/" style="margin-left: 20px; color: var(--gold-muted); text-decoration: none;" class="hover:text-accent transition">Community</a>
 			<a href="/terms"     style="margin-left: 20px; color: var(--gold-muted); text-decoration: none;" class="hover:text-accent transition">Terms</a>

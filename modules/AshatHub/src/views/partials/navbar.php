@@ -14,7 +14,6 @@
     </a>
 
     <nav class="flex items-center gap-5 text-sm text-chalk-soft">
-      <a href="/chat/" class="hover:text-accent transition">Chat</a>
       <a href="/community/" class="hover:text-accent transition">Community</a>
       <a href="/docs/" class="hover:text-accent transition">Documentation</a>
       <a href="/support/" class="hover:text-accent transition">Support</a>

@@ -13,9 +13,6 @@ $router->get('/community/project/{slug}/edit', [\Controllers\CommunityController
 $router->post('/community/project/{slug}/edit', [\Controllers\CommunityController::class, 'update']);
 $router->post('/community/project/{slug}/delete', [\Controllers\CommunityController::class, 'delete']);
 
-// ─── Chat (standalone, open to all authenticated users) ───────────
-$router->get('/chat',            [\Controllers\ChatPageController::class,  'index']);
-
 // ─── Support Tickets (authenticated users) ──────────────────────────
 $router->group('/support', ['middleware' => ['auth']], function () use ($router) {
     $router->get('',              [\Controllers\SupportController::class, 'index']);

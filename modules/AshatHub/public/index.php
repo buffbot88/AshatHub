@@ -126,7 +126,7 @@ unset($__uriPath);
 // ── Status code reset ─────────────────────────────────────────────
 // On flat-deployment (ByetHost), the root index.php sets
 // http_response_code() from REDIRECT_STATUS for ALL ErrorDocument-
-// routed requests. This includes directory-like URLs (/chat/, /docs/)
+// routed requests. This includes directory-like URLs such as /docs/
 // that Apache blocked with Options -Indexes → 403, but which ARE
 // valid routes in our app. The Router normalizes trailing slashes
 // internally, but the stale status code (403) would persist and make

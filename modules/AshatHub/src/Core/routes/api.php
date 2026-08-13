@@ -57,6 +57,10 @@ $router->group('/api', function () use ($router) {
             $router->post('/preview/restart',    [\Controllers\GalileoPreviewController::class, 'restart']);
             $router->post('/preview/stop',       [\Controllers\GalileoPreviewController::class, 'stop']);
             $router->get('/preview/status',      [\Controllers\GalileoPreviewController::class, 'status']);
+
+            // Deploy
+            $router->post('/deploy',             [\Controllers\GalileoDeployController::class,  'deploy']);
+            $router->post('/deploy/status',      [\Controllers\GalileoDeployController::class,  'status']);
         });
 
         // ─── Files (per-user project repo — all authenticated roles) ──

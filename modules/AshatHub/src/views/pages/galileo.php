@@ -987,6 +987,26 @@ $files           = $view->files;
     ::-webkit-scrollbar-thumb { background: var(--gs-surface-3); border-radius: 6px; border: 2px solid var(--gs-bg); }
     ::-webkit-scrollbar-thumb:hover { background: var(--gs-text-dim); }
 
+    /* ── Deploy Button ──────────────────────────────────────────── */
+    .gs-deploy-btn {
+      padding: 4px 12px;
+      border-radius: 6px;
+      font-size: 12px;
+      font-weight: 600;
+      font-family: var(--gs-font-mono);
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+      color: var(--gs-accent-ink);
+      background: var(--gs-accent);
+      border: 1px solid transparent;
+      cursor: pointer;
+      transition: all 0.15s;
+    }
+
+    .gs-deploy-btn:hover { background: var(--gs-accent-hover); }
+    .gs-deploy-btn:disabled { opacity: 0.4; cursor: not-allowed; }
+    .gs-deploy-btn.deploying { background: var(--gs-warn); color: #1d0f06; }
+
     /* ── Responsive ────────────────────────────────────────────── */
     @media (max-width: 900px) {
       .gs-chat-panel { width: 100% !important; min-width: 0; }
@@ -1011,6 +1031,8 @@ $files           = $view->files;
       <span id="gsStatusLabel">Ready</span>
     </div>
     <div class="gs-header-right">
+      <button class="gs-deploy-btn" id="gsDeployBtn" onclick="GS.deploy()" title="Deploy this project">Deploy</button>
+      <a href="/deploy/" class="gs-header-link">All Deploys</a>
       <a href="/" class="gs-header-link">Hub</a>
       <span class="gs-header-link" style="opacity:0.5"><?= e($user['username'] ?? '') ?></span>
     </div>

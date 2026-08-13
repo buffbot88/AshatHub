@@ -35,12 +35,10 @@ $router->get('/privacy',         [\Controllers\HomeController::class,   'privacy
 
 // ─── Themed error pages ────────────────────────────────────────────
 $router->get('/error/{code}',    [\Controllers\ErrorController::class,   'show']);
-// ─── Hosting (authenticated users) ────────────────────────────────
-$router->group('/hosting', ['middleware' => ['auth']], function () use ($router) {
-    $router->get('',     [\Controllers\HostingController::class, 'index']);
-    $router->post('/submit', [\Controllers\HostingController::class, 'submit']);
-    // User self-service: pause / resume / delete (ownership-checked)
-    $router->post('/{id}/pause',   [\Controllers\HostingController::class, 'pause']);
-    $router->post('/{id}/resume',  [\Controllers\HostingController::class, 'resume']);
-    $router->post('/{id}/delete',  [\Controllers\HostingController::class, 'delete']);
+// ─── Deploy (authenticated users) ───────────────────────────────
+$router->group('/deploy', ['middleware' => ['auth']], function () use ($router) {
+    $router->get('',     [\Controllers\DeployController::class, 'index']);
+    $router->post('',    [\Controllers\DeployController::class, 'deploy']);
+    $router->post('/{projectId}/redeploy',  [\Controllers\DeployController::class, 'redeploy']);
+    $router->post('/{projectId}/undeploy',  [\Controllers\DeployController::class, 'undeploy']);
 });

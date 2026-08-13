@@ -37,7 +37,7 @@
              box-shadow: var(--shadow-pop); z-index: 50; overflow: hidden;">
           <div style="border-top: 1px solid var(--line); margin: 4px 0;"></div>
           <a href="/galileo/" class="block px-4 py-2.5 text-sm" style="color: var(--text-soft); font-weight:600;" onmouseover="this.style.background='var(--surface-2)'" onmouseout="this.style.background=''">Studio</a>
-          <a href="/hosting/" class="block px-4 py-2.5 text-sm" style="color: var(--text-soft);" onmouseover="this.style.background='var(--surface-2)'" onmouseout="this.style.background=''">Hosting</a>
+          <a href="/deploy/" class="block px-4 py-2.5 text-sm" style="color: var(--text-soft);" onmouseover="this.style.background='var(--surface-2)'" onmouseout="this.style.background=''">Deploy</a>
           <a href="/account/" class="block px-4 py-2.5 text-sm" style="color: var(--text-soft);" onmouseover="this.style.background='var(--surface-2)'" onmouseout="this.style.background=''">Account</a>
           <a href="https://discord.gg/mRtUe7J372" class="block px-4 py-2.5 text-sm" style="color: var(--text-soft);" onmouseover="this.style.background='var(--surface-2)'" onmouseout="this.style.background=''">Discord</a>
           <a href="/account/active-users/" class="block px-4 py-2.5 text-sm" style="color: var(--text-soft);" onmouseover="this.style.background='var(--surface-2)'" onmouseout="this.style.background=''">Active users</a>

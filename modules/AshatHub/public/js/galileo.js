@@ -721,6 +721,36 @@
     }
   });
 
+  // ── Deploy ──────────────────────────────────────────────────────
+  GS.deploy = function () {
+    const btn = $('gsDeployBtn');
+    if (!btn || !S.projectId) return;
+    btn.disabled = true;
+    btn.textContent = 'Deploying...';
+    btn.classList.add('deploying');
+
+    api('/api/galileo/deploy', {
+      method: 'POST',
+      body: { project_id: S.projectId },
+    }).then(d => {
+      if (d.ok) {
+        termLine('$ deployed to ' + d.url, 'success');
+        termLine('$ ' + d.files + ' file(s) deployed');
+        addAgentEvent('Project deployed! ' + d.url, 'done');
+        window.open(d.url, '_blank');
+      } else {
+        termLine('Deploy failed: ' + (d.error || 'unknown'), 'error');
+        addAgentEvent('Deploy failed: ' + (d.error || 'unknown'), 'error');
+      }
+    }).catch(() => {
+      termLine('Deploy request failed', 'error');
+    }).finally(() => {
+      btn.disabled = false;
+      btn.textContent = 'Deploy';
+      btn.classList.remove('deploying');
+    });
+  };
+
   // ── Auto-resize ────────────────────────────────────────────────
   GS.autoResize = function (el) {
     el.style.height = 'auto';

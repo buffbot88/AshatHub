@@ -21,33 +21,40 @@ $files           = $view->files;
   <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/monaco-editor@0.45.0/min/vs/editor/editor.main.css">
   <style>
     /* ═══════════════════════════════════════════════════════════════
-       GALILEO STUDIO — Bolt-style Split Pane Layout
+       GALILEO STUDIO — Ashat Hub Theme
+       Flat surfaces, hairline borders, signal-orange accent,
+       Newsreader serif headings, monospace eyebrows.
        ═══════════════════════════════════════════════════════════════ */
 
     :root {
-      --gs-bg: #0d0d0d;
-      --gs-surface: #171717;
-      --gs-surface-2: #1e1e1e;
-      --gs-surface-3: #252525;
-      --gs-border: #2a2a2a;
-      --gs-border-subtle: #222;
-      --gs-text: #ededed;
-      --gs-text-soft: #999;
-      --gs-text-dim: #666;
-      --gs-accent: #8b5cf6;
-      --gs-accent-hover: #7c3aed;
-      --gs-accent-soft: #a78bfa;
-      --gs-ok: #22c55e;
-      --gs-err: #ef4444;
-      --gs-warn: #f59e0b;
-      --gs-radius: 8px;
-      --gs-radius-lg: 12px;
-      --gs-font: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
-      --gs-font-mono: 'JetBrains Mono', 'Fira Code', 'Cascadia Code', ui-monospace, monospace;
+      --gs-bg: #0d0d0f;
+      --gs-bg-soft: #121215;
+      --gs-surface: #17171b;
+      --gs-surface-2: #1f1f25;
+      --gs-surface-3: #26262d;
+      --gs-border: #2a2a31;
+      --gs-border-subtle: #222228;
+      --gs-text: #e9e9ee;
+      --gs-text-soft: #b3b3bd;
+      --gs-text-mute: #8f8f9a;
+      --gs-text-dim: #5c5c66;
+      --gs-accent: #ff7a45;
+      --gs-accent-hover: #ff9468;
+      --gs-accent-deep: #c9531f;
+      --gs-accent-soft: rgba(255, 122, 69, 0.12);
+      --gs-accent-ink: #1d0f06;
+      --gs-ok: #47d48f;
+      --gs-warn: #f2b23e;
+      --gs-err: #ff6b6b;
+      --gs-radius: 6px;
+      --gs-radius-lg: 10px;
+      --gs-font: 'Inter', ui-sans-serif, system-ui, sans-serif;
+      --gs-font-heading: 'Newsreader', Georgia, 'Times New Roman', serif;
+      --gs-font-mono: ui-monospace, 'JetBrains Mono', 'SFMono-Regular', Menlo, Consolas, monospace;
       --gs-header-h: 48px;
       --gs-workbench-width: 55%;
       --gs-chat-width: calc(100% - var(--gs-workbench-width));
-      --gs-splitter-w: 4px;
+      --gs-splitter-w: 1px;
     }
 
     * { box-sizing: border-box; margin: 0; padding: 0; }
@@ -55,11 +62,16 @@ $files           = $view->files;
     body {
       font-family: var(--gs-font);
       background: var(--gs-bg);
+      background-image: radial-gradient(rgba(255,255,255,0.016) 1px, transparent 1px);
+      background-size: 28px 28px;
+      background-attachment: fixed;
       color: var(--gs-text);
       height: 100vh;
       overflow: hidden;
       -webkit-font-smoothing: antialiased;
     }
+
+    ::selection { background: var(--gs-accent); color: var(--gs-accent-ink); }
 
     /* ── Header ────────────────────────────────────────────────── */
     .gs-header {
@@ -75,14 +87,15 @@ $files           = $view->files;
     }
 
     .gs-logo {
-      font-weight: 700;
-      font-size: 14px;
-      color: var(--gs-accent);
-      letter-spacing: -0.02em;
+      font-family: var(--gs-font-heading);
+      font-weight: 600;
+      font-size: 16px;
+      color: var(--gs-text);
+      letter-spacing: -0.01em;
       white-space: nowrap;
     }
 
-    .gs-logo span { color: var(--gs-text-dim); font-weight: 400; }
+    .gs-logo span { color: var(--gs-accent); font-weight: 600; }
 
     .gs-header-divider {
       width: 1px;
@@ -120,11 +133,12 @@ $files           = $view->files;
       align-items: center;
       gap: 6px;
       padding: 3px 10px;
-      border-radius: 20px;
-      font-size: 12px;
-      color: var(--gs-text-dim);
+      border-radius: 999px;
+      font-size: 11px;
+      font-family: var(--gs-font-mono);
+      color: var(--gs-text-mute);
       background: var(--gs-surface-2);
-      border: 1px solid var(--gs-border-subtle);
+      border: 1px solid var(--gs-border);
       margin-left: auto;
     }
 
@@ -239,7 +253,7 @@ $files           = $view->files;
     }
 
     .gs-wb-tab:hover { color: var(--gs-text-soft); background: var(--gs-surface-2); }
-    .gs-wb-tab.active { color: var(--gs-text); background: var(--gs-surface-3); }
+    .gs-wb-tab.active { color: var(--gs-accent); border-bottom: 2px solid var(--gs-accent); }
 
     .gs-wb-tab .badge {
       min-width: 16px;
@@ -252,7 +266,7 @@ $files           = $view->files;
       align-items: center;
       justify-content: center;
       background: var(--gs-accent);
-      color: #fff;
+      color: var(--gs-accent-ink);
     }
 
     .gs-wb-header-right {
@@ -309,11 +323,12 @@ $files           = $view->files;
 
     .gs-file-tree-header {
       padding: 8px 12px;
-      font-size: 11px;
+      font-size: 10px;
       font-weight: 600;
       text-transform: uppercase;
-      letter-spacing: 0.06em;
-      color: var(--gs-text-dim);
+      letter-spacing: 0.12em;
+      font-family: var(--gs-font-mono);
+      color: var(--gs-text-mute);
       border-bottom: 1px solid var(--gs-border-subtle);
       display: flex;
       align-items: center;
@@ -340,7 +355,6 @@ $files           = $view->files;
     }
 
     .gs-file-node:hover { background: var(--gs-surface-3); }
-    .gs-file-node.active { background: var(--gs-accent); color: #fff; }
 
     .gs-file-node.folder { color: var(--gs-text-dim); font-weight: 500; }
     .gs-file-node .indent { width: 16px; display: inline-block; flex-shrink: 0; }
@@ -452,10 +466,10 @@ $files           = $view->files;
       padding: 8px 16px;
       background: var(--gs-accent);
       border: none;
-      border-radius: 8px;
-      color: #fff;
+      border-radius: 6px;
+      color: var(--gs-accent-ink);
       font-size: 13px;
-      font-weight: 500;
+      font-weight: 600;
       cursor: pointer;
       font-family: var(--gs-font);
       transition: background 0.15s;
@@ -522,7 +536,7 @@ $files           = $view->files;
     }
 
     .gs-change-tag.created { background: rgba(34,197,94,0.15); color: var(--gs-ok); }
-    .gs-change-tag.modified { background: rgba(139,92,246,0.15); color: var(--gs-accent-soft); }
+    .gs-change-tag.modified { background: var(--gs-accent-soft); color: var(--gs-accent); }
     .gs-change-tag.deleted { background: rgba(239,68,68,0.15); color: var(--gs-err); }
 
     .gs-diff-view {
@@ -570,17 +584,18 @@ $files           = $view->files;
       width: 56px;
       height: 56px;
       margin: 0 auto 16px;
-      background: linear-gradient(135deg, var(--gs-accent) 0%, #6d28d9 100%);
+      background: var(--gs-accent);
       border-radius: 16px;
       display: flex;
       align-items: center;
       justify-content: center;
       font-size: 24px;
-      color: #fff;
+      color: var(--gs-accent-ink);
     }
 
     .gs-welcome h2 {
-      font-size: 20px;
+      font-family: var(--gs-font-heading);
+      font-size: 22px;
       font-weight: 600;
       margin-bottom: 8px;
       color: var(--gs-text);
@@ -614,8 +629,8 @@ $files           = $view->files;
 
     .gs-suggestion:hover {
       border-color: var(--gs-accent);
-      color: var(--gs-accent-soft);
-      background: rgba(139,92,246,0.08);
+      color: var(--gs-accent);
+      background: var(--gs-accent-soft);
     }
 
     /* Messages */
@@ -646,8 +661,8 @@ $files           = $view->files;
     }
 
     .gs-msg-avatar.ai {
-      background: linear-gradient(135deg, var(--gs-accent) 0%, #6d28d9 100%);
-      color: #fff;
+      background: var(--gs-accent);
+      color: var(--gs-accent-ink);
     }
 
     .gs-msg-body { flex: 1; min-width: 0; }
@@ -658,7 +673,7 @@ $files           = $view->files;
       margin-bottom: 4px;
     }
 
-    .gs-msg-name.ai { color: var(--gs-accent-soft); }
+    .gs-msg-name.ai { color: var(--gs-accent); }
 
     .gs-msg-text {
       font-size: 14px;
@@ -670,12 +685,13 @@ $files           = $view->files;
     .gs-msg-text p:last-child { margin-bottom: 0; }
 
     .gs-msg-text code {
-      background: var(--gs-surface-3);
-      padding: 1px 5px;
+      background: var(--gs-surface-2);
+      border: 1px solid var(--gs-border);
+      padding: 2px 6px;
       border-radius: 4px;
       font-family: var(--gs-font-mono);
-      font-size: 13px;
-      color: var(--gs-accent-soft);
+      font-size: 12px;
+      color: var(--gs-accent);
     }
 
     .gs-msg-text pre {
@@ -714,6 +730,14 @@ $files           = $view->files;
       border-top-color: var(--gs-accent);
       border-radius: 50%;
       animation: gs-spin 0.7s linear infinite;
+    }
+
+    .gs-changes-header {
+      font-family: var(--gs-font-mono);
+      font-size: 10px;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.12em;
     }
 
     @keyframes gs-spin { to{transform:rotate(360deg)} }
@@ -755,7 +779,7 @@ $files           = $view->files;
 
     .gs-prompt-box:focus-within {
       border-color: var(--gs-accent);
-      box-shadow: 0 0 0 2px rgba(139,92,246,0.15);
+      box-shadow: 0 0 0 3px rgba(255, 122, 69, 0.18);
     }
 
     .gs-prompt-input {
@@ -778,10 +802,11 @@ $files           = $view->files;
     .gs-send-btn {
       width: 34px;
       height: 34px;
-      border-radius: 8px;
+      border-radius: 6px;
       background: var(--gs-accent);
       border: none;
-      color: #fff;
+      color: var(--gs-accent-ink);
+      font-weight: 600;
       cursor: pointer;
       display: flex;
       align-items: center;
@@ -834,11 +859,12 @@ $files           = $view->files;
     }
 
     .gs-sidebar-title {
-      font-size: 12px;
+      font-size: 10px;
       font-weight: 600;
-      color: var(--gs-text-dim);
+      color: var(--gs-text-mute);
       text-transform: uppercase;
-      letter-spacing: 0.05em;
+      letter-spacing: 0.12em;
+      font-family: var(--gs-font-mono);
     }
 
     .gs-sidebar-close {
@@ -867,6 +893,9 @@ $files           = $view->files;
 
     .gs-new-chat:hover { border-color: var(--gs-accent); color: var(--gs-accent); }
 
+    .gs-conv-item.active { background: var(--gs-accent-soft); border-left: 2px solid var(--gs-accent); color: var(--gs-text); font-weight: 500; }
+    .gs-conv-item { border-left: 2px solid transparent; }
+
     .gs-conv-list {
       flex: 1;
       overflow-y: auto;
@@ -886,7 +915,6 @@ $files           = $view->files;
     }
 
     .gs-conv-item:hover { background: var(--gs-surface-3); }
-    .gs-conv-item.active { background: var(--gs-surface-3); color: var(--gs-text); font-weight: 500; }
 
     /* ── Project Dropdown ──────────────────────────────────────── */
     .gs-dropdown {
@@ -908,11 +936,12 @@ $files           = $view->files;
     .gs-dropdown-head {
       padding: 10px 12px;
       border-bottom: 1px solid var(--gs-border-subtle);
-      font-size: 11px;
+      font-size: 10px;
       font-weight: 600;
       text-transform: uppercase;
-      letter-spacing: 0.05em;
-      color: var(--gs-text-dim);
+      letter-spacing: 0.12em;
+      font-family: var(--gs-font-mono);
+      color: var(--gs-text-mute);
     }
 
     .gs-dropdown-item {
@@ -949,11 +978,14 @@ $files           = $view->files;
 
     .gs-dropdown-foot button:hover { border-color: var(--gs-accent); color: var(--gs-accent); }
 
+    .gs-file-node.active { background: var(--gs-accent-soft); color: var(--gs-accent); border-left: 2px solid var(--gs-accent); }
+    .gs-file-node { border-left: 2px solid transparent; }
+
     /* ── Scrollbar ─────────────────────────────────────────────── */
-    ::-webkit-scrollbar { width: 5px; height: 5px; }
-    ::-webkit-scrollbar-track { background: transparent; }
-    ::-webkit-scrollbar-thumb { background: var(--gs-border); border-radius: 3px; }
-    ::-webkit-scrollbar-thumb:hover { background: #444; }
+    ::-webkit-scrollbar { width: 10px; height: 10px; }
+    ::-webkit-scrollbar-track { background: var(--gs-bg); }
+    ::-webkit-scrollbar-thumb { background: var(--gs-surface-3); border-radius: 6px; border: 2px solid var(--gs-bg); }
+    ::-webkit-scrollbar-thumb:hover { background: var(--gs-text-dim); }
 
     /* ── Responsive ────────────────────────────────────────────── */
     @media (max-width: 900px) {

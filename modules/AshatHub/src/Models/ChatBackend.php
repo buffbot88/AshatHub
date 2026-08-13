@@ -188,4 +188,55 @@ final class ChatBackend
             'payload'  => $payload,
         ];
     }
+
+    /**
+     * One local round-trip through the 450M VL (Intent Router) — shared
+     * by the brainstorm controller, the build pipeline's intent
+     * summarizer and the build CLI. Plain JSON (alpha-server returns one
+     * completion per request), with retry/backoff on transient 429
+     * (queue full) and 5xx (model loading) responses — the same policy
+     * the chat path uses.
+     *
+     * @return ?string accumulated message text, or null on hard failure
+     */
+    public static function localVL(array $messages, int $maxTokens = 1500): ?string
+    {
+        $backend = self::select(null, null, 'local');
+        if (!$backend->isAvailable()) {
+            return null;
+        }
+        $req = $backend->buildRequest($messages, ['max_tokens' => $maxTokens, 'temperature' => 0.6], false);
+
+        $attempt = 0;
+        while (true) {
+            $attempt++;
+            $ctx = stream_context_create([
+                'http' => [
+                    'method'        => 'POST',
+                    'header'        => $req['headers'],
+                    'content'       => json_encode($req['payload'], JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES),
+                    'timeout'       => 120,
+                    'ignore_errors' => true,
+                ],
+            ]);
+            $raw = @file_get_contents($req['endpoint'], false, $ctx);
+            $status = 0;
+            if (preg_match('/\s(\d{3})\s/', $http_response_header[0] ?? '', $m)) $status = (int) $m[1];
+
+            if ($raw === false) {
+                return null; // connection-level failure — fail fast
+            }
+            if ($status === 0 || ($status >= 200 && $status < 300)) {
+                $decoded = json_decode($raw, true);
+                if (!is_array($decoded)) return null;
+                $content = $decoded['choices'][0]['message']['content'] ?? '';
+                return $content !== '' ? $content : null;
+            }
+            if ($attempt < 4 && ($status === 429 || $status >= 500)) {
+                sleep($attempt === 1 ? 2 : ($attempt === 2 ? 4 : 8));
+                continue;
+            }
+            return null;
+        }
+    }
 }

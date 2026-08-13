@@ -58,9 +58,12 @@
     brainstorm: {
       name: 'Brainstorm',
       placeholder: 'Describe your project idea...',
-      subtitle: 'Idea → Spec.md + Build.md (Omega)',
+      subtitle: 'Idea → Spec.md + Build.md (local 450M VL)',
       prompt: 'You are Ashat, a software architect at ASHAT Hub. Help the user refine their project idea into a tight specification: scope, requirements, tech stack, file structure. Keep responses focused on requirements and design — not code.'
     },
+    // Superseded by the Build-mode terminal (see "BUILD MODE TERMINAL")
+    // — the chat pane is hidden in Build mode, so this prompt only
+    // remains for stored build conversations rendered in chat mode.
     build: {
       name: 'Build',
       placeholder: 'What would you like to build?',
@@ -101,6 +104,14 @@
     if (subtitleEl) {
       subtitleEl.textContent = getModeSubtitle(mode);
     }
+
+    // Build mode renders the terminal CLI instead of the chat pane.
+    // Entering Build mode closes a file editor if one is open (same
+    // semantics as the "← Chat" button) so the CLI is always visible.
+    if (mode === 'build' && chatFileEditor && chatFileEditor.style.display === 'flex') {
+      closeFileEditor();
+    }
+    syncTerminalVisibility();
 
     // Update system prompt for active conversation
     if (typeof conversations === "undefined" || !Array.isArray(conversations)) return; var conv = getActiveConversation();
@@ -1962,7 +1973,7 @@
   /** Send the idea to /api/brainstorm/ (SSE); server writes the docs on disk. */
   async function runBrainstorm(idea) {
     hideTypingIndicator();
-    var status = appendGenStatusBubble('Brainstorming with Omega…');
+    var status = appendGenStatusBubble('Brainstorming…');
     setStreamingState(true);
     try {
       var response = await fetch('/api/brainstorm/', {
@@ -2045,11 +2056,10 @@
   //  BUILD GATING (Spec.md + Build.md must exist on disk)
   // ══════════════════════════════════════════════════════════════════
 
-  /** Build mode unlocks once both docs exist in the file tree. */
+  // The Spec.md + Build.md gate was removed — Build takes natural
+  // language directly, so the tab is always unlocked.
   function buildUnlocked() {
-    var paths = {};
-    fmFiles.forEach(function (f) { paths[f.path] = true; });
-    return paths['Spec.md'] === true && paths['Build.md'] === true;
+    return true;
   }
 
   /** Reflect the lock state on the Build tab. */
@@ -2541,8 +2551,9 @@
       max_tokens: CHAT_MAX_TOKENS,
       temperature: 0.82,
       top_p: 0.95,
-      // Chat mode → local 450M VL; Brainstorm/Build → Omega (chain).
-      model: currentMode === 'chat' ? 'local' : 'brainstem',
+      // Always the local 450M VL — Omega/Beta/Delta are code agents,
+      // not chat bots, so they never serve conversation.
+      model: 'local',
     };
 
     // Attached image → multimodal content for the VL model (Chat mode only).
@@ -2742,11 +2753,18 @@
 
   var fileTreeEl       = document.getElementById('chat-file-tree');
   var fileUsageEl      = document.getElementById('file-usage');
+  var fileCountBadge   = document.getElementById('file-count-badge');
   var btnFileUpload    = document.getElementById('btn-file-upload');
   var btnFileDownload  = document.getElementById('btn-file-download');
+  var btnFileNew       = document.getElementById('btn-file-new');
+  var btnFolderNew     = document.getElementById('btn-folder-new');
+  var btnFileRefresh   = document.getElementById('btn-file-refresh');
   var btnFileSelectAll = document.getElementById('btn-file-select-all');
   var btnFileDelete    = document.getElementById('btn-file-delete');
+  var btnFmClear       = document.getElementById('btn-fm-clear-selection');
   var fileZipInput     = document.getElementById('file-zip-input');
+  var fmCard           = document.getElementById('fm-card');
+  var fmBulkBar        = document.getElementById('fm-bulk-bar');
   var chatFileEditor   = document.getElementById('chat-file-editor');
   var chatEditorTitle  = document.getElementById('chat-file-editor-title');
   var btnEditorSave    = document.getElementById('btn-editor-save');
@@ -2759,6 +2777,7 @@
   var fmFilesLoading = null;
   var fmSelected = {};
   var fmAllSelected = false;
+  var fmExpanded = {};  // folder path -> false = collapsed (default: expanded)
   var chatMonacoEd = null;
   var chatMonacoPending = [];
   var activeFilePath = null;
@@ -2783,6 +2802,9 @@
         if (fileUsageEl && resp) {
           fileUsageEl.textContent = fmFormatBytes(resp.usage_bytes || 0) + ' / ' + fmFormatBytes(resp.quota_bytes || 0);
         }
+        if (fileCountBadge) {
+          fileCountBadge.textContent = fmFiles.filter(function (f) { return !(f.path || '').endsWith('/'); }).length;
+        }
         renderFileTree();
         refreshBuildTab();
       } catch (e) {
@@ -2801,7 +2823,7 @@
     if (!fileTreeEl) return;
     fileTreeEl.innerHTML = '';
     if (!fmFiles.length) {
-      fileTreeEl.innerHTML = '<div style="color:var(--gold-dim);font-size:11px;padding:8px 0;">No files yet — upload a .zip to get started.</div>';
+      fileTreeEl.innerHTML = '<div class="fm-empty">No files yet — upload a .zip, or use the Build tab to generate a project.</div>';
       return;
     }
 
@@ -2832,7 +2854,11 @@
       if (p.length > 1 && p.endsWith('/')) { linkChain(p.slice(0, -1).split('/')); return; }
       var segs = p.split('/');
       var name = segs.pop();
-      linkChain(segs).children.push({ name: name, path: p, type: 'file', id: f.id });
+      linkChain(segs).children.push({
+        name: name, path: p, type: 'file', id: f.id,
+        size: typeof f.size_bytes === 'number' ? f.size_bytes : null,
+        generated: !!f.generated,
+      });
     });
 
     // 2. Sort: folders first, then natural (numeric-aware) order.
@@ -2845,18 +2871,26 @@
     }
     sortChildren(root);
 
+    function isCollapsed(path) {
+      return Object.prototype.hasOwnProperty.call(fmExpanded, path) && fmExpanded[path] === false;
+    }
+
+    function toggleCollapse(path) {
+      fmExpanded[path] = isCollapsed(path);
+      renderFileTree();
+    }
+
     function makeRow(node, indent) {
-      var label = node.type === 'folder' ? node.name + '/' : node.name;
+      var isFolder = node.type === 'folder';
       var row = document.createElement('div');
-      row.className = 'fm-row ' + (node.type === 'folder' ? 'fm-folder' : 'fm-file');
+      row.className = 'fm-row ' + (isFolder ? 'fm-folder' : 'fm-file');
       row.style.marginLeft = indent + 'px';
-      row.style.fontSize = '11px';
       row.title = node.path;
 
       // Folders are selected by their marker path (trailing slash), so
       // select-all and per-folder checkboxes share one key space with
       // the bulk-delete handler's prefix semantics.
-      var selKey = node.type === 'folder' ? node.path + '/' : node.path;
+      var selKey = isFolder ? node.path + '/' : node.path;
       var cb = document.createElement('input');
       cb.type = 'checkbox';
       cb.className = 'fm-check';
@@ -2869,18 +2903,72 @@
       });
       row.appendChild(cb);
 
-      var icon = document.createElement('span');
-      icon.textContent = node.type === 'folder' ? '▸' : '·';
-      icon.style.cssText = 'color:var(--text-dim);flex-shrink:0;font-size:9px;width:8px;';
-      row.appendChild(icon);
+      if (isFolder) {
+        var arrow = document.createElement('span');
+        arrow.className = 'fm-arrow';
+        arrow.textContent = isCollapsed(node.path) ? '▸' : '▾';
+        arrow.title = isCollapsed(node.path) ? 'Expand' : 'Collapse';
+        row.appendChild(arrow);
 
-      var name = document.createElement('span');
-      name.className = 'fm-name';
-      name.textContent = label;
-      row.appendChild(name);
+        var fico = document.createElement('span');
+        fico.className = 'fm-ico';
+        fico.textContent = '▣';
+        row.appendChild(fico);
 
-      // Hover-reveal quick actions: open (files only) and delete.
-      if (node.type === 'file') {
+        var fname = document.createElement('span');
+        fname.className = 'fm-name';
+        fname.textContent = node.name + '/';
+        row.appendChild(fname);
+
+        var cnt = document.createElement('span');
+        cnt.className = 'fm-fcount';
+        cnt.textContent = node.children.length;
+        row.appendChild(cnt);
+
+        row.addEventListener('click', function (e) {
+          if (e.target === cb) return;
+          toggleCollapse(node.path);
+        });
+      } else {
+        var dico = document.createElement('span');
+        dico.className = 'fm-ico';
+        dico.textContent = '·';
+        row.appendChild(dico);
+
+        var fname = document.createElement('span');
+        fname.className = 'fm-name';
+        fname.textContent = node.name;
+        row.appendChild(fname);
+
+        // Ext chip + generated marker + size, right-aligned.
+        var meta = document.createElement('span');
+        meta.className = 'fm-meta';
+        var ext = (node.name.split('.').pop() || '').toLowerCase();
+        if (ext && ext !== node.name) {
+          var chip = document.createElement('span');
+          chip.className = 'fm-ext';
+          chip.textContent = ext;
+          chip.style.color = fmExtColor(ext);
+          chip.style.borderColor = fmExtColor(ext);
+          chip.style.background = 'rgba(255,255,255,0.03)';
+          meta.appendChild(chip);
+        }
+        if (node.generated) {
+          var gen = document.createElement('span');
+          gen.className = 'fm-gen';
+          gen.title = 'Generated by Build';
+          gen.textContent = '⚙';
+          meta.appendChild(gen);
+        }
+        if (node.size !== null && node.size >= 0) {
+          var sz = document.createElement('span');
+          sz.className = 'fm-size';
+          sz.textContent = fmFormatBytes(node.size);
+          meta.appendChild(sz);
+        }
+        row.appendChild(meta);
+
+        // Hover-reveal quick actions: open, rename, duplicate, delete.
         var actions = document.createElement('span');
         actions.className = 'fm-actions';
 
@@ -2893,6 +2981,26 @@
           openFileInEditor(node.id, node.path);
         });
         actions.appendChild(openBtn);
+
+        var renBtn = document.createElement('button');
+        renBtn.className = 'fm-ren';
+        renBtn.title = 'Rename';
+        renBtn.textContent = '✏';
+        renBtn.addEventListener('click', function (e) {
+          e.stopPropagation();
+          fmRenameNode(node);
+        });
+        actions.appendChild(renBtn);
+
+        var dupBtn = document.createElement('button');
+        dupBtn.className = 'fm-dup';
+        dupBtn.title = 'Duplicate';
+        dupBtn.textContent = '⧉';
+        dupBtn.addEventListener('click', function (e) {
+          e.stopPropagation();
+          fmDuplicateNode(node);
+        });
+        actions.appendChild(dupBtn);
 
         var delBtn = document.createElement('button');
         delBtn.className = 'fm-del';
@@ -2918,33 +3026,107 @@
           if (e.target === cb || e.target.closest('.fm-actions')) return;
           openFileInEditor(node.id, node.path);
         });
-      } else {
-        // Folders keep the old toggle affordance but nothing else.
-        row.addEventListener('click', function () {});
       }
       return row;
     }
 
-    /** Keep the small 'N selected' hint under the toolbar in sync. */
-    function updateFmBulkStatus() {
-      if (!fmBulkStatus) return;
-      var n = Object.keys(fmSelected).length;
-      if (n > 0) {
-        fmBulkStatus.style.display = '';
-        fmBulkStatus.textContent = n + ' selected';
-      } else {
-        fmBulkStatus.style.display = 'none';
-        fmBulkStatus.textContent = '';
-      }
-    }
-
     function renderNode(node, parentEl, depth) {
       if (node.path !== '') parentEl.appendChild(makeRow(node, depth * 14));
-      if (node.type === 'folder') {
+      if (node.type === 'folder' && !isCollapsed(node.path)) {
         node.children.forEach(function (c) { renderNode(c, parentEl, node.path === '' ? depth : depth + 1); });
       }
     }
     renderNode(root, fileTreeEl, 0);
+  }
+
+  /** Keep bulk-selection UI (count, bar, toolbar states) in sync. */
+  function updateFmBulkStatus() {
+    if (!fmBulkStatus) return;
+    var n = Object.keys(fmSelected).length;
+    fmBulkStatus.textContent = n ? n + ' selected' : '';
+    if (fmBulkBar) fmBulkBar.style.display = n ? '' : 'none';
+    if (btnFileDelete) btnFileDelete.classList.toggle('active', n > 0);
+    if (fmCard) fmCard.classList.toggle('fm-bulk-on', n > 0);
+    if (n === 0 && fmAllSelected) {
+      fmAllSelected = false;
+      if (btnFileSelectAll) btnFileSelectAll.classList.remove('active');
+    }
+  }
+
+  var FM_EXT_COLORS = {
+    js: '#f1e05a', jsx: '#f1e05a', mjs: '#f1e05a', cjs: '#f1e05a',
+    ts: '#3178c6', tsx: '#3178c6',
+    py: '#3572A5', rs: '#dea584', go: '#00ADD8', java: '#b07219', rb: '#701516',
+    php: '#4F5D95', cs: '#178600', swift: '#F05138',
+    html: '#e34c26', htm: '#e34c26', css: '#563d7c', scss: '#c6538c', less: '#1d365d',
+    json: '#cb3837', yml: '#cb171e', yaml: '#cb171e', toml: '#9c4221',
+    md: '#519aba', txt: '#8b949e', sql: '#e38c00',
+    sh: '#89e051', bash: '#89e051', zsh: '#89e051',
+    xml: '#0060ac', svg: '#ffb13b', lock: '#8b949e',
+    c: '#555555', h: '#555555', cpp: '#f34b7d', hpp: '#f34b7d',
+    vue: '#41b883', svelte: '#ff3e00',
+  };
+  function fmExtColor(ext) {
+    return FM_EXT_COLORS[ext] || '#7d8590';
+  }
+
+  function fmNewFile() {
+    var path = (prompt('New file path (relative to project root):', '') || '').trim().replace(/^\/+|\/+$/g, '');
+    if (!path) return;
+    ashatFetch('/api/files/', { method: 'POST', body: { path: path, content: '' } })
+      .then(function () { ashatToast('Created ' + path, 'ok'); loadFileTree(); })
+      .catch(function () { ashatToast('Could not create ' + path + '.', 'err'); });
+  }
+
+  function fmNewFolder() {
+    var path = (prompt('New folder path (relative to project root):', '') || '').trim().replace(/^\/+|\/+$/g, '');
+    if (!path) return;
+    ashatFetch('/api/folders', { method: 'POST', body: { path: path } })
+      .then(function () { ashatToast('Created ' + path + '/', 'ok'); loadFileTree(); })
+      .catch(function () { ashatToast('Could not create folder.', 'err'); });
+  }
+
+  function fmRenameNode(node) {
+    var oldPath = node.path;
+    var base = oldPath.indexOf('/') === -1 ? '' : oldPath.slice(0, oldPath.lastIndexOf('/') + 1);
+    var name = oldPath.indexOf('/') === -1 ? oldPath : oldPath.slice(oldPath.lastIndexOf('/') + 1);
+    var next = prompt('Rename "' + oldPath + '" to:', name);
+    if (next === null) return;
+    next = next.trim();
+    if (!next || next === name) return;
+    ashatFetch('/api/files/rename', { method: 'POST', body: { path: oldPath, newPath: base + next } })
+      .then(function (res) {
+        if (res && res.error) return ashatToast('Rename failed: ' + res.error, 'err');
+        ashatToast('Renamed to ' + base + next, 'ok');
+        // Keep the editor's Save pointing at the new path if this file is open.
+        if (activeFilePath === oldPath) activeFilePath = base + next;
+        loadFileTree();
+      })
+      .catch(function (e) {
+        var msg = (e && e.payload && e.payload.error) ? 'Rename failed: ' + e.payload.error : 'Rename failed.';
+        ashatToast(msg, 'err');
+      });
+  }
+
+  function fmDuplicateNode(node) {
+    ashatFetch('/api/files/duplicate', { method: 'POST', body: { path: node.path } })
+      .then(function (res) {
+        if (res && res.error) return ashatToast('Duplicate failed: ' + res.error, 'err');
+        ashatToast('Duplicated ' + ((res && res.path) || node.path), 'ok');
+        loadFileTree();
+      })
+      .catch(function (e) {
+        var msg = (e && e.payload && e.payload.error) ? 'Duplicate failed: ' + e.payload.error : 'Duplicate failed.';
+        ashatToast(msg, 'err');
+      });
+  }
+
+  function clearFmSelection() {
+    fmSelected = {};
+    fmAllSelected = false;
+    if (btnFileSelectAll) btnFileSelectAll.classList.remove('active');
+    updateFmBulkStatus();
+    renderFileTree();
   }
 
   /** Lazy-create the Monaco editor (or a textarea fallback) in the chat shell. */
@@ -3032,6 +3214,7 @@
       messagesEl.style.display = 'none';
       if (chatInputArea) chatInputArea.style.display = 'none';
       chatFileEditor.style.display = 'flex';
+      if (terminalEl) terminalEl.style.display = 'none';
 
       ensureChatMonaco(function (ed) {
         if (!ed) return;
@@ -3069,8 +3252,7 @@
   function closeFileEditor() {
     activeFilePath = null;
     chatFileEditor.style.display = 'none';
-    messagesEl.style.display = '';
-    if (chatInputArea) chatInputArea.style.display = '';
+    syncTerminalVisibility();
   }
 
   function bindFileManager() {
@@ -3176,6 +3358,10 @@
           });
       });
     }
+    if (btnFileNew) btnFileNew.addEventListener('click', fmNewFile);
+    if (btnFolderNew) btnFolderNew.addEventListener('click', fmNewFolder);
+    if (btnFileRefresh) btnFileRefresh.addEventListener('click', function () { loadFileTree(); });
+    if (btnFmClear) btnFmClear.addEventListener('click', clearFmSelection);
     if (btnEditorSave) btnEditorSave.addEventListener('click', saveEditorFile);
     if (btnEditorClose) btnEditorClose.addEventListener('click', closeFileEditor);
     fmBulkStatus = document.querySelector('.fm-bulk-status');
@@ -3358,6 +3544,411 @@
   });
 
   // ══════════════════════════════════════════════════════════════════
+  // ══════════════════════════════════════════════════════════════════
+  //  BUILD MODE TERMINAL — the Chat Studio Build CLI, in the browser.
+  //  Clicking the Build tab renders this terminal instead of the chat
+  //  pane. Commands mirror bin/ashat-build.php (brainstorm / build /
+  //  status / ls / pwd / help) and drive the same server endpoints the
+  //  web pipeline uses — /api/brainstorm/, /api/build/pipeline/ and the
+  //  project-files API — so gating and progress are identical.
+  // ══════════════════════════════════════════════════════════════════
+
+  var terminalEl     = document.getElementById('chat-terminal');
+  var terminalOut    = document.getElementById('terminal-output');
+  var terminalForm   = document.getElementById('terminal-form');
+  var terminalInput  = document.getElementById('terminal-input');
+  var termBusy       = false;
+  var termHistory    = [];
+  var termHistoryIdx = -1;
+  var termStarted    = false;
+  var termUsername   = null;
+
+  /** Append a line to the terminal output (autoscroll). */
+  function termPrint(text, cls) {
+    if (!terminalOut) return;
+    var lines = String(text).split('\n');
+    for (var i = 0; i < lines.length; i++) {
+      var div = document.createElement('div');
+      div.className = 't-line' + (cls ? ' ' + cls : '');
+      div.textContent = lines[i] === '' ? '\u00A0' : lines[i];
+      terminalOut.appendChild(div);
+    }
+    terminalOut.scrollTop = terminalOut.scrollHeight;
+  }
+
+  function termStep(text) { termPrint('── ' + text, 't-step'); }
+  function termOk(text)   { termPrint(text, 't-ok'); }
+  function termErr(text)  { termPrint(text, 't-err'); }
+  function termDim(text)  { termPrint(text, 't-dim'); }
+  function termLine(text) { termPrint(text); }
+  function termEchoLine(text) { termPrint('$ ' + text, 't-echo'); }
+
+  /** Whether the terminal pane should be visible (Build mode, editor closed). */
+  function terminalVisible() {
+    return !!terminalEl && currentMode === 'build' && !activeFilePath;
+  }
+
+  /** Sync pane visibility after a mode switch or editor open/close. */
+  function syncTerminalVisibility() {
+    if (!terminalEl) return;
+    var show = terminalVisible();
+    terminalEl.style.display = show ? 'flex' : 'none';
+    if (show) {
+      if (messagesEl) messagesEl.style.display = 'none';
+      if (chatInputArea) chatInputArea.style.display = 'none';
+      if (emptyState) emptyState.style.display = 'none';
+      if (!termStarted) startTerminal();
+      termFocus();
+    } else if (!chatFileEditor || chatFileEditor.style.display !== 'flex') {
+      // The editor manages its own panes — only restore chat when it's closed.
+      if (messagesEl) messagesEl.style.display = '';
+      if (chatInputArea) chatInputArea.style.display = '';
+      if (emptyState) emptyState.style.display = '';
+    }
+  }
+
+  function termFocus() {
+    if (terminalInput && !terminalInput.disabled) terminalInput.focus();
+  }
+
+  function termSetBusy(busy) {
+    termBusy = !!busy;
+    if (terminalInput) {
+      terminalInput.disabled = termBusy;
+      if (!busy) termFocus();
+    }
+  }
+
+  /** First-show banner. */
+  function startTerminal() {
+    if (termStarted) return;
+    termStarted = true;
+    termPrint('ashat-build — Chat Studio Build CLI');
+    termPrint('');
+    termDim('Run "help" for commands. Start with: build "<your idea>" — no spec required.');
+    termDim('');
+  }
+
+  // ── commands ─────────────────────────────────────────────────────
+
+  function termHelp() {
+    termLine('ASHAT Hub — Chat Studio Build CLI');
+    termLine('');
+    termLine('Usage:');
+    termLine('  brainstorm <idea…>   Idea → Spec.md + Build.md (local 450M VL)');
+    termLine('  build [<idea…>]      Natural language → generate code; validate + write files');
+    termLine('  status               Show project docs (no gate)');
+    termLine('  ls                   List project files');
+    termLine('  pwd                  Print the project files directory');
+    termLine('  echo <text>          Print text');
+    termLine('  clear                Clear the terminal');
+    termLine('  help                 This help');
+    termLine('');
+    termDim('Flags: --json prints the machine-readable result. --out is not');
+    termDim('applicable here — files are written to your Project Files (right pane).');
+    termDim('No spec required: build "<your idea>" works directly.');
+  }
+
+  function termStatus() {
+    termStep('Project docs (optional artifacts)');
+    return ashatFetch('/api/files/')
+      .then(function (data) {
+        var files = (data && data.files) || [];
+        var spec = null, build = null;
+        for (var i = 0; i < files.length; i++) {
+          if (files[i].path === 'Spec.md') spec = files[i];
+          if (files[i].path === 'Build.md') build = files[i];
+        }
+        termLine('Spec.md:     ' + (spec ? 'present (' + fmFormatBytes(spec.size_bytes) + ')' : 'missing'));
+        termLine('Build.md:    ' + (build ? 'present (' + fmFormatBytes(build.size_bytes) + ')' : 'missing'));
+        termLine('Gate:        none — build takes natural language: build "<your idea>"');
+        return true;
+      })
+      .catch(function () { termErr('status failed.'); return false; });
+  }
+
+  function termBrainstorm(idea) {
+    if (!idea) {
+      termErr('brainstorm needs an idea: brainstorm "<your idea>"');
+      return Promise.resolve();
+    }
+    termStep('Brainstorming (local 450M VL)');
+    return termStream('/api/brainstorm/', { idea: idea }, {
+      onProgress: function (m) { termDim(m); },
+      onError:    function (m) { termErr(m); },
+      onDone:     function (done) {
+        if (!done || !done.ok) { termErr('Brainstorm did not complete.'); return; }
+        termOk('Wrote Spec.md  (' + ((done.spec || '').length) + ' bytes)');
+        termOk('Wrote Build.md (' + ((done.build || '').length) + ' bytes)');
+        termLine('Docs written — build works from natural language too: build "<your idea>"');
+        loadFileTree();
+      },
+    }).catch(function (e) {
+      termErr('Brainstorm failed: ' + (e && e.message ? e.message : 'unknown'));
+    });
+  }
+
+  function termBuild(opts, idea) {
+    opts = opts || {};
+    idea = String(idea || '').trim();
+    if (opts.out) termDim('note: --out is not applicable here — files are written to your Project Files.');
+
+    function run(body) {
+      termStep('Build pipeline');
+      return termStream('/api/build/pipeline/', body, {
+        onProgress: function (m) { termDim(m); },
+        onError:    function (m) { termErr(m); },
+        onMeta:     function (meta) {
+          if (meta && meta.models && meta.models.length) termDim('models: ' + meta.models.join(' → '));
+        },
+        onDone: function (done) {
+          if (!done) { termErr('The pipeline returned no result.'); return; }
+          var files = (done && done.files) || [];
+          var saved = (done && done.saved) || files.length;
+          if (done.plan) termLine(done.plan);
+          for (var i = 0; i < files.length; i++) termOk('  ✓ ' + files[i].path);
+          termLine(saved + ' file(s) generated into your Project Files.');
+          if (done.issues && done.issues.length) {
+            termDim(done.issues.length + ' validation note(s) — first 40:');
+            for (var j = 0; j < Math.min(done.issues.length, 40); j++) termDim('  • ' + done.issues[j]);
+          }
+          if (opts.json) {
+            termLine(JSON.stringify({
+              ok: true, plan: done.plan || '', files: files,
+              saved: saved, issues: done.issues || [],
+            }, null, 2));
+          }
+          loadFileTree();
+        },
+      }).catch(function (e) {
+        termErr('Build failed: ' + (e && e.message ? e.message : 'unknown'));
+      });
+    }
+
+    if (idea) {
+      termLine('idea: ' + idea);
+      return run({ idea: idea, language: opts.language || '' });
+    }
+
+    // No idea → fall back to Spec.md in Project Files (optional artifact).
+    return ashatFetch('/api/files/read?path=' + encodeURIComponent('Spec.md'))
+      .then(function (res) {
+        var specFile = res && res.file;
+        if (!specFile || !(specFile.content || '').trim()) {
+          termErr('No idea given and no Spec.md in Project Files — run: build "<your idea>"');
+          return;
+        }
+        return ashatFetch('/api/files/read?path=' + encodeURIComponent('Build.md'))
+          .then(function (r2) {
+            var plan = (r2 && r2.file) ? (r2.file.content || '') : '';
+            termLine('Spec.md:  ' + specFile.content.length + ' chars');
+            if (plan) termLine('Build.md: ' + plan.length + ' chars');
+            return run({ spec: specFile.content, plan: plan, language: opts.language || '' });
+          });
+      })
+      .catch(function (e) {
+        if (e && e.status === 404) {
+          termErr('No Spec.md in Project Files — run: build "<your idea>"');
+        } else {
+          termErr('build failed: could not read Spec.md from your Project Files.');
+        }
+      });
+  }
+
+  function termLs(sub) {
+    return ashatFetch('/api/files/')
+      .then(function (data) {
+        var files = (data && data.files) || [];
+        if (!files.length) { termDim('(no files — upload a .zip or run brainstorm first)'); return; }
+        var shown = 0;
+        for (var i = 0; i < files.length; i++) {
+          var p = files[i].path;
+          if (sub && p.indexOf(sub) !== 0) continue;
+          termLine(p + (files[i].generated ? '   (generated)' : ''));
+          shown++;
+        }
+        termDim(shown + ' file(s)');
+      })
+      .catch(function () { termErr('ls failed.'); });
+  }
+
+  function termPwd() {
+    return ashatFetch('/api/me/')
+      .then(function (data) {
+        var u = data && data.user;
+        if (u && u.username) termUsername = u.username;
+        termLine(termUsername ? '/projects/' + termUsername + '/' : '~/projects/ (your Project Files)');
+      })
+      .catch(function () { termLine('~/projects/ (your Project Files)'); });
+  }
+
+  /** SSE stream → callbacks; mirrors the reader used by runBrainstorm(). */
+  function termStream(url, body, handlers) {
+    return fetch(url, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'X-CSRF-Token': (document.querySelector('meta[name="csrf-token"]') || {}).content || '',
+        'X-Requested-With': 'XMLHttpRequest',
+        'Accept': 'text/event-stream',
+      },
+      credentials: 'same-origin',
+      body: JSON.stringify(body),
+    }).then(function (response) {
+      if (!response.ok || !response.body) {
+        throw new Error('request failed (HTTP ' + response.status + ')');
+      }
+      var reader = response.body.getReader();
+      var decoder = new TextDecoder();
+      var buffer = '';
+      var eventType = 'message';
+      var errored = false;
+      return new Promise(function (resolve, reject) {
+        function pump() {
+          return reader.read().then(function (r) {
+            if (r.done) { resolve(); return; }
+            buffer += decoder.decode(r.value, { stream: true });
+            var parts = buffer.split('\n\n');
+            buffer = parts.pop();
+            for (var k = 0; k < parts.length; k++) {
+              var data = '';
+              parts[k].split('\n').forEach(function (line) {
+                if (line.indexOf('event:') === 0) eventType = line.slice(6).trim();
+                else if (line.indexOf('data:') === 0) data += line.slice(5).trim() + '\n';
+              });
+              if (!data.trim()) continue;
+              var parsed;
+              try { parsed = JSON.parse(data); } catch (_) { continue; }
+              if (errored) continue; // once the server reported an error, ignore the rest
+              if (eventType === 'progress' && parsed.message && handlers.onProgress) {
+                handlers.onProgress(parsed.message);
+              } else if (eventType === 'error' && handlers.onError) {
+                errored = true;
+                handlers.onError(parsed.message || 'Command failed.');
+              } else if (eventType === 'done' && handlers.onDone) {
+                handlers.onDone(parsed);
+              } else if (eventType === 'meta' && handlers.onMeta) {
+                handlers.onMeta(parsed);
+              }
+            }
+            return pump();
+          }).catch(reject);
+        }
+        return pump();
+      });
+    });
+  }
+
+  /** Split a command line into tokens (respect double quotes). */
+  function termTokenize(line) {
+    var tokens = line.match(/(?:[^\s"]+|"[^"]*")+/g) || [];
+    for (var i = 0; i < tokens.length; i++) {
+      var t = tokens[i];
+      if (t.length > 1 && t.charAt(0) === '"' && t.charAt(t.length - 1) === '"') {
+        tokens[i] = t.slice(1, -1);
+      }
+    }
+    return tokens;
+  }
+
+  /** Run one command line; returns a promise that settles when done. */
+  function termRun(raw) {
+    var line = String(raw || '').trim();
+    if (!line) { termFocus(); return Promise.resolve(); }
+    if (termBusy) { termDim('busy — wait for the running command to finish.'); return Promise.resolve(); }
+
+    var tokens = termTokenize(line);
+    var cmd = (tokens.shift() || '').toLowerCase();
+    var flags = {};
+    var positionals = [];
+    for (var i = 0; i < tokens.length; i++) {
+      var t = tokens[i];
+      if (t.indexOf('--') === 0) {
+        var name = t.slice(2);
+        var eq = name.indexOf('=');
+        if (eq !== -1) flags[name.slice(0, eq)] = name.slice(eq + 1);
+        else flags[name] = true;
+      } else {
+        positionals.push(t);
+      }
+    }
+
+    termEchoLine(line);
+    termSetBusy(true);
+
+    var task;
+    switch (cmd) {
+      case 'help': case '?':
+        termHelp(); task = Promise.resolve(); break;
+      case 'clear':
+        if (terminalOut) terminalOut.innerHTML = ''; task = Promise.resolve(); break;
+      case 'status':
+        task = termStatus(); break;
+      case 'brainstorm':
+        task = termBrainstorm(positionals.join(' ') || (typeof flags.idea === 'string' ? flags.idea : '')); break;
+      case 'build':
+        task = termBuild({
+          language: typeof flags.language === 'string' ? flags.language : '',
+          json: !!flags.json,
+          out: flags.out,
+        }, positionals.join(' ') || (typeof flags.idea === 'string' ? flags.idea : '')); break;
+      case 'ls': case 'files':
+        task = termLs(typeof flags.path === 'string' ? flags.path : (positionals[0] || '')); break;
+      case 'pwd':
+        task = termPwd(); break;
+      case 'echo':
+        termLine(positionals.join(' ')); task = Promise.resolve(); break;
+      case 'exit': case 'quit':
+        termDim('This terminal IS Build mode — use the tabs to switch away.'); task = Promise.resolve(); break;
+      default:
+        termErr('command not found: ' + cmd + " — run 'help'");
+        task = Promise.resolve();
+    }
+
+    return Promise.resolve(task).then(
+      function () { termSetBusy(false); if (cmd !== 'clear') termLine(''); termFocus(); },
+      function (e) { termSetBusy(false); termErr('error: ' + (e && e.message ? e.message : 'unknown')); termLine(''); termFocus(); }
+    );
+  }
+
+  // ── bindings ──────────────────────────────────────────────────────
+
+  function bindTerminal() {
+    if (!terminalForm || !terminalInput) return;
+    terminalForm.addEventListener('submit', function (e) {
+      e.preventDefault();
+      var raw = terminalInput.value;
+      terminalInput.value = '';
+      if (raw.trim()) {
+        termHistory.push(raw);
+        if (termHistory.length > 100) termHistory.shift();
+        termHistoryIdx = termHistory.length;
+      }
+      termRun(raw);
+    });
+    terminalInput.addEventListener('keydown', function (e) {
+      if (e.key === 'ArrowUp') {
+        e.preventDefault();
+        if (termHistoryIdx > 0) {
+          termHistoryIdx--;
+          terminalInput.value = termHistory[termHistoryIdx];
+        }
+      } else if (e.key === 'ArrowDown') {
+        e.preventDefault();
+        if (termHistoryIdx < termHistory.length) {
+          termHistoryIdx++;
+          terminalInput.value = termHistoryIdx === termHistory.length ? '' : termHistory[termHistoryIdx];
+        }
+      }
+    });
+    if (terminalOut) {
+      terminalOut.addEventListener('click', function () { termFocus(); });
+    }
+  }
+
+  bindTerminal();
+  syncTerminalVisibility();
+
   //  INIT
   // ══════════════════════════════════════════════════════════════════
 

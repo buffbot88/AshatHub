@@ -305,6 +305,43 @@ final class SystemValidationEngine
      * first balanced {...} block anywhere in the text. Returns null on
      * total failure. Mirrors agent.js extractJson() in spirit.
      */
+    /**
+     * Pull a document out of a model response. Prompts ask for plain
+     * markdown, so the raw (fence-stripped) text is the primary result;
+     * a JSON wrapper (spec/build key, possibly nested) is decoded when
+     * the model emits one. Shared by BrainstormController,
+     * BuildPipelineController and the build CLI.
+     */
+    public static function docFromMarkdown(string $content, string $key): string
+    {
+        $parsed = self::lenientJson($content);
+        if (is_array($parsed)) {
+            $doc = trim((string) ($parsed[$key] ?? ''));
+            if ($doc !== '') {
+                if ($doc[0] !== '{') {
+                    return $doc;
+                }
+                // Nested JSON value (model escaped a doc as an object) — flatten.
+                $inner = json_decode($doc, true);
+                if (is_array($inner)) {
+                    $flat = trim(implode("\n\n", array_map('strval', array_values($inner))));
+                    if ($flat !== '') {
+                        return $flat;
+                    }
+                }
+            }
+        }
+        // Strip any fences and use the raw text as the doc.
+        $raw = trim($content);
+        $raw = preg_replace('/^```(?:json)?\s*\n?/', '', $raw);
+        $raw = preg_replace('/\n?```\s*$/', '', $raw);
+        $raw = trim($raw);
+        if ($raw !== '' && strpos($raw, '"' . $key . '":') !== 0) {
+            return $raw;
+        }
+        return '';
+    }
+
     public static function lenientJson(string $text): ?array
     {
         $text = trim((string) $text);

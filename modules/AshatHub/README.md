@@ -206,6 +206,41 @@ If the home page returns a plain 500, three diagnostic paths ship with the proje
 | `/logout/`                 | Logout            | Sign out                                 |
 | `/api/health`              | API: health       | JSON                                     |
 
+## Chat Studio Build CLI
+
+The Chat Studio's Build mode is also available from the terminal via
+`bin/ashat-build.php` (or the `bin/ashat-build` wrapper). There is NO
+`Spec.md`/`Build.md` gate — builds take natural language directly:
+
+```
+php bin/ashat-build.php build "a tiny landing page with a hero and a green button" --out ./myapp --json
+php bin/ashat-build.php brainstorm "a tiny landing page with a hero and a green button" --out ./myapp
+php bin/ashat-build.php status --out ./myapp
+```
+
+- **`brainstorm <idea…>`** — turns the idea into `Spec.md` + `Build.md` via
+  the local 450M VL (Intent Router). Both docs are optional artifacts —
+  never a gate.
+- **`build <idea…>`** — the no-gate pipeline. A natural-language idea is
+  summarized into a spec by the local 450M VL (written as a `Spec.md`
+  artifact); with no idea it falls back to an existing `Spec.md`
+  (`--spec/--plan` override). The spec then goes to the remote coding
+  agent (BrainStem/Omega) — the Neural Host cuts SSE connections at
+  ~120 s, so long generations auto-continue — followed by the same
+  validation the web pipeline uses (static syntax gates, the local 350M
+  debug pass, the VL visual check) and the validated files are written
+  into `--out`. `--json` prints a machine-readable result to stdout.
+- **`status`** — prints the project-doc state (informational; always
+  exits `0`).
+
+Model roles: the local 450M VL handles brainstorm + intent summarization;
+Omega/Beta/Delta (BrainStem Neural Host) are code-generation agents only.
+
+Config resolves from `config/server_config.json` → `.env` → defaults
+(`BRAINSTEM_URL` / `BRAINSTEM_KEY` / `INTENT_ROUTER_URL`), exactly like the
+web bootstrap; `--url` / `--key` / `--model` override per invocation.
+Run `php bin/ashat-build.php help` for the full reference.
+
 ## Security
 
 - **Passwords**: `password_hash(PASSWORD_BCRYPT)` and `password_verify()`.

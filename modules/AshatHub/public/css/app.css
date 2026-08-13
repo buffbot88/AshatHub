@@ -1141,48 +1141,11 @@ a, button {
 }
 
 /* ── Chat project file manager (right-pane tree) ──────────────── */
-.fm-toolbar-primary {
-  font-size: 11px;
-  padding: 6px 12px;
-  color: var(--text-soft);
-  border-color: var(--line);
-}
-.fm-toolbar-primary:hover {
-  border-color: var(--accent);
-  color: var(--accent);
-  background: var(--accent-soft);
-}
 .fm-toolbar-sep {
   width: 1px;
   height: 18px;
   background: var(--line);
   flex-shrink: 0;
-}
-.fm-toolbar-mini {
-  width: 26px;
-  height: 26px;
-  padding: 0;
-  font-size: 11px;
-  line-height: 1;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  color: var(--text-mute);
-}
-.fm-toolbar-mini:hover {
-  color: var(--accent);
-  border-color: var(--accent);
-  background: var(--accent-soft);
-}
-.fm-toolbar-danger:hover {
-  color: var(--err);
-  border-color: var(--err);
-  background: rgba(255, 107, 107, 0.08);
-}
-.fm-toolbar-mini.active {
-  color: var(--accent);
-  border-color: rgba(255, 122, 69, 0.5);
-  background: var(--accent-soft);
 }
 
 #chat-file-tree .fm-check {

@@ -13,17 +13,18 @@ use Repositories\RepositoryRegistry;
  * ═══════════════════════════════════════════════════════════════════════
  * Controllers\BuildPipelineController — server-side build pipeline.
  *
- * The chat AI (350M on the local Intent Router) gathers context and builds
- * the spec. When the user approves file generation, the browser POSTs the
- * spec here; this controller hands the complete build plan to the remote
- * BrainStem Neural Host (Omega), which generates the code. The generated
- * files then flow back through the local System Validation Engine — the
- * 350M debugs/validates each file, the VL model visually checks front-end
+ * The pipeline accepts either an explicit spec or a natural-language idea:
+ * ideas are summarized into a spec by the LOCAL 450M VL (intent engine),
+ * then the spec is handed to the remote BrainStem Neural Host (Omega) —
+ * a pure code-generation agent, not a chat bot. There is no Spec.md /
+ * Build.md gate; those docs are artifacts only. The generated files flow
+ * back through the local System Validation Engine — the 350M
+ * debugs/validates each file, the VL model visually checks front-end
  * files — and the validated results are written straight into Project
  * Files server-side.
  *
- * Streams progress as SSE so the chat can show "Generating…",
- * "Validating project.", "Visual check…" in real time.
+ * Streams progress as SSE so the chat can show "Summarizing…",
+ * "Generating…", "Validating project.", "Visual check…" in real time.
  * ═══════════════════════════════════════════════════════════════════════
  */
 final class BuildPipelineController
@@ -68,8 +69,9 @@ final class BuildPipelineController
     {
         $body = $ctx->jsonBody();
         $spec = trim((string) ($body['spec'] ?? ''));
-        if ($spec === '') {
-            SseStreamer::send('error', ['message' => 'spec_required']);
+        $idea = trim((string) ($body['idea'] ?? ''));
+        if ($spec === '' && $idea === '') {
+            SseStreamer::send('error', ['message' => 'spec_or_idea_required']);
             return;
         }
 
@@ -81,14 +83,37 @@ final class BuildPipelineController
 
         $routerUrl = ConfigBag::getInstance()->intentRouterUrl();
         $userId    = (string) $ctx->user()['id'];
+        $projDir   = ashat_user_project_dir($userId);
 
-        // Build mode is gated: brainstorm first — both docs must exist on disk.
-        $projDir = ashat_user_project_dir($userId);
-        if (!is_file($projDir . '/Spec.md') || !is_file($projDir . '/Build.md')) {
-            SseStreamer::send('error', [
-                'message' => 'build_locked: brainstorm first — Spec.md and Build.md must exist in your project files.',
-            ]);
-            return;
+        // No gate: builds accept natural language directly. When an idea
+        // arrives, the local 450M VL summarizes it into a spec (written as
+        // an artifact, never a requirement) before the coding agent runs.
+        if ($spec === '' && $idea !== '') {
+            if (trim((string) $routerUrl) === '') {
+                SseStreamer::send('error', [
+                    'message' => 'No local Intent Router is configured — cannot summarize your request into a spec. Set INTENT_ROUTER_URL, or pass an explicit spec.',
+                ]);
+                return;
+            }
+            SseStreamer::send('progress', ['message' => 'Summarizing your request into a spec (local 450M VL)…']);
+            $spec = $this->summarizeIntent($idea);
+            if ($spec === '') {
+                SseStreamer::send('error', [
+                    'message' => 'The local 450M VL could not turn your request into a spec. Try rephrasing, or run brainstorm first.',
+                ]);
+                return;
+            }
+            $body['spec'] = $spec;
+            // Write the artifact so Project Files + status reflect it (never a gate).
+            if (is_dir($projDir) || @mkdir($projDir, 0775, true)) {
+                @file_put_contents($projDir . '/Spec.md', $spec);
+                try {
+                    RepositoryRegistry::file()->save($userId, 'Spec.md', $spec, 'markdown');
+                } catch (\Throwable $ignored) {
+                    // artifact write is best-effort
+                }
+            }
+            SseStreamer::send('progress', ['message' => 'Wrote Spec.md artifact from your idea.']);
         }
 
         // Meta event — the status pill lists every model in the pipeline.
@@ -263,6 +288,27 @@ final class BuildPipelineController
         // No hardcoded fallback — if the probe fails, return empty and
         // let the caller handle the missing model gracefully.
         return '';
+    }
+
+    /**
+     * Turn a natural-language build request into a spec via the local
+     * 450M VL (Intent Router) — shared ChatBackend::localVL (retries
+     * transient 429/5xx). The remote hosts are code agents, not chat
+     * bots, so intent work stays local.
+     */
+    private function summarizeIntent(string $idea): string
+    {
+        $content = ChatBackend::localVL(
+            [
+                ['role' => 'system', 'content' => \Controllers\BrainstormController::SPEC_PROMPT],
+                ['role' => 'user',   'content' => "Project idea:\n\n" . $idea],
+            ],
+            1500
+        );
+        if ($content === null) {
+            return '';
+        }
+        return SystemValidationEngine::docFromMarkdown($content, 'spec');
     }
 
     /** Build the code-generation messages for BrainStem. */

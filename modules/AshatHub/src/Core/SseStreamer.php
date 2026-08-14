@@ -6,9 +6,8 @@ namespace Core;
  * ═══════════════════════════════════════════════════════════════════════
  * Core\SseStreamer — Server-Sent Events streaming utility.
  *
- * Extracted from Controllers\ChatController so the streaming logic
- * (headers, event formatting, upstream proxying) is testable and
- * reusable by any controller that needs SSE output.
+ * Server-Sent Events streaming utility used by Galileo Studio.
+ * Provides headers, event formatting, and upstream proxying.
  *
  * Usage:
  *   SseStreamer::headers();                    // emit SSE content-type + flush config

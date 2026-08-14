@@ -59,7 +59,7 @@ final class StaticFileServer
      * MIME type and returning true. Returns false for non-assets or
      * missing files (no output sent).
      *
-     * @param  string $uriPath  The URL path (e.g. '/js/assistant.js').
+     * @param  string $uriPath  The URL path (e.g. '/js/galileo.js').
      * @return bool             True if the file was served.
      */
     public function serve(string $uriPath): bool

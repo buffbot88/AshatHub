@@ -1,5 +1,0 @@
-#!/bin/sh
-# Convenience wrapper for bin/ashat-build.php - resolves its own directory
-# so it works when invoked via PATH from anywhere.
-DIR=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
-exec php "$DIR/ashat-build.php" "$@"

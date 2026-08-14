@@ -1,5 +1,4 @@
 <?php /** @var Core\ViewContext $view */ ?>
-<?php include __DIR__ . '/../partials/gold_decorations.php'; ?>
 
 <section class="relative overflow-hidden">
   <div class="absolute -top-32 left-1/2 -translate-x-1/2 w-[60rem] h-[60rem] rounded-full pointer-events-none"

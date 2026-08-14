@@ -1,7 +1,6 @@
 <?php /** @var Core\ViewContext $view */
   $next  = $_GET['next'] ?? $_POST['next'] ?? '';
 ?>
-<?php include __DIR__ . '/../partials/gold_decorations.php'; ?>
 <section class="container mx-auto px-6 py-16 max-w-md">
   <h1 class="section-title text-center mb-6" style="font-size: clamp(28px, 4vw, 36px);">Sign in</h1>
   <!-- Flash handled by header layout above -->

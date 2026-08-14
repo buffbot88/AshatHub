@@ -135,6 +135,8 @@
       result.type = 'error';
       result.content = ev.data?.message || 'Error';
       termLine('Error: ' + result.content, 'error');
+    } else if (t === 'followups') {
+      result.followups = ev.data?.suggestions || [];
     }
     // Track token usage from agent responses
     if (ev.data?.tokens) {
@@ -272,6 +274,10 @@
         schedulePreviewReload();
         // Auto-switch to changes if files were modified (not just created)
         if (r.files?.length) GS.switchView('changes');
+        // Show follow-up suggestions.
+        if (r.followups?.length) {
+          addFollowUps(r.followups);
+        }
       } else {
         addMsg('galileo', r.content);
         setStatus('ready', 'Ready');
@@ -306,7 +312,7 @@
     d.innerHTML =
       '<div class="gs-msg-avatar ' + (isAI ? 'ai' : 'user') + '">' + (isAI ? '◈' : 'U') + '</div>' +
       '<div class="gs-msg-body">' +
-        '<div class="gs-msg-name ' + (isAI ? 'ai' : '') + '">' + (isAI ? 'Galileo' : 'You') + '</div>' +
+        '<div class="gs-msg-name ' + (isAI ? 'ai' : '') + '">' + (isAI ? 'Ashat' : 'You') + '</div>' +
         '<div class="gs-msg-text">' + fmtMsg(content) + '</div>' +
       '</div>';
     c.appendChild(d);
@@ -334,7 +340,7 @@
     d.setAttribute('data-typing', '');
     d.innerHTML =
       '<div class="gs-msg-avatar ai">◈</div>' +
-      '<div class="gs-msg-body"><div class="gs-msg-name ai">Galileo</div>' +
+      '<div class="gs-msg-body"><div class="gs-msg-name ai">Ashat</div>' +
       '<div class="gs-typing"><div class="gs-typing-dot"></div><div class="gs-typing-dot"></div><div class="gs-typing-dot"></div></div></div>';
     c.appendChild(d);
     scrollToBottom();
@@ -351,6 +357,23 @@
     h = h.replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>');
     h = h.replace(/\n/g, '<br>');
     return h;
+  }
+
+  function addFollowUps(suggestions) {
+    const c = $('gsChatMessages');
+    if (!c) return;
+    const d = document.createElement('div');
+    d.className = 'gs-followups';
+    d.innerHTML = '<div class="gs-followups-label">Suggested next steps:</div>';
+    for (const s of suggestions) {
+      const btn = document.createElement('button');
+      btn.className = 'gs-followup-btn';
+      btn.textContent = s;
+      btn.onclick = () => { const i = $('gsInput'); if (i) { i.value = s; GS.send(); } };
+      d.appendChild(btn);
+    }
+    c.appendChild(d);
+    scrollToBottom();
   }
 
   // ── Status ─────────────────────────────────────────────────────

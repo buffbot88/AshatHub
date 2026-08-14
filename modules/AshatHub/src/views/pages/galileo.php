@@ -901,6 +901,41 @@ $files           = $view->files;
     .gs-typing-dot:nth-child(3) { animation-delay: 0.4s; }
     @keyframes gs-bounce { 0%,60%,100%{transform:translateY(0)} 30%{transform:translateY(-3px)} }
 
+    /* ── Follow-up Suggestions ────────────────────────────────── */
+    .gs-followups {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 6px;
+      padding: 4px 0 8px;
+      margin-left: 36px;
+    }
+
+    .gs-followups-label {
+      width: 100%;
+      font-size: 11px;
+      color: var(--gs-text-dim);
+      font-family: var(--gs-font-mono);
+      margin-bottom: 2px;
+    }
+
+    .gs-followup-btn {
+      padding: 5px 12px;
+      background: var(--gs-surface-2);
+      border: 1px solid var(--gs-border);
+      border-radius: 16px;
+      font-size: 12px;
+      color: var(--gs-text-soft);
+      cursor: pointer;
+      transition: all 0.15s;
+      font-family: var(--gs-font);
+    }
+
+    .gs-followup-btn:hover {
+      border-color: var(--gs-accent);
+      color: var(--gs-accent);
+      background: var(--gs-accent-soft);
+    }
+
     /* ── Prompt Bar ────────────────────────────────────────────── */
     .gs-prompt-area {
       padding: 8px 20px 14px;
@@ -1345,7 +1380,7 @@ $files           = $view->files;
             <div class="gs-welcome-box">
               <div class="gs-welcome-icon">◈</div>
               <h2>What do you want to build?</h2>
-              <p>Describe your app, ask a question, or request a change. Galileo handles the code.</p>
+              <p>Describe your app, ask a question, or request a change. Ashat handles the code.</p>
               <div class="gs-suggestions">
                 <div class="gs-suggestion" onclick="GS.sendSuggestion('Build a dashboard for monitoring servers')">Dashboard app</div>
                 <div class="gs-suggestion" onclick="GS.sendSuggestion('Create a todo app with auth')">Todo + auth</div>

@@ -78,6 +78,9 @@ final class GalileoChatController
             SseStreamer::send('progress', ['message' => 'Created project: ' . $projectId]);
         }
 
+        // Auto-save long specs as project files.
+        $message = $this->autoSaveSpec($userId, $projectId, $message);
+
         // Phase 1: 450M classifies intent
         $intent = $this->classifyIntent($userId, $message, $projectId);
 
@@ -426,9 +429,9 @@ final class GalileoChatController
             ? $this->getFileContent($userId, $activeFile, self::ACTIVE_FILE_CHARS)
             : '';
 
-        $systemPrompt = "You are Galileo, Ashat Hub's AI coding assistant. Be helpful, concise, and technically accurate.";
+        $systemPrompt = "You are Ashat, the AI inside Galileo Studio. You help users build software. Be helpful, concise, and technically accurate.";
         if ($mode === 'brainstorm') {
-            $systemPrompt = "You are Galileo, a software architect. Help the user brainstorm and plan their project. "
+            $systemPrompt = "You are Ashat, a software architect inside Galileo Studio. Help the user brainstorm and plan their project. "
                 . "Ask clarifying questions, suggest features, discuss architecture. Be creative but practical.";
         }
 
@@ -526,6 +529,12 @@ final class GalileoChatController
             'plan'         => $plan,
             'issues'       => array_slice($issues, 0, 20),
         ]);
+
+        // Generate follow-up suggestions.
+        $followUps = $this->generateFollowUps($userId, $projectId, $savedPaths, $plan);
+        if (!empty($followUps)) {
+            SseStreamer::send('followups', ['suggestions' => $followUps]);
+        }
     }
 
     private function buildProjectContext(string $userId, string $projectId, int $budgetChars = 2000): string
@@ -607,6 +616,85 @@ final class GalileoChatController
             $totalChars += strlen($m['content'] ?? '');
         }
         return (int) ceil($totalChars / 4);
+    }
+
+    private function generateFollowUps(string $userId, string $projectId, array $files, string $plan): array
+    {
+        $suggestions = [];
+
+        // Generic follow-ups based on what was built.
+        $hasJs = false;
+        $hasHtml = false;
+        $hasPhp = false;
+        foreach ($files as $f) {
+            $ext = strtolower(pathinfo($f['path'], PATHINFO_EXTENSION));
+            if (in_array($ext, ['js', 'jsx', 'ts', 'tsx'])) $hasJs = true;
+            if ($ext === 'html') $hasHtml = true;
+            if ($ext === 'php') $hasPhp = true;
+        }
+
+        if ($hasJs) {
+            $suggestions[] = 'Add error handling and loading states';
+            $suggestions[] = 'Add responsive design for mobile';
+        }
+        if ($hasHtml) {
+            $suggestions[] = 'Add dark mode support';
+            $suggestions[] = 'Improve accessibility (ARIA labels)';
+        }
+        if ($hasPhp) {
+            $suggestions[] = 'Add input validation and sanitization';
+            $suggestions[] = 'Add API rate limiting';
+        }
+
+        // Always suggest testing.
+        $suggestions[] = 'Write tests for the core functionality';
+        $suggestions[] = 'Add a README with setup instructions';
+
+        return array_slice($suggestions, 0, 4);
+    }
+
+    private function autoSaveSpec(string $userId, string $projectId, string $message): string
+    {
+        // If the message is long (500+ chars) and looks like a spec/plan, save it as a file.
+        if (mb_strlen($message) < 500) return $message;
+
+        $lower = mb_strtolower($message);
+        $isSpec = str_contains($lower, 'spec') || str_contains($lower, 'requirement')
+            || str_contains($lower, 'build a') || str_contains($lower, 'create a')
+            || str_contains($lower, 'feature') || str_contains($lower, 'phase')
+            || str_contains($lower, 'user story') || str_contains($lower, 'acceptance criteria')
+            || str_contains($lower, 'as a user') || str_contains($lower, 'overview');
+
+        if (!$isSpec) return $message;
+
+        // Determine file name based on content.
+        $fileName = 'Spec.md';
+        if (str_contains($lower, 'build plan') || str_contains($lower, 'implementation plan')) {
+            $fileName = 'Build.md';
+        }
+
+        $projDir = ASHAT_ROOT . '/projects/' . $userId . '/' . $projectId;
+        if (!is_dir($projDir)) return $message;
+
+        $filePath = $projDir . '/' . $fileName;
+        $existing = is_file($filePath) ? (string) file_get_contents($filePath) : '';
+
+        // Append or create.
+        if ($existing !== '') {
+            $content = $existing . "\n\n---\n\n" . $message;
+        } else {
+            $content = "# " . $fileName . "\n\n" . $message;
+        }
+
+        file_put_contents($filePath, $content);
+
+        // Return a shorter message referencing the saved file.
+        SseStreamer::send('progress', ['message' => 'Saved as ' . $fileName . ' (' . mb_strlen($message) . ' chars)']);
+
+        // Use a condensed version for the actual chat.
+        return "I've saved the detailed spec as {$fileName} in the project. "
+            . "Please review it and build based on the spec. Here's a summary:\n\n"
+            . mb_substr($message, 0, 500);
     }
 
     private function autoCreateProject(string $userId, string $message): string

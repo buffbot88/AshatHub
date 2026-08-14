@@ -252,6 +252,7 @@
 
         refreshFiles();
         updateChangesBadge();
+        schedulePreviewReload();
         // Auto-switch to changes if files were modified (not just created)
         if (r.files?.length) GS.switchView('changes');
       } else {
@@ -562,6 +563,7 @@
       const of = S.openFiles.find(f => f.path === S.activeFile);
       if (of) of.content = content;
       termLine('$ saved ' + S.activeFile);
+      schedulePreviewReload();
     }).catch(() => {
       termLine('Failed to save ' + S.activeFile, 'error');
     });
@@ -746,6 +748,23 @@
   GS.openExternal = function () {
     if (S.previewUrl) window.open(S.previewUrl, '_blank');
   };
+
+  // Debounced preview reload - waits 800ms after last file change.
+  let _previewReloadTimer = null;
+  function schedulePreviewReload() {
+    if (!S.previewUrl || S.previewStatus !== 'running') return;
+    if (_previewReloadTimer) clearTimeout(_previewReloadTimer);
+    _previewReloadTimer = setTimeout(() => {
+      if (S.previewUrl && S.previewStatus === 'running') {
+        const frame = $('gsPreviewFrame');
+        if (frame) {
+          frame.src = S.previewUrl + '?t=' + Date.now();
+          termLine('$ preview auto-reloaded', 'info');
+        }
+      }
+      _previewReloadTimer = null;
+    }, 800);
+  }
 
   GS.togglePreview = function () {
     if (S.previewStatus === 'running' || S.previewStatus === 'starting') {
@@ -989,7 +1008,7 @@
             refreshFiles();
             updateChangesBadge();
             renderChanges();
-            termLine('$ reverted (deleted) ' + ch.path, 'success');
+            termLine('$ reverted (deleted) ' + ch.path, 'success'); schedulePreviewReload();
           }).catch(() => termLine('Failed to revert', 'error'));
       }
     } else {
@@ -1006,7 +1025,7 @@
         refreshFiles();
         updateChangesBadge();
         renderChanges();
-        termLine('$ reverted ' + ch.path, 'success');
+        termLine('$ reverted ' + ch.path, 'success'); schedulePreviewReload();
       }).catch(() => termLine('Failed to revert', 'error'));
     }
   };
@@ -1031,7 +1050,7 @@
         updateChangesBadge();
         renderChanges();
         refreshFiles();
-        termLine('$ reverted all changes', 'success');
+        termLine('$ reverted all changes', 'success'); schedulePreviewReload();
         return;
       }
       const ch = S.changes[i];

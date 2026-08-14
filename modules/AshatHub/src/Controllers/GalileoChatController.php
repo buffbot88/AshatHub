@@ -5,7 +5,7 @@ namespace Controllers;
 use Core\ConfigBag;
 use Core\RequestContext;
 use Core\SseStreamer;
-use Core\SystemValidationEngine;
+use Core\Http;
 use Models\ChatBackend;
 use Repositories\RepositoryRegistry;
 
@@ -209,7 +209,7 @@ final class GalileoChatController
             return null;
         }
 
-        $parsed = SystemValidationEngine::lenientJson($content);
+        $parsed = Http::lenientJson($content);
         if (!is_array($parsed) || empty($parsed['summary'])) {
             return null;
         }
@@ -272,7 +272,7 @@ final class GalileoChatController
         $inputTokens = $this->estimateTokens($messages);
         SseStreamer::send('progress', ['message' => "Generating code... (~{$inputTokens} input tokens)"]);
 
-        $resp = SystemValidationEngine::postJson($req['endpoint'], $req['headers'], $req['payload']);
+        $resp = Http::postJson($req['endpoint'], $req['headers'], $req['payload']);
         if ($resp === null) {
             SseStreamer::send('error', ['message' => 'The coding agent did not respond.']);
             return;
@@ -292,7 +292,7 @@ final class GalileoChatController
             SseStreamer::send('progress', ['message' => "Tokens: {$totalTokens} (in: {$inputTokens}, out: {$outputTokens})"]);
         }
 
-        $parsed = SystemValidationEngine::lenientJson($content);
+        $parsed = Http::lenientJson($content);
 
         if (is_array($parsed) && !empty($parsed['files']) && is_array($parsed['files'])) {
             $this->handleCodingResult($ctx, $userId, $parsed, $planSummary);
@@ -352,7 +352,7 @@ final class GalileoChatController
         $inputTokens = $this->estimateTokens($messages);
         SseStreamer::send('progress', ['message' => "Generating code... (~{$inputTokens} input tokens)"]);
 
-        $resp = SystemValidationEngine::postJson($req['endpoint'], $req['headers'], $req['payload']);
+        $resp = Http::postJson($req['endpoint'], $req['headers'], $req['payload']);
         if ($resp === null) {
             SseStreamer::send('error', ['message' => 'The coding agent did not respond.']);
             return;
@@ -368,7 +368,7 @@ final class GalileoChatController
             return;
         }
 
-        $parsed = SystemValidationEngine::lenientJson($content);
+        $parsed = Http::lenientJson($content);
 
         if (is_array($parsed) && !empty($parsed['files']) && is_array($parsed['files'])) {
             $this->handleCodingResult($ctx, $userId, $parsed, '');

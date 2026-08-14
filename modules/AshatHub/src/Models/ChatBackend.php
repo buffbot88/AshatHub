@@ -3,7 +3,7 @@ declare(strict_types=1);
 namespace Models;
 
 use Core\ConfigBag;
-use Core\SystemValidationEngine;
+use Core\Http;
 
 final class ChatBackend
 {
@@ -83,7 +83,7 @@ final class ChatBackend
     public static function localVL(array $messages, int $maxTokens = 1500): ?string
     {
         $url = rtrim(ConfigBag::getInstance()->intentRouterUrl(), '/') . '/v1/chat/completions';
-        $resp = SystemValidationEngine::postJson($url, ['Content-Type: application/json'], [
+        $resp = Http::postJson($url, ['Content-Type: application/json'], [
             'messages' => $messages,
             'temperature' => 0.2,
             'max_tokens' => $maxTokens,

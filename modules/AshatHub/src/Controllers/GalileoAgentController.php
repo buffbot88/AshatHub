@@ -3,7 +3,7 @@ declare(strict_types=1);
 namespace Controllers;
 
 use Core\RequestContext;
-use Core\SystemValidationEngine;
+use Core\Http;
 use Models\ChatBackend;
 use Repositories\RepositoryRegistry;
 
@@ -200,7 +200,7 @@ final class GalileoAgentController
             'temperature' => 0.6,
         ], false);
 
-        $resp = SystemValidationEngine::postJson($req['endpoint'], $req['headers'], $req['payload']);
+        $resp = Http::postJson($req['endpoint'], $req['headers'], $req['payload']);
 
         if ($resp === null) {
             self::$jobs[$job['id']]['status'] = 'failed';
@@ -218,7 +218,7 @@ final class GalileoAgentController
         }
 
         // Parse and apply result.
-        $parsed = SystemValidationEngine::lenientJson($content);
+        $parsed = Http::lenientJson($content);
 
         if (is_array($parsed) && !empty($parsed['files']) && is_array($parsed['files'])) {
             // Write files.

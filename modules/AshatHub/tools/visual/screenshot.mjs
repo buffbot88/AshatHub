@@ -3,8 +3,7 @@
  * tools/visual/screenshot.mjs — headless screenshot helper.
  *
  * Renders a local HTML file (plus its relative assets) with Playwright's
- * Chromium and writes a PNG. Used by the System Validation Engine so the
- * VL model can review front-end files "visually".
+ * Chromium and writes a PNG. Standalone headless screenshot helper.
  *
  * Usage:
  *   node screenshot.mjs <entry.html> <out.png> [width] [height] [waitMs]

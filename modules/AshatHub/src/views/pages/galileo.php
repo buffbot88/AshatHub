@@ -1146,9 +1146,11 @@ $files           = $view->files;
         <div class="gs-wb-view" id="gsViewPreview" data-view="preview">
           <div class="gs-preview-container">
             <div class="gs-preview-bar">
-              <button class="gs-wb-action" onclick="GS.refreshPreview()">↻</button>
+              <button class="gs-preview-btn gs-preview-toggle-btn" onclick="GS.togglePreview()" style="font-size:11px;padding:4px 10px;border:none;border-radius:4px;cursor:pointer;font-family:var(--gs-font-mono);font-weight:600;">Start</button>
+              <button class="gs-wb-action" onclick="GS.restartPreview()" title="Restart">↻</button>
               <div class="gs-preview-url" id="gsPreviewUrl">No preview running</div>
-              <button class="gs-wb-action" onclick="GS.openExternal()">↗</button>
+              <button class="gs-wb-action" onclick="GS.refreshPreview()" title="Refresh">⟳</button>
+              <button class="gs-wb-action" onclick="GS.openExternal()" title="Open in new tab">↗</button>
             </div>
             <div class="gs-preview-empty" id="gsPreviewEmpty">
               <div class="gs-preview-empty-icon">▶</div>

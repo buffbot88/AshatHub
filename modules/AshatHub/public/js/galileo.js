@@ -525,28 +525,124 @@
 
   // ── Preview ────────────────────────────────────────────────────
   GS.startPreview = function () {
+    setStatus('building', 'Starting preview...');
+    termLine('$ starting preview server...');
     api('/api/galileo/preview/start', { method: 'POST', body: { project_id: S.projectId } })
+      .then(d => {
+        if (d.status === 'error') {
+          termLine('Preview failed: ' + (d.error || 'unknown'), 'error');
+          setStatus('error', 'Preview failed');
+          return;
+        }
+        if (d.url) {
+          S.previewUrl = d.url;
+          S.previewStatus = d.status;
+          S.previewPort = d.port;
+          // Wait 2s for server to fully boot, then load iframe
+          setTimeout(() => {
+            $('gsPreviewFrame').src = d.url;
+            $('gsPreviewFrame').style.display = 'block';
+            $('gsPreviewEmpty').style.display = 'none';
+            $('gsPreviewUrl').textContent = d.url;
+            updatePreviewControls('running');
+          }, 1500);
+          updatePreviewControls('starting');
+          termLine('$ preview starting on port ' + d.port, 'success');
+          setStatus('ready', 'Preview running');
+        }
+      }).catch(err => {
+        termLine('Preview request failed: ' + (err.message || ''), 'error');
+        setStatus('error', 'Preview failed');
+      });
+  };
+
+  GS.stopPreview = function () {
+    api('/api/galileo/preview/stop', { method: 'POST', body: { project_id: S.projectId } })
+      .then(() => {
+        S.previewUrl = null;
+        S.previewStatus = 'stopped';
+        $('gsPreviewFrame').style.display = 'none';
+        $('gsPreviewEmpty').style.display = 'flex';
+        $('gsPreviewUrl').textContent = 'No preview running';
+        updatePreviewControls('stopped');
+        termLine('$ preview stopped');
+        setStatus('ready', 'Ready');
+      }).catch(() => {});
+  };
+
+  GS.restartPreview = function () {
+    setStatus('building', 'Restarting preview...');
+    termLine('$ restarting preview...');
+    api('/api/galileo/preview/restart', { method: 'POST', body: { project_id: S.projectId } })
       .then(d => {
         if (d.url) {
           S.previewUrl = d.url;
           S.previewStatus = d.status;
-          $('gsPreviewFrame').src = d.url;
-          $('gsPreviewFrame').style.display = 'block';
-          $('gsPreviewEmpty').style.display = 'none';
-          $('gsPreviewUrl').textContent = d.url;
+          S.previewPort = d.port;
+          setTimeout(() => {
+            $('gsPreviewFrame').src = d.url + '?t=' + Date.now();
+            updatePreviewControls('running');
+          }, 2000);
+          updatePreviewControls('starting');
+          termLine('$ preview restarted on port ' + d.port, 'success');
+          setStatus('ready', 'Preview running');
         }
-      }).catch(() => alert('Failed to start preview'));
+      }).catch(() => {});
   };
 
   GS.refreshPreview = function () {
     if (S.previewUrl) {
-      $('gsPreviewFrame').src = S.previewUrl;
+      $('gsPreviewFrame').src = S.previewUrl + '?t=' + Date.now();
+      termLine('$ preview refreshed');
     }
   };
 
   GS.openExternal = function () {
     if (S.previewUrl) window.open(S.previewUrl, '_blank');
   };
+
+  GS.togglePreview = function () {
+    if (S.previewStatus === 'running' || S.previewStatus === 'starting') {
+      GS.stopPreview();
+    } else {
+      GS.startPreview();
+    }
+  };
+
+  function updatePreviewControls(state) {
+    const btn = document.querySelector('.gs-preview-toggle-btn');
+    if (btn) {
+      if (state === 'running') {
+        btn.textContent = 'Stop';
+        btn.style.background = 'var(--gs-err)';
+        btn.style.color = '#fff';
+      } else {
+        btn.textContent = 'Start';
+        btn.style.background = 'var(--gs-accent)';
+        btn.style.color = 'var(--gs-accent-ink)';
+      }
+    }
+  }
+
+  // Poll preview status every 5s when a preview is active
+  setInterval(() => {
+    if (S.previewStatus !== 'running' && S.previewStatus !== 'starting') return;
+    api('/api/galileo/preview/status?project_id=' + encodeURIComponent(S.projectId))
+      .then(d => {
+        if (d.status === 'crashed' || d.status === 'stopped') {
+          S.previewStatus = 'stopped';
+          S.previewUrl = null;
+          $('gsPreviewFrame').style.display = 'none';
+          $('gsPreviewEmpty').style.display = 'flex';
+          $('gsPreviewUrl').textContent = 'Preview crashed';
+          updatePreviewControls('stopped');
+          termLine('$ preview crashed', 'error');
+        } else if (d.status === 'running' && d.url) {
+          S.previewUrl = d.url;
+          S.previewStatus = 'running';
+        }
+      }).catch(() => {});
+  }, 5000);
 
   // ── Terminal ───────────────────────────────────────────────────
   function termLine(text, type) {

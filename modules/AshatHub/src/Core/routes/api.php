@@ -57,6 +57,7 @@ $router->group('/api', function () use ($router) {
             $router->post('/preview/restart',    [\Controllers\GalileoPreviewController::class, 'restart']);
             $router->post('/preview/stop',       [\Controllers\GalileoPreviewController::class, 'stop']);
             $router->get('/preview/status',      [\Controllers\GalileoPreviewController::class, 'status']);
+            $router->get('/preview/log',         [\Controllers\GalileoPreviewController::class, 'log']);
 
             // Deploy
             $router->post('/deploy',             [\Controllers\GalileoDeployController::class,  'deploy']);

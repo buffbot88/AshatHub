@@ -2,37 +2,29 @@
 declare(strict_types=1);
 namespace Controllers;
 
+use Core\PreviewRuntime;
 use Core\RequestContext;
 
 /**
  * ═══════════════════════════════════════════════════════════════════════
  * Controllers\GalileoPreviewController — Galileo Studio preview API.
  *
- * Manages preview instances for generated projects. The preview system
- * provides a live view of the user's project without leaving the
- * conversation interface.
- *
- * The exact runtime mechanism (Vite dev server, static hosting, container
- * sandbox) is abstracted behind these endpoints.
+ * Manages live preview instances for generated projects. Users can start,
+ * stop, and restart a Vite dev server (or static file server) for their
+ * project and view the running app in an iframe without leaving Galileo.
  *
  * Endpoints:
  *   POST /api/galileo/preview/start    — start a preview
  *   POST /api/galileo/preview/restart  — restart a preview
  *   POST /api/galileo/preview/stop     — stop a preview
  *   GET  /api/galileo/preview/status   — get preview status
+ *   GET  /api/galileo/preview/log      — get preview log tail
  * ═══════════════════════════════════════════════════════════════════════
  */
 final class GalileoPreviewController
 {
-    /** In-memory preview store (would be DB/process-managed in production). */
-    private static array $previews = [];
-
     /**
      * POST /api/galileo/preview/start — start a preview for a project.
-     *
-     * Body: {
-     *   "project_id": "..."
-     * }
      */
     public function start(RequestContext $ctx): void
     {
@@ -45,38 +37,22 @@ final class GalileoPreviewController
         }
 
         $userId = (string) $ctx->user()['id'];
+        $result = PreviewRuntime::start($userId, $projectId);
 
-        // Check if already running.
-        $existing = self::$previews[$userId . ':' . $projectId] ?? null;
-        if ($existing !== null && $existing['status'] === 'running') {
-            $ctx->jsonResponse([
-                'status' => 'running',
-                'url'    => $existing['url'],
-                'project_id' => $projectId,
-            ]);
-            return;
+        // Return a proxy URL so the iframe doesn't hit localhost directly.
+        $proxyUrl = null;
+        if (isset($result['url']) && $result['url'] !== null) {
+            $host = $_SERVER['HTTP_HOST'] ?? 'www.agpstudios.org';
+            $proxyUrl = 'https://' . $host . '/preview/' . rawurlencode($userId) . '/' . rawurlencode($projectId) . '/';
         }
 
-        // Start a preview instance.
-        $previewId = 'prev_' . bin2hex(random_bytes(4));
-        $url = $this->startPreviewInstance($userId, $projectId, $previewId);
-
-        $preview = [
-            'id'         => $previewId,
-            'project_id' => $projectId,
-            'user_id'    => $userId,
-            'status'     => $url !== null ? 'running' : 'error',
-            'url'        => $url,
-            'started_at' => date(DATE_ATOM),
-        ];
-
-        self::$previews[$userId . ':' . $projectId] = $preview;
-
         $ctx->jsonResponse([
-            'status'     => $preview['status'],
-            'url'        => $preview['url'],
+            'status'     => $result['status'],
+            'url'        => $proxyUrl,
+            'port'       => $result['port'] ?? null,
             'project_id' => $projectId,
-        ]);
+            'error'      => $result['error'] ?? null,
+        ], $result['status'] === 'error' ? 500 : 200);
     }
 
     /**
@@ -93,34 +69,21 @@ final class GalileoPreviewController
         }
 
         $userId = (string) $ctx->user()['id'];
+        $result = PreviewRuntime::restart($userId, $projectId);
 
-        // Stop existing.
-        $key = $userId . ':' . $projectId;
-        if (isset(self::$previews[$key])) {
-            $this->stopPreviewInstance(self::$previews[$key]);
-            unset(self::$previews[$key]);
+        $proxyUrl = null;
+        if (isset($result['url']) && $result['url'] !== null) {
+            $host = $_SERVER['HTTP_HOST'] ?? 'www.agpstudios.org';
+            $proxyUrl = 'https://' . $host . '/preview/' . rawurlencode($userId) . '/' . rawurlencode($projectId) . '/';
         }
 
-        // Start fresh.
-        $previewId = 'prev_' . bin2hex(random_bytes(4));
-        $url = $this->startPreviewInstance($userId, $projectId, $previewId);
-
-        $preview = [
-            'id'         => $previewId,
-            'project_id' => $projectId,
-            'user_id'    => $userId,
-            'status'     => $url !== null ? 'running' : 'error',
-            'url'        => $url,
-            'started_at' => date(DATE_ATOM),
-        ];
-
-        self::$previews[$key] = $preview;
-
         $ctx->jsonResponse([
-            'status'     => $preview['status'],
-            'url'        => $preview['url'],
+            'status'     => $result['status'],
+            'url'        => $proxyUrl,
+            'port'       => $result['port'] ?? null,
             'project_id' => $projectId,
-        ]);
+            'error'      => $result['error'] ?? null,
+        ], $result['status'] === 'error' ? 500 : 200);
     }
 
     /**
@@ -137,14 +100,9 @@ final class GalileoPreviewController
         }
 
         $userId = (string) $ctx->user()['id'];
-        $key = $userId . ':' . $projectId;
+        PreviewRuntime::stop($userId, $projectId);
 
-        if (isset(self::$previews[$key])) {
-            $this->stopPreviewInstance(self::$previews[$key]);
-            unset(self::$previews[$key]);
-        }
-
-        $ctx->jsonResponse(['ok' => true]);
+        $ctx->jsonResponse(['ok' => true, 'status' => 'stopped']);
     }
 
     /**
@@ -160,60 +118,27 @@ final class GalileoPreviewController
         }
 
         $userId = (string) $ctx->user()['id'];
-        $preview = self::$previews[$userId . ':' . $projectId] ?? null;
+        $result = PreviewRuntime::status($userId, $projectId);
 
-        if ($preview === null) {
-            $ctx->jsonResponse([
-                'status'     => 'stopped',
-                'url'        => null,
-                'project_id' => $projectId,
-            ]);
+        $ctx->jsonResponse(array_merge($result, ['project_id' => $projectId]));
+    }
+
+    /**
+     * GET /api/galileo/preview/log — get the tail of the preview log.
+     */
+    public function log(RequestContext $ctx): void
+    {
+        $projectId = trim((string) ($_GET['project_id'] ?? ''));
+        $maxBytes  = (int) ($_GET['max'] ?? 0);
+
+        if ($projectId === '') {
+            $ctx->jsonResponse(['error' => 'project_id_required'], 400);
             return;
         }
 
-        $ctx->jsonResponse([
-            'status'     => $preview['status'],
-            'url'        => $preview['url'],
-            'project_id' => $projectId,
-        ]);
-    }
+        $userId = (string) $ctx->user()['id'];
+        $log = PreviewRuntime::getLog($userId, $projectId, $maxBytes);
 
-    /**
-     * Start a preview instance for a project.
-     * Returns the preview URL or null on failure.
-     *
-     * In a full implementation, this would:
-     * 1. Copy project files to a preview sandbox
-     * 2. Start a dev server (Vite, etc.)
-     * 3. Return the URL
-     *
-     * For now, this returns the hosted project URL from the hosting system.
-     */
-    private function startPreviewInstance(string $userId, string $projectId, string $previewId): ?string
-    {
-        // In production, this would start a real preview server.
-        // For now, return a placeholder URL that points to the hosting system.
-        $host = $_SERVER['HTTP_HOST'] ?? 'localhost';
-        $scheme = (!empty($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off') ? 'https' : 'http';
-
-        // If the project is hosted, return its hosting URL.
-        // Otherwise, return null (no preview available).
-        try {
-            // Check if the project has a hosting slot.
-            // This is a simplified check — in production, query the hosting repository.
-            $url = $scheme . '://' . $host . '/hosting/preview/' . rawurlencode($userId) . '/' . rawurlencode($projectId);
-            return $url;
-        } catch (\Throwable $e) {
-            return null;
-        }
-    }
-
-    /**
-     * Stop a preview instance.
-     */
-    private function stopPreviewInstance(array $preview): void
-    {
-        // In production, this would kill the dev server process.
-        // For now, it's a no-op.
+        $ctx->jsonResponse(['log' => $log]);
     }
 }

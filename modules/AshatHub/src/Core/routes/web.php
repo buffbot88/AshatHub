@@ -42,3 +42,9 @@ $router->group('/deploy', ['middleware' => ['auth']], function () use ($router) 
     $router->post('/{projectId}/redeploy',  [\Controllers\DeployController::class, 'redeploy']);
     $router->post('/{projectId}/undeploy',  [\Controllers\DeployController::class, 'undeploy']);
 });
+
+// ─── Preview (authenticated users — serves live dev server content) ──
+$router->group('/preview', ['middleware' => ['auth']], function () use ($router) {
+    $router->get('/{userId}/{projectId}',           [\Controllers\PreviewProxyController::class, 'serve']);
+    $router->get('/{userId}/{projectId}/{path:.*}', [\Controllers\PreviewProxyController::class, 'serve']);
+});

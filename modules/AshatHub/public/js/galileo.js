@@ -187,6 +187,22 @@
 
     addMsg('user', msg);
 
+    // Auto-create project if none exists.
+    if (!S.projectId) {
+      try {
+        const d = await api('/api/galileo/projects', {
+          method: 'POST',
+          body: { name: msg.substring(0, 50) },
+        });
+        if (d.project_id) {
+          S.projectId = d.project_id;
+          S.projectName = d.name || d.project_id;
+          $('gsProjectName').textContent = S.projectName;
+          termLine('$ project created: ' + S.projectName, 'success');
+        }
+      } catch {}
+    }
+
     if (!S.conversationId) {
       // Create conversation on the server.
       S.conversationId = 'pending_' + Date.now();

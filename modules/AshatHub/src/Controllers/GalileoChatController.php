@@ -65,6 +65,12 @@ final class GalileoChatController
 
         $userId = (string) $ctx->user()['id'];
 
+        // Auto-create project if none exists.
+        if ($projectId === '') {
+            $projectId = $this->autoCreateProject($userId, $message);
+            SseStreamer::send('progress', ['message' => 'Created project: ' . $projectId]);
+        }
+
         // Phase 1: 450M classifies intent
         $intent = $this->classifyIntent($userId, $message, $projectId);
 
@@ -579,6 +585,39 @@ final class GalileoChatController
             $totalChars += strlen($m['content'] ?? '');
         }
         return (int) ceil($totalChars / 4);
+    }
+
+    private function autoCreateProject(string $userId, string $message): string
+    {
+        $baseDir = ASHAT_ROOT . '/projects/' . $userId;
+        if (!is_dir($baseDir)) {
+            @mkdir($baseDir, 0775, true);
+        }
+
+        // Generate a slug from the first few words of the message.
+        $slug = strtolower(trim(preg_replace('/[^a-z0-9]+/', '-', mb_substr($message, 0, 40)), '-'));
+        if ($slug === '') $slug = 'project-' . substr(bin2hex(random_bytes(4)), 0, 8);
+
+        // Ensure unique.
+        $original = $slug;
+        $counter = 1;
+        while (is_dir($baseDir . '/' . $slug)) {
+            $slug = $original . '-' . $counter++;
+        }
+
+        $projDir = $baseDir . '/' . $slug;
+        @mkdir($projDir, 0775, true);
+
+        // Write metadata.
+        $name = mb_substr(trim($message), 0, 60);
+        $meta = [
+            'name'        => $name,
+            'description' => '',
+            'created_at'  => date('c'),
+        ];
+        file_put_contents($projDir . '/.meta.json', json_encode($meta, JSON_PRETTY_PRINT));
+
+        return $slug;
     }
 
     private function sanitizePath(string $path): string

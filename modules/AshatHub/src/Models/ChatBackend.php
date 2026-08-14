@@ -80,18 +80,54 @@ final class ChatBackend
         ];
     }
 
+    /** Round-robin counter for 450M VL pool. */
+    private static int $vlIndex = 0;
+
+    /** Pool of local 450M VL instances. */
+    private static function vlPool(): array
+    {
+        $base = rtrim(ConfigBag::getInstance()->intentRouterUrl(), '/');
+        $port = (int) parse_url($base, PHP_URL_PORT) ?: 3001;
+        $host = parse_url($base, PHP_URL_HOST) ?: '127.0.0.1';
+
+        // Known pool: primary port + adjacent ports (3001, 3002, 3005, 3006).
+        // Fast connection check via fsockopen.
+        $pool = [$base];
+        $candidates = [$port + 1, $port + 4, $port + 5];
+        foreach ($candidates as $p) {
+            $fp = @fsockopen($host, $p, $errno, $errstr, 0.5);
+            if ($fp) {
+                fclose($fp);
+                $pool[] = "http://{$host}:{$p}";
+            }
+        }
+        return $pool;
+    }
+
     public static function localVL(array $messages, int $maxTokens = 1500, int $timeout = 30): ?string
     {
-        $url = rtrim(ConfigBag::getInstance()->intentRouterUrl(), '/') . '/v1/chat/completions';
-        $resp = Http::postJson($url, ['Content-Type: application/json'], [
-            'messages' => $messages,
-            'temperature' => 0.2,
-            'max_tokens' => $maxTokens,
-        ], $timeout);
-        if (!is_array($resp)) {
-            return null;
+        $pool = self::vlPool();
+        $count = count($pool);
+
+        // Round-robin across available instances.
+        for ($attempt = 0; $attempt < $count; $attempt++) {
+            $idx = self::$vlIndex % $count;
+            self::$vlIndex++;
+            $url = $pool[$idx] . '/v1/chat/completions';
+
+            $resp = Http::postJson($url, ['Content-Type: application/json'], [
+                'messages' => $messages,
+                'temperature' => 0.2,
+                'max_tokens' => $maxTokens,
+            ], $timeout);
+
+            if (is_array($resp)) {
+                return (string) ($resp['choices'][0]['message']['content'] ?? '');
+            }
+            // Instance failed — try next one.
         }
-        return (string) ($resp['choices'][0]['message']['content'] ?? '');
+
+        return null;
     }
 
     public static function defaultIntentRouterLabel(): string

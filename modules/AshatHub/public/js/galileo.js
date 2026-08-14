@@ -20,7 +20,7 @@
     openFiles: [],      // [{path, content, lang}]
     activeFile: null,
 
-    changes: [],        // [{path, type}]
+    changes: [],        // [{path, type, oldContent, newContent}]
     terminalLines: [],
 
     previewUrl: null,
@@ -173,7 +173,7 @@
   };
 
   // ── Chat ───────────────────────────────────────────────────────
-  GS.send = function () {
+  GS.send = async function () {
     const input = $('gsInput');
     if (!input) return;
     const msg = input.value.trim();
@@ -204,7 +204,16 @@
 
     const typing = addTyping();
 
-    chatStream(msg).then(r => {
+    // Snapshot existing file content before coding (for diff review).
+    const fileSnapshot = {};
+    for (const f of S.files) {
+      try {
+        const d = await api('/api/files/read?path=' + encodeURIComponent(f.path));
+        fileSnapshot[f.path] = d.content || d.file?.content || '';
+      } catch { fileSnapshot[f.path] = ''; }
+    }
+
+    chatStream(msg).then(async r => {
       removeTyping(typing);
       if (r.type === 'error') {
         addMsg('galileo', 'Error: ' + r.content);
@@ -221,10 +230,29 @@
         }
         addMsg('galileo', txt);
         setStatus('ready', 'Ready');
+
+        // Build diffs for changed files.
+        for (const f of r.files) {
+          const oldContent = fileSnapshot[f.path] || '';
+          let newContent = '';
+          try {
+            const d = await api('/api/files/read?path=' + encodeURIComponent(f.path));
+            newContent = d.content || d.file?.content || '';
+          } catch {}
+          const changeType = oldContent === '' ? 'created' : 'modified';
+          const existing = S.changes.find(c => c.path === f.path);
+          if (existing) {
+            existing.newContent = newContent;
+            existing.type = changeType;
+          } else {
+            S.changes.push({ path: f.path, type: changeType, oldContent, newContent });
+          }
+        }
+
         refreshFiles();
         updateChangesBadge();
-        // Auto-switch to preview if files created
-        if (r.files?.length) GS.switchView('preview');
+        // Auto-switch to changes if files were modified (not just created)
+        if (r.files?.length) GS.switchView('changes');
       } else {
         addMsg('galileo', r.content);
         setStatus('ready', 'Ready');
@@ -685,17 +713,130 @@
     const c = $('gsChangesContainer');
     if (!c) return;
     if (!S.changes.length) {
-      c.innerHTML = '<div class="gs-changes-header">No changes yet</div>';
+      c.innerHTML = '<div class="gs-changes-empty">No changes yet</div>';
       return;
     }
-    let html = '<div class="gs-changes-header">' + S.changes.length + ' file(s) changed</div>';
-    for (const ch of S.changes) {
-      html += '<div class="gs-change-row" onclick="GS.openChangeFile(\'' + esc(ch.path) + '\')">' +
-        '<span class="gs-change-tag ' + ch.type + '">' + (ch.type === 'created' ? 'new' : ch.type === 'deleted' ? 'del' : 'mod') + '</span>' +
-        '<span>' + esc(ch.path) + '</span></div>';
+    const created = S.changes.filter(c => c.type === 'created').length;
+    const modified = S.changes.filter(c => c.type === 'modified').length;
+    const deleted = S.changes.filter(c => c.type === 'deleted').length;
+    let html = '<div class="gs-changes-summary">' + S.changes.length + ' file(s) changed';
+    const parts = [];
+    if (created) parts.push('<span style="color:var(--gs-ok)">' + created + ' new</span>');
+    if (modified) parts.push('<span style="color:var(--gs-accent)">' + modified + ' modified</span>');
+    if (deleted) parts.push('<span style="color:var(--gs-err)">' + deleted + ' deleted</span>');
+    if (parts.length) html += ' &mdash; ' + parts.join(', ');
+    html += '</div>';
+
+    for (let i = 0; i < S.changes.length; i++) {
+      const ch = S.changes[i];
+      const tagClass = ch.type === 'created' ? 'created' : ch.type === 'deleted' ? 'deleted' : 'modified';
+      const tagText = ch.type === 'created' ? 'NEW' : ch.type === 'deleted' ? 'DEL' : 'MOD';
+      html += '<div class="gs-change-file">';
+      html += '<div class="gs-change-row" onclick="GS.toggleDiff(' + i + ')">';
+      html += '<span class="gs-change-tag ' + tagClass + '">' + tagText + '</span>';
+      html += '<span class="gs-change-path">' + esc(ch.path) + '</span>';
+      html += '<span class="gs-change-chevron" id="gsChevron' + i + '">▸</span>';
+      html += '</div>';
+      html += '<div class="gs-change-diff" id="gsDiff' + i + '" style="display:none">';
+      if (ch.type === 'created') {
+        html += renderNewFileDiff(ch);
+      } else if (ch.type === 'deleted') {
+        html += renderDeletedFileDiff(ch);
+      } else {
+        html += renderModifiedDiff(ch);
+      }
+      html += '<div class="gs-change-actions">';
+      html += '<button class="gs-action-btn" onclick="GS.openChangeFile(\'' + esc(ch.path) + '\')">Open in Editor</button>';
+      html += '</div>';
+      html += '</div>';
+      html += '</div>';
     }
     c.innerHTML = html;
   }
+
+  function renderNewFileDiff(ch) {
+    const lines = (ch.newContent || '').split('\n');
+    let html = '<div class="gs-diff-stats">+' + lines.length + ' lines</div>';
+    html += '<div class="gs-diff-body">';
+    for (const line of lines) {
+      html += '<div class="gs-diff-line added"><span class="gs-diff-gutter">+</span>' + esc(line) + '</div>';
+    }
+    html += '</div>';
+    return html;
+  }
+
+  function renderDeletedFileDiff(ch) {
+    const lines = (ch.oldContent || '').split('\n');
+    let html = '<div class="gs-diff-stats" style="color:var(--gs-err)">-' + lines.length + ' lines</div>';
+    html += '<div class="gs-diff-body">';
+    for (const line of lines) {
+      html += '<div class="gs-diff-line removed"><span class="gs-diff-gutter">-</span>' + esc(line) + '</div>';
+    }
+    html += '</div>';
+    return html;
+  }
+
+  function renderModifiedDiff(ch) {
+    const oldLines = (ch.oldContent || '').split('\n');
+    const newLines = (ch.newContent || '').split('\n');
+    const diff = computeDiff(oldLines, newLines);
+    let added = 0, removed = 0;
+    for (const d of diff) {
+      if (d.type === 'added') added++;
+      if (d.type === 'removed') removed++;
+    }
+    let html = '<div class="gs-diff-stats">';
+    if (added) html += '<span style="color:var(--gs-ok)">+' + added + '</span> ';
+    if (removed) html += '<span style="color:var(--gs-err)">-' + removed + '</span>';
+    if (!added && !removed) html += 'No line changes';
+    html += '</div>';
+    html += '<div class="gs-diff-body">';
+    for (const d of diff) {
+      const cls = d.type === 'added' ? 'added' : d.type === 'removed' ? 'removed' : '';
+      const gutter = d.type === 'added' ? '+' : d.type === 'removed' ? '-' : ' ';
+      html += '<div class="gs-diff-line ' + cls + '"><span class="gs-diff-gutter">' + gutter + '</span>' + esc(d.line) + '</div>';
+    }
+    html += '</div>';
+    return html;
+  }
+
+  // Simple LCS-based line diff.
+  function computeDiff(oldLines, newLines) {
+    const m = oldLines.length, n = newLines.length;
+    // LCS table.
+    const dp = Array.from({ length: m + 1 }, () => new Array(n + 1).fill(0));
+    for (let i = 1; i <= m; i++) {
+      for (let j = 1; j <= n; j++) {
+        if (oldLines[i - 1] === newLines[j - 1]) dp[i][j] = dp[i - 1][j - 1] + 1;
+        else dp[i][j] = Math.max(dp[i - 1][j], dp[i][j - 1]);
+      }
+    }
+    // Backtrack.
+    const result = [];
+    let i = m, j = n;
+    while (i > 0 || j > 0) {
+      if (i > 0 && j > 0 && oldLines[i - 1] === newLines[j - 1]) {
+        result.unshift({ type: 'context', line: oldLines[i - 1] });
+        i--; j--;
+      } else if (j > 0 && (i === 0 || dp[i][j - 1] >= dp[i - 1][j])) {
+        result.unshift({ type: 'added', line: newLines[j - 1] });
+        j--;
+      } else {
+        result.unshift({ type: 'removed', line: oldLines[i - 1] });
+        i--;
+      }
+    }
+    return result;
+  }
+
+  GS.toggleDiff = function (idx) {
+    const el = $('gsDiff' + idx);
+    const chevron = $('gsChevron' + idx);
+    if (!el) return;
+    const isOpen = el.style.display !== 'none';
+    el.style.display = isOpen ? 'none' : 'block';
+    if (chevron) chevron.textContent = isOpen ? '▸' : '▾';
+  };
 
   GS.openChangeFile = function (path) {
     openFile(path);

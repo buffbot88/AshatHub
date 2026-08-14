@@ -501,23 +501,37 @@ $files           = $view->files;
       width: 100%;
       height: 100%;
       overflow-y: auto;
-      padding: 12px;
+      padding: 0;
     }
 
-    .gs-changes-header {
-      padding: 8px 12px;
+    .gs-changes-empty {
+      padding: 40px 20px;
+      text-align: center;
+      color: var(--gs-text-dim);
+      font-size: 13px;
+    }
+
+    .gs-changes-summary {
+      padding: 10px 14px;
       font-size: 12px;
+      font-family: var(--gs-font-mono);
       color: var(--gs-text-dim);
       border-bottom: 1px solid var(--gs-border-subtle);
-      margin-bottom: 8px;
+      background: var(--gs-surface);
+      position: sticky;
+      top: 0;
+      z-index: 1;
+    }
+
+    .gs-change-file {
+      border-bottom: 1px solid var(--gs-border-subtle);
     }
 
     .gs-change-row {
       display: flex;
       align-items: center;
       gap: 8px;
-      padding: 6px 10px;
-      border-radius: 6px;
+      padding: 7px 14px;
       font-size: 13px;
       color: var(--gs-text-soft);
       cursor: pointer;
@@ -526,29 +540,103 @@ $files           = $view->files;
 
     .gs-change-row:hover { background: var(--gs-surface-3); }
 
+    .gs-change-path { flex: 1; font-family: var(--gs-font-mono); font-size: 12px; }
+
+    .gs-change-chevron {
+      font-size: 10px;
+      color: var(--gs-text-dim);
+      transition: transform 0.15s;
+      width: 14px;
+      text-align: center;
+    }
+
     .gs-change-tag {
       padding: 1px 6px;
       border-radius: 4px;
-      font-size: 10px;
-      font-weight: 600;
+      font-size: 9px;
+      font-weight: 700;
       font-family: var(--gs-font-mono);
-      text-transform: uppercase;
+      letter-spacing: 0.04em;
+      flex-shrink: 0;
     }
 
     .gs-change-tag.created { background: rgba(34,197,94,0.15); color: var(--gs-ok); }
     .gs-change-tag.modified { background: var(--gs-accent-soft); color: var(--gs-accent); }
     .gs-change-tag.deleted { background: rgba(239,68,68,0.15); color: var(--gs-err); }
 
-    .gs-diff-view {
-      padding: 12px 16px;
-      font-family: var(--gs-font-mono);
-      font-size: 13px;
-      line-height: 1.5;
+    .gs-change-diff {
+      background: var(--gs-bg);
+      border-top: 1px solid var(--gs-border-subtle);
     }
 
-    .gs-diff-line { white-space: pre-wrap; }
-    .gs-diff-line.added { background: rgba(34,197,94,0.1); color: var(--gs-ok); }
-    .gs-diff-line.removed { background: rgba(239,68,68,0.1); color: var(--gs-err); text-decoration: line-through; }
+    .gs-diff-stats {
+      padding: 4px 14px;
+      font-size: 11px;
+      font-family: var(--gs-font-mono);
+      color: var(--gs-text-dim);
+      background: var(--gs-surface-2);
+    }
+
+    .gs-diff-body {
+      max-height: 400px;
+      overflow-y: auto;
+      font-family: var(--gs-font-mono);
+      font-size: 12px;
+      line-height: 1.6;
+    }
+
+    .gs-diff-line {
+      display: flex;
+      padding: 0 14px;
+      white-space: pre-wrap;
+      word-break: break-all;
+    }
+
+    .gs-diff-gutter {
+      width: 18px;
+      flex-shrink: 0;
+      text-align: center;
+      color: var(--gs-text-dim);
+      user-select: none;
+    }
+
+    .gs-diff-line.added {
+      background: rgba(34,197,94,0.08);
+      color: var(--gs-ok);
+    }
+
+    .gs-diff-line.added .gs-diff-gutter { color: var(--gs-ok); font-weight: 700; }
+
+    .gs-diff-line.removed {
+      background: rgba(239,68,68,0.08);
+      color: var(--gs-err);
+    }
+
+    .gs-diff-line.removed .gs-diff-gutter { color: var(--gs-err); font-weight: 700; }
+
+    .gs-change-actions {
+      padding: 6px 14px 10px;
+      display: flex;
+      gap: 8px;
+    }
+
+    .gs-action-btn {
+      padding: 4px 10px;
+      border-radius: 4px;
+      font-size: 11px;
+      font-family: var(--gs-font);
+      cursor: pointer;
+      border: 1px solid var(--gs-border);
+      background: transparent;
+      color: var(--gs-text-dim);
+      transition: all 0.12s;
+    }
+
+    .gs-action-btn:hover { color: var(--gs-text); border-color: var(--gs-text-dim); }
+    .gs-action-btn.accept { border-color: var(--gs-ok); color: var(--gs-ok); }
+    .gs-action-btn.accept:hover { background: rgba(34,197,94,0.12); }
+    .gs-action-btn.revert { border-color: var(--gs-err); color: var(--gs-err); }
+    .gs-action-btn.revert:hover { background: rgba(239,68,68,0.12); }
 
     /* ── Chat Area ─────────────────────────────────────────────── */
     .gs-chat-scroll {

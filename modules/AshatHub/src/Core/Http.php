@@ -13,7 +13,7 @@ namespace Core;
 final class Http
 {
     /** POST JSON, return the decoded array or null. Best-effort, one try. */
-    public static function postJson(string $endpoint, array $headers, array $payload): ?array
+    public static function postJson(string $endpoint, array $headers, array $payload, int $timeout = 120): ?array
     {
         // stream_context_create expects header as a single \r\n-delimited string.
         $headerStr = implode("\r\n", $headers);
@@ -23,7 +23,7 @@ final class Http
                 'method'        => 'POST',
                 'header'        => $headerStr,
                 'content'       => json_encode($payload, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES),
-                'timeout'       => 120,
+                'timeout'       => $timeout,
                 'ignore_errors' => true,
             ],
         ]);

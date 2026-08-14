@@ -80,14 +80,14 @@ final class ChatBackend
         ];
     }
 
-    public static function localVL(array $messages, int $maxTokens = 1500): ?string
+    public static function localVL(array $messages, int $maxTokens = 1500, int $timeout = 30): ?string
     {
         $url = rtrim(ConfigBag::getInstance()->intentRouterUrl(), '/') . '/v1/chat/completions';
         $resp = Http::postJson($url, ['Content-Type: application/json'], [
             'messages' => $messages,
             'temperature' => 0.2,
             'max_tokens' => $maxTokens,
-        ]);
+        ], $timeout);
         if (!is_array($resp)) {
             return null;
         }

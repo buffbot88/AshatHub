@@ -179,6 +179,7 @@
     if (!input) return;
     const msg = input.value.trim();
     if (!msg || S.isSending) return;
+    if (msg.length > 10000 && !confirm('This is a very long message (' + msg.length + ' chars). It may take longer to process. Continue?')) return;
     input.value = '';
     GS.autoResize(input);
 

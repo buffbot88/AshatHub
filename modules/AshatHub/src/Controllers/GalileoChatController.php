@@ -63,6 +63,13 @@ final class GalileoChatController
             return;
         }
 
+        // Cap message length to prevent 450M overload.
+        // For very long specs, we'll use the first 50k chars and summarize the rest.
+        $maxLen = 50000;
+        if (mb_strlen($message) > $maxLen) {
+            $message = mb_substr($message, 0, $maxLen) . "\n\n[Message truncated to {$maxLen} characters for processing]";
+        }
+
         $userId = (string) $ctx->user()['id'];
 
         // Auto-create project if none exists.
@@ -103,14 +110,18 @@ final class GalileoChatController
             return 'coding_request';
         }
 
+        // Truncate for classification - only need the first ~200 chars to determine intent.
+        $classifierInput = mb_substr($message, 0, 200);
+
         $systemPrompt = "Classify this message into ONE category: conversation, project_question, brainstorm, coding_request, debug, review, refactor, preview_issue, file_operation. Reply with ONLY the category name.";
 
         $content = ChatBackend::localVL(
             [
                 ['role' => 'system', 'content' => $systemPrompt],
-                ['role' => 'user',   'content' => $message],
+                ['role' => 'user',   'content' => $classifierInput],
             ],
-            30
+            30,
+            10  // 10s timeout for classification
         );
 
         if ($content === null) {
@@ -198,7 +209,13 @@ final class GalileoChatController
             . "- Follow the provided best practices and patterns\n"
             . "- Output ONLY the JSON object, no prose";
 
-        $userPrompt = $message . $skillsContext;
+        // Truncate message for 450M planner (max ~3000 chars for planning).
+        $plannerMessage = mb_substr($message, 0, 3000);
+        if (mb_strlen($message) > 3000) {
+            $plannerMessage .= "\n\n[Full spec is " . mb_strlen($message) . " chars; showing first 3000]";
+        }
+
+        $userPrompt = $plannerMessage . $skillsContext;
         if ($projectContext !== '') {
             $userPrompt = "Existing project:\n" . mb_substr($projectContext, 0, 1000) . "\n\n" . $userPrompt;
         }
@@ -208,7 +225,8 @@ final class GalileoChatController
                 ['role' => 'system', 'content' => $systemPrompt],
                 ['role' => 'user',   'content' => $userPrompt],
             ],
-            512  // enough for a plan, not full code
+            512,
+            20  // 20s timeout for planning
         );
 
         if ($content === null || trim($content) === '') {
@@ -422,12 +440,16 @@ final class GalileoChatController
             $userPrompt = "File:\n" . $fileContext . "\n\n" . $userPrompt;
         }
 
+        // Truncate user message for local chat.
+        $chatMsg = mb_substr($userPrompt, 0, 4000);
+
         $content = ChatBackend::localVL(
             [
                 ['role' => 'system', 'content' => $systemPrompt],
-                ['role' => 'user',   'content' => $userPrompt],
+                ['role' => 'user',   'content' => $chatMsg],
             ],
-            2048
+            2048,
+            30  // 30s timeout for conversation
         );
 
         if ($content === null) {

@@ -36,7 +36,7 @@
                 </div>
                 <p class="text-sm mt-2 leading-relaxed" style="color: var(--gold-muted);"><?= e($p['description']) ?></p>
                 <div class="mt-2 flex items-center gap-4 text-xs font-mono" style="color: var(--gold-muted);">
-                  <span>by <?= e($p['publisher_display_name'] ?: $p['publisher_username'] ?: '—') ?></span>
+                  <span>by <?= e($p['publisher_display_name'] ?: $p['publisher_username'] ?: '-') ?></span>
                   <span><?= e(time_ago($p['created_at'] ?? '')) ?></span>
                   <span>♥ <?= (int) $p['likes'] ?></span>
                 </div>
@@ -91,7 +91,7 @@
                     <?= e($p['status']) ?>
                   </span>
                 </td>
-                <td class="py-2 px-3 hidden md:table-cell text-xs" style="color: var(--gold-muted);"><?= e($p['publisher_display_name'] ?: $p['publisher_username'] ?: '—') ?></td>
+                <td class="py-2 px-3 hidden md:table-cell text-xs" style="color: var(--gold-muted);"><?= e($p['publisher_display_name'] ?: $p['publisher_username'] ?: '-') ?></td>
                 <td class="py-2 px-3 hidden sm:table-cell text-xs" style="color: var(--gold-muted);"><?= e(time_ago($p['created_at'] ?? '')) ?></td>
               </tr>
             <?php endforeach; ?>

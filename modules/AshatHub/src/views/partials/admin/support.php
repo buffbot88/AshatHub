@@ -53,7 +53,7 @@
               </a>
             </td>
             <td class="py-3 px-3" style="color: var(--gold-muted);">
-              <?= e($t['display_name'] ?: $t['username'] ?? '—') ?>
+              <?= e($t['display_name'] ?: $t['username'] ?? '-') ?>
             </td>
             <td class="py-3 px-3">
               <span class="chip-gold" style="font-size: 10px;"><?= e($t['category']) ?></span>

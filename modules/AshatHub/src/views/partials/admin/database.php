@@ -392,7 +392,7 @@
       <?php if (!empty($tableData)): ?>
         <!-- With selected: bulk bar -->
         <div class="pma-bulk" id="pma-bulk-bar">
-          <span><b id="pma-bulk-count">0</b> selected — with selected:</span>
+          <span><b id="pma-bulk-count">0</b> selected - with selected:</span>
           <a href="javascript:void(0)" onclick="pmaBulkDelete()" class="del">Delete</a>
           <span style="color:var(--gold-dim);">·</span>
           <a href="javascript:void(0)" onclick="pmaBulkExport()">Export</a>
@@ -625,7 +625,7 @@
 <div id="pma-insert-modal" class="pma-modal" style="display:none; position:fixed; inset:0; z-index:50; align-items:center; justify-content:center; background:rgba(0,0,0,.7);">
   <div style="width:100%; max-width:560px; margin:0 16px; padding:20px; border-radius:8px; background:var(--ink-panel); border:1px solid var(--gold-line); max-height:85vh; overflow-y:auto;">
     <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:14px;">
-      <span style="font-family:var(--font-heading); font-size:15px; font-weight:600; color:var(--gold);">Insert Row — <?= e($activeTable) ?></span>
+      <span style="font-family:var(--font-heading); font-size:15px; font-weight:600; color:var(--gold);">Insert Row - <?= e($activeTable) ?></span>
       <button onclick="this.closest('.pma-modal').style.display='none'" style="background:none; border:none; color:var(--gold-muted); font-size:18px; cursor:pointer;">&times;</button>
     </div>
     <form method="post" action="/admin/database/insert-row/">
@@ -655,7 +655,7 @@
 <div id="pma-edit-modal" class="pma-modal" style="display:none; position:fixed; inset:0; z-index:50; align-items:center; justify-content:center; background:rgba(0,0,0,.7);">
   <div style="width:100%; max-width:560px; margin:0 16px; padding:20px; border-radius:8px; background:var(--ink-panel); border:1px solid var(--gold-line); max-height:85vh; overflow-y:auto;">
     <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:14px;">
-      <span style="font-family:var(--font-heading); font-size:15px; font-weight:600; color:var(--gold);">Edit Row — <?= e($activeTable) ?></span>
+      <span style="font-family:var(--font-heading); font-size:15px; font-weight:600; color:var(--gold);">Edit Row - <?= e($activeTable) ?></span>
       <button onclick="this.closest('.pma-modal').style.display='none'" style="background:none; border:none; color:var(--gold-muted); font-size:18px; cursor:pointer;">&times;</button>
     </div>
     <form id="pma-edit-form" method="post" action="/admin/database/update-row/">

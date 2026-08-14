@@ -15,7 +15,7 @@ $files           = $view->files;
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="csrf-token" content="<?= e($csrf) ?>">
-  <title>Galileo Studio — <?= e($currentProject['name'] ?? 'New Project') ?></title>
+  <title>Galileo Studio - <?= e($currentProject['name'] ?? 'New Project') ?></title>
   <link rel="stylesheet" href="/css/app.css">
   <!-- Monaco Editor from CDN -->
   <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/monaco-editor@0.45.0/min/vs/editor/editor.main.css">

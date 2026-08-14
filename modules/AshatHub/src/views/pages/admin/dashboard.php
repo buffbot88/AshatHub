@@ -26,7 +26,7 @@
       // Determine git tile state
       $gitOk    = !empty($git['ok']);
       $gitLabel = 'Git';
-      $gitValue = $gitOk ? ($git['branch'] ?? '') . ' @ ' . ($git['commit'] ?? '') : '—';
+      $gitValue = $gitOk ? ($git['branch'] ?? '') . ' @ ' . ($git['commit'] ?? '') : '-';
       $gitDirty = $gitOk && !empty($git['dirty']);
 
       $svg = [

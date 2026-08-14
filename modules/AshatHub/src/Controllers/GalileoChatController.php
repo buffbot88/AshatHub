@@ -172,6 +172,13 @@ final class GalileoChatController
      */
     private function createBuildPlan(string $routerUrl, string $message, string $projectContext): ?array
     {
+        // Look up relevant skills before planning
+        $skills = $this->lookupSkills($message);
+        $skillsContext = '';
+        if ($skills !== '') {
+            $skillsContext = "\n\nRelevant skills and best practices:\n" . $skills;
+        }
+
         $systemPrompt = "You are a software architect. Given a user's request, create a build plan.\n"
             . "Return a JSON object with this exact structure:\n"
             . "{\"summary\": \"1-2 sentence summary of what to build\", "
@@ -182,9 +189,10 @@ final class GalileoChatController
             . "- Use relative paths (no leading slash)\n"
             . "- Be specific about each file's purpose\n"
             . "- Include config files, entry points, and core modules\n"
+            . "- Follow the provided best practices and patterns\n"
             . "- Output ONLY the JSON object, no prose";
 
-        $userPrompt = $message;
+        $userPrompt = $message . $skillsContext;
         if ($projectContext !== '') {
             $userPrompt = "Existing project:\n" . mb_substr($projectContext, 0, 1000) . "\n\n" . $userPrompt;
         }
@@ -527,6 +535,38 @@ final class GalileoChatController
             $repo = RepositoryRegistry::file();
             $file = $repo->findByPath($userId, $filePath);
             return mb_substr((string) ($file['content'] ?? ''), 0, $maxChars);
+        } catch (\Throwable $e) {
+            return '';
+        }
+    }
+
+    /**
+     * Look up relevant skills from the skills database based on the user's message.
+     * Returns a concatenated string of relevant skill content, or empty string.
+     */
+    private function lookupSkills(string $message): string
+    {
+        try {
+            $pdo = \Core\Database::connection();
+            // Search for skills matching keywords in the message
+            $like = '%' . mb_substr($message, 0, 50) . '%';
+            $stmt = $pdo->prepare(
+                'SELECT name, content, tokens_estimated FROM agent_skills '
+                . 'WHERE name LIKE ? OR content LIKE ? '
+                . 'ORDER BY tokens_estimated ASC LIMIT 5'
+            );
+            $stmt->execute([$like, $like]);
+            $rows = $stmt->fetchAll(\PDO::FETCH_ASSOC);
+
+            $result = '';
+            $budget = 800; // max chars for skills context
+            foreach ($rows as $row) {
+                $entry = "[{$row['name']}]\n{$row['content']}\n\n";
+                if (strlen($result) + strlen($entry) > $budget) break;
+                $result .= $entry;
+            }
+
+            return $result;
         } catch (\Throwable $e) {
             return '';
         }

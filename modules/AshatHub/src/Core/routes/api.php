@@ -44,7 +44,13 @@ $router->group('/api', function () use ($router) {
             $router->post('/chat',              [\Controllers\GalileoChatController::class,    'chat']);
             $router->post('/chat/stream',        [\Controllers\GalileoChatController::class,    'stream']);
             $router->get('/projects',            [\Controllers\GalileoStudioController::class,  'projects']);
-            $router->get('/conversations/{projectId}', [\Controllers\GalileoStudioController::class, 'conversations']);
+            // Conversations (server-side persistence)
+            $router->get('/conversations/{projectId}', [\Controllers\ConversationController::class, 'list']);
+            $router->post('/conversations',             [\Controllers\ConversationController::class, 'create']);
+            $router->get('/conversations/{id}/messages', [\Controllers\ConversationController::class, 'messages']);
+            $router->post('/conversations/{id}/messages',[\Controllers\ConversationController::class, 'addMessages']);
+            $router->delete('/conversations/{id}',       [\Controllers\ConversationController::class, 'delete']);
+            $router->post('/conversations/sync',         [\Controllers\ConversationController::class, 'sync']);
 
             // Agent jobs
             $router->post('/agents/jobs',        [\Controllers\GalileoAgentController::class,   'submit']);

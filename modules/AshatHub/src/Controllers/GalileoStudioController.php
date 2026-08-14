@@ -171,10 +171,12 @@ final class GalileoStudioController
      */
     private function loadConversations(string $userId, string $projectId): array
     {
-        // Server-side conversation storage is a future enhancement.
-        // For now, conversations live in the browser's localStorage
-        // and are managed entirely by the Galileo frontend JS.
-        return [];
+        try {
+            $repo = \Repositories\RepositoryRegistry::conversation();
+            return $repo->listByProject($userId, $projectId);
+        } catch (\Throwable $e) {
+            return [];
+        }
     }
 
     /**

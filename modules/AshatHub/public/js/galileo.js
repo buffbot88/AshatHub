@@ -158,8 +158,7 @@
     S.projects = data.projects || [];
     S.files = data.files || [];
 
-    loadConversations();
-    renderConvList();
+    loadConversations().then(() => renderConvList());
     renderFileTree();
     initSplitter();
     initMonaco();
@@ -186,8 +185,15 @@
     addMsg('user', msg);
 
     if (!S.conversationId) {
-      S.conversationId = 'conv_' + Date.now();
+      // Create conversation on the server.
+      S.conversationId = 'pending_' + Date.now();
       S.messages = [];
+      api('/api/galileo/conversations', {
+        method: 'POST',
+        body: { project_id: S.projectId, title: msg.substring(0, 50) },
+      }).then(d => {
+        if (d.id) S.conversationId = d.id;
+      }).catch(() => {});
     }
 
     S.isSending = true;
@@ -706,25 +712,77 @@
 
   GS.syncFiles = function () { refreshFiles(); termLine('$ files synced', 'success'); };
 
-  // ── Conversations ──────────────────────────────────────────────
+  // ── Conversations (server-backed) ─────────────────────────────
   function convKey() { return S.storageKey + '.conversations.' + S.projectId; }
 
-  function loadConversations() {
-    try { S.conversations = JSON.parse(localStorage.getItem(convKey()) || '[]'); } catch { S.conversations = []; }
+  // Load conversations from server, with localStorage fallback.
+  async function loadConversations() {
+    try {
+      const d = await api('/api/galileo/conversations/' + encodeURIComponent(S.projectId));
+      S.conversations = (d.conversations || []).map(c => ({
+        id: c.id, title: c.title, created_at: c.created_at, messages: [],
+      }));
+      // Also migrate any localStorage conversations to server.
+      migrateLocalStorage();
+    } catch {
+      // Server unavailable — fall back to localStorage.
+      try { S.conversations = JSON.parse(localStorage.getItem(convKey()) || '[]'); } catch { S.conversations = []; }
+    }
   }
 
-  function saveConv() {
-    if (!S.conversationId) return;
+  // Migrate localStorage conversations to server (one-time per project).
+  function migrateLocalStorage() {
+    try {
+      const local = JSON.parse(localStorage.getItem(convKey()) || '[]');
+      if (!local.length) return;
+      // Send to server for sync.
+      api('/api/galileo/conversations/sync', {
+        method: 'POST',
+        body: { project_id: S.projectId, conversations: local },
+      }).then(d => {
+        if (d.synced > 0) {
+          // Reload from server to get the new IDs.
+          loadConversations();
+          // Clear localStorage after successful sync.
+          localStorage.removeItem(convKey());
+        }
+      }).catch(() => {});
+    } catch {}
+  }
+
+  // Save conversation to server.
+  async function saveConv() {
+    if (!S.conversationId || !S.messages.length) return;
+
+    // Persist messages to server.
+    try {
+      await api('/api/galileo/conversations/' + S.conversationId + '/messages', {
+        method: 'POST',
+        body: { messages: S.messages },
+      });
+    } catch {
+      // Fallback: save to localStorage.
+      try {
+        let local = JSON.parse(localStorage.getItem(convKey()) || '[]');
+        let c = local.find(x => x.id === S.conversationId);
+        if (!c) {
+          c = { id: S.conversationId, title: S.messages[0]?.content?.substring(0, 50) || 'Chat', created_at: Date.now(), messages: [] };
+          local.unshift(c);
+        }
+        c.messages = S.messages;
+        localStorage.setItem(convKey(), JSON.stringify(local));
+      } catch {}
+    }
+
+    // Update local cache.
     let c = S.conversations.find(x => x.id === S.conversationId);
     if (!c) {
       c = { id: S.conversationId, title: S.messages[0]?.content?.substring(0, 50) || 'Chat', created_at: Date.now(), messages: [] };
       S.conversations.unshift(c);
     }
     c.messages = S.messages;
-    c.updated_at = Date.now();
     const first = S.messages.find(m => m.role === 'user');
     if (first) c.title = first.content.substring(0, 50);
-    try { localStorage.setItem(convKey(), JSON.stringify(S.conversations)); } catch {}
     renderConvList();
   }
 
@@ -741,11 +799,25 @@
     }
   }
 
-  function loadConv(id) {
+  // Load a conversation — fetch messages from server.
+  async function loadConv(id) {
+    // Find in local cache.
     const conv = S.conversations.find(c => c.id === id);
-    if (!conv) return;
     S.conversationId = id;
-    S.messages = conv.messages || [];
+    S.messages = [];
+
+    // Fetch messages from server.
+    try {
+      const d = await api('/api/galileo/conversations/' + id + '/messages');
+      S.messages = (d.messages || []).map(m => ({
+        role: m.role, content: m.content, ts: new Date(m.created_at).getTime(),
+      }));
+      if (conv) conv.messages = S.messages;
+    } catch {
+      // Fallback to local cache.
+      if (conv) S.messages = conv.messages || [];
+    }
+
     const c = $('gsChatMessages');
     if (c) c.innerHTML = '';
     if (!S.messages.length) {

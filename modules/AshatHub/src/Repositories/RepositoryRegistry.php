@@ -71,6 +71,12 @@ final class RepositoryRegistry
         return self::resolve('email_verification');
     }
 
+    public static function conversation(): ConversationRepository
+    {
+        /** @var ConversationRepository */
+        return self::resolve('conversation');
+    }
+
     // ── Test seam ──────────────────────────────────────────────────
 
     /**
@@ -148,6 +154,7 @@ final class RepositoryRegistry
             'docs_article'       => new PdoDocsArticleRepository($pdoDb),
             'ticket'             => new PdoTicketRepository($pdoDb),
             'email_verification' => new PdoEmailVerificationRepository($pdoDb),
+            'conversation'        => new ConversationRepository($pdoDb),
             default => throw new \InvalidArgumentException("Unknown repository: $key"),
         };
     }

@@ -84,6 +84,13 @@ $router->group('/api', function () use ($router) {
         $router->group('/folders', function () use ($router) {
             $router->post('', [\Controllers\FilesController::class, 'createFolder']);
         });
+
+        // ─── Skills database (admin manage) ────────────────────
+        $router->post('/skills',         [\Controllers\SkillsController::class, 'store']);
+        $router->delete('/skills/{name}', [\Controllers\SkillsController::class, 'delete']);
     });
+
+    // ─── Skills lookup (unauthenticated — coding agents query this) ──
+    $router->get('/skills',         [\Controllers\SkillsController::class, 'index']);
 
 });

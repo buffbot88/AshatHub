@@ -77,6 +77,58 @@ final class GalileoStudioController
     }
 
     /**
+     * GET /api/galileo/projects — list projects as JSON.
+     */
+    public function projects(RequestContext $ctx): void
+    {
+        $userId = (string) $ctx->user()['id'];
+        $projects = $this->loadProjects($userId);
+        $ctx->jsonResponse(['projects' => array_values($projects)]);
+    }
+
+    /**
+     * POST /api/galileo/projects — create a new project.
+     */
+    public function createProject(RequestContext $ctx): void
+    {
+        $body = $ctx->jsonBody();
+        $name = trim((string) ($body['name'] ?? ''));
+        if ($name === '') {
+            $ctx->jsonResponse(['error' => 'name_required'], 400);
+            return;
+        }
+
+        $userId = (string) $ctx->user()['id'];
+        $slug = strtolower($name);
+        $slug = preg_replace('/[^a-z0-9]+/', '-', $slug);
+        $slug = trim($slug, '-');
+        if ($slug === '') $slug = 'project-' . substr(bin2hex(random_bytes(4)), 0, 8);
+
+        $baseDir = ASHAT_ROOT . '/projects/' . $userId;
+        if (!is_dir($baseDir)) {
+            @mkdir($baseDir, 0775, true);
+        }
+
+        $projDir = $baseDir . '/' . $slug;
+        if (is_dir($projDir)) {
+            $ctx->jsonResponse(['error' => 'project_exists', 'project_id' => $slug]);
+            return;
+        }
+
+        @mkdir($projDir, 0775, true);
+
+        // Write metadata.
+        $meta = [
+            'name'        => $name,
+            'description' => '',
+            'created_at'  => date('c'),
+        ];
+        file_put_contents($projDir . '/.meta.json', json_encode($meta, JSON_PRETTY_PRINT));
+
+        $ctx->jsonResponse(['ok' => true, 'project_id' => $slug, 'name' => $name], 201);
+    }
+
+    /**
      * Load all projects for a user from the filesystem.
      *
      * Each project is a directory under projects/<userId>/.

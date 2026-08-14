@@ -44,6 +44,7 @@ $router->group('/api', function () use ($router) {
             $router->post('/chat',              [\Controllers\GalileoChatController::class,    'chat']);
             $router->post('/chat/stream',        [\Controllers\GalileoChatController::class,    'stream']);
             $router->get('/projects',            [\Controllers\GalileoStudioController::class,  'projects']);
+            $router->post('/projects',           [\Controllers\GalileoStudioController::class,  'createProject']);
             // Conversations (server-side persistence)
             $router->get('/conversations/{projectId}', [\Controllers\ConversationController::class, 'list']);
             $router->post('/conversations',             [\Controllers\ConversationController::class, 'create']);

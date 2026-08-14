@@ -1186,9 +1186,19 @@
 
   GS.newProject = function () {
     const name = prompt('Project name:');
-    if (!name) return;
-    const slug = name.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
-    window.location.href = '/galileo?project=' + encodeURIComponent(slug);
+    if (!name || !name.trim()) return;
+    api('/api/galileo/projects', {
+      method: 'POST',
+      body: { name: name.trim() },
+    }).then(d => {
+      if (d.ok || d.project_id) {
+        window.location.href = '/galileo?project=' + encodeURIComponent(d.project_id);
+      } else if (d.error === 'project_exists') {
+        window.location.href = '/galileo?project=' + encodeURIComponent(d.project_id);
+      } else {
+        alert('Could not create project: ' + (d.error || 'unknown'));
+      }
+    }).catch(() => alert('Failed to create project'));
   };
 
   document.addEventListener('click', e => {

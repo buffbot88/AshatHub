@@ -9,8 +9,6 @@
   elseif (str_contains($adminPath, '/admin/settings'))  { $initialTab = 'settings'; }
   elseif (str_contains($adminPath, '/admin/support'))   { $initialTab = 'support'; }
   elseif (str_contains($adminPath, '/admin/projects'))  { $initialTab = 'projects'; }
-  elseif (str_contains($adminPath, '/admin/hosting'))   { $initialTab = 'hosting'; }
-
   $adminName = e($view->user['display_name'] ?? $view->user['username'] ?? 'Admin');
 ?>
 <section class="vb-admin">
@@ -262,8 +260,6 @@
       <button type="button" class="vb-nav-item" data-tab="settings">Settings</button>
       <div class="vb-nav-cat">Database</div>
       <button type="button" class="vb-nav-item" data-tab="database">MySQL Manager</button>
-      <div class="vb-nav-cat">Hosting</div>
-      <button type="button" class="vb-nav-item" data-tab="hosting">Hosting Accounts</button>
       <div class="vb-nav-cat">Support</div>
       <button type="button" class="vb-nav-item" data-tab="support">Tickets</button>
     </nav>
@@ -295,9 +291,6 @@
         <?php require __DIR__ . '/../../partials/admin/database.php'; ?>
       </div>
 
-      <div id="panel-hosting" role="tabpanel" aria-labelledby="nav-hosting" data-panel="hosting" hidden>
-        <?php require __DIR__ . '/../../partials/admin/hosting.php'; ?>
-      </div>
 
     </main>
   </div>

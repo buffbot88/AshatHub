@@ -65,11 +65,5 @@ $router->group('/admin', ['middleware' => ['admin-gate']], function () use ($rou
     $router->post('/support/status',          [\Controllers\SupportController::class, 'adminUpdateStatus']);
     $router->post('/support/{id}/delete',     [\Controllers\SupportController::class, 'adminDelete']);
 
-    // Hosting management
-    $router->post('/hosting/approve',          [\Controllers\AdminController::class, 'approveHosting']);
-    $router->post('/hosting/deny',             [\Controllers\AdminController::class, 'denyHosting']);
-    $router->post('/hosting/pause',            [\Controllers\AdminController::class, 'pauseHosting']);
-    $router->post('/hosting/resume',           [\Controllers\AdminController::class, 'resumeHosting']);
-    $router->post('/hosting/delete',           [\Controllers\AdminController::class, 'deleteHosting']);
 });
 

@@ -26,7 +26,6 @@ final class CategoryLabels
             'pro'       => 'Pro Features',
             'community' => 'Community',
             'files'     => 'Files',
-            'hosting'   => 'Hosting',
         ];
     }
 }

@@ -125,29 +125,6 @@ function md_to_html(string $md): string
 
 
 /**
- * Encrypt a hosting database password for storage.
- */
-function encryptHostingPassword(string $password): string
-{
-    $key = PAWS_SHARED_SECRET ?? "fallback-key-change-me";
-    $iv = random_bytes(16);
-    $encrypted = openssl_encrypt($password, "AES-256-CBC", $key, OPENSSL_RAW_DATA, $iv);
-    return base64_encode($iv . $encrypted);
-}
-
-/**
- * Decrypt a hosting database password.
- */
-function decryptHostingPassword(string $encryptedPassword): string
-{
-    $key = PAWS_SHARED_SECRET ?? "fallback-key-change-me";
-    $data = base64_decode($encryptedPassword);
-    $iv = substr($data, 0, 16);
-    $encrypted = substr($data, 16);
-    return openssl_decrypt($encrypted, "AES-256-CBC", $key, OPENSSL_RAW_DATA, $iv);
-}
-
-/**
  * Log an admin action to the audit log.
  */
 function logAdminAction(string $action, string $details = "", string $userId = ""): void

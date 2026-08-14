@@ -2,7 +2,6 @@
   /** @var Core\ViewContext $view */
   $s = $view->stats ?? [];
   $pendingProjects = $view->pending_projects ?? [];
-  $hostingCounts = $view->hosting_counts ?? ["pending" => 0, "active" => 0];
 ?>
 <div class="space-y-10">
   <!-- ─── Stats Grid ────────────────────────────────────────────── -->
@@ -49,15 +48,6 @@
           <div>
             <div style="font-weight: 500; color: var(--gold-text);">User Management</div>
             <div class="text-xs mt-0.5" style="color: var(--gold-muted);">Edit roles, activate/suspend accounts</div>
-          </div>
-        </div>
-      </a>
-      <a href="/admin/#tab=hosting" class="glass-card-solid p-5" style="display: block;">
-        <div class="flex items-center gap-3">
-          <span style="color: var(--text-mute);"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M22 12h-4l-3 9L9 3l-3 9H2"/></svg></span>
-          <div>
-            <div style="font-weight: 500; color: var(--gold-text);">Hosting</div>
-            <div class="text-xs mt-0.5" style="color: var(--gold-muted);">Manage hosting applications</div>
           </div>
         </div>
       </a>

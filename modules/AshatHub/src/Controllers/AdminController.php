@@ -77,22 +77,6 @@ final class AdminController
             }
         }
 
-        // Hosting stats
-        $hostingAccounts = [];
-        $hostingCounts = ["pending" => 0, "active" => 0, "paused" => 0, "denied" => 0];
-        try {
-            $pdo = \Core\Database::connection();
-            $stmt = $pdo->query("SELECT ha.*, u.username FROM hosting_accounts ha LEFT JOIN users u ON ha.user_id = u.id ORDER BY ha.created_at DESC");
-            $hostingAccounts = $stmt->fetchAll(\PDO::FETCH_ASSOC);
-            foreach ($hostingAccounts as $a) {
-                $status = $a["status"] ?? "pending";
-                if (isset($hostingCounts[$status])) {
-                    $hostingCounts[$status]++;
-                }
-            }
-        } catch (\Throwable $e) {
-            // Table may not exist yet
-        }
         $tickets = RepositoryRegistry::ticket()->allOpen();
 
         $ctx->view('pages/admin/index', [
@@ -111,8 +95,6 @@ final class AdminController
             'tickets'      => $tickets,
             'pending_projects' => RepositoryRegistry::communityProject()->pending(),
             'all_projects'     => RepositoryRegistry::communityProject()->allIncludingPending(),
-            'hosting_accounts' => $hostingAccounts,
-            'hosting_counts'   => $hostingCounts,
         ]);
     }
 
@@ -1260,7 +1242,7 @@ final class AdminController
     }
 
 
-    // Hosting management
+    // Database management
 
     /** Create a new database (phpMyAdmin "Create database" form). */
     public function databaseCreateDb(RequestContext $ctx): void
@@ -1345,112 +1327,6 @@ final class AdminController
             $_SESSION['_db_sql_error'] = 'Could not drop database: ' . $e->getMessage();
         }
         $ctx->redirect('/admin/database');
-    }
-
-    public function approveHosting(RequestContext $ctx): void {
-        $accountId = (int) $ctx->int('account_id');
-        $pdo = \Core\Database::connection();
-        $stmt = $pdo->prepare('SELECT * FROM hosting_accounts WHERE id = ? AND status = ?');
-        $stmt->execute([$accountId, 'pending']);
-        $account = $stmt->fetch(\PDO::FETCH_ASSOC);
-        if (!$account) { $ctx->flash('error', 'Not found.'); $ctx->redirect('/admin/#tab=hosting'); return; }
-        $this->provisionHostingAccount($account);
-        $ctx->flash('success', 'Approved.');
-        logAdminAction("hosting_approve", "Hosting approved");
-        $ctx->redirect('/admin/#tab=hosting');
-    return;
-    }
-
-    public function denyHosting(RequestContext $ctx): void {
-        $accountId = (int) $ctx->int('account_id');
-        $pdo = \Core\Database::connection();
-        $stmt = $pdo->prepare('UPDATE hosting_accounts SET status = ? WHERE id = ?');
-        $stmt->execute(['denied', $accountId]);
-        $ctx->flash('success', 'Denied.');
-        logAdminAction("hosting_deny", "Hosting denied");
-        $ctx->redirect('/admin/#tab=hosting');
-    return;
-    }
-
-    public function pauseHosting(RequestContext $ctx): void {
-        $accountId = (int) $ctx->int('account_id');
-        $pdo = \Core\Database::connection();
-        $stmt = $pdo->prepare('UPDATE hosting_accounts SET status = ? WHERE id = ?');
-        $stmt->execute(['paused', $accountId]);
-        $ctx->flash('success', 'Paused.');
-        logAdminAction("hosting_pause", "Hosting paused");
-        $ctx->redirect('/admin/#tab=hosting');
-    return;
-    }
-
-    public function resumeHosting(RequestContext $ctx): void {
-        $accountId = (int) $ctx->int('account_id');
-        $pdo = \Core\Database::connection();
-        $stmt = $pdo->prepare('UPDATE hosting_accounts SET status = ? WHERE id = ?');
-        $stmt->execute(['active', $accountId]);
-        $ctx->flash('success', 'Resumed.');
-        $ctx->redirect('/admin/#tab=hosting');
-        logAdminAction("hosting_resume", "Hosting resumed");
-    return;
-    }
-
-    public function deleteHosting(RequestContext $ctx): void {
-        $accountId = (int) $ctx->int('account_id');
-        $pdo = \Core\Database::connection();
-        $stmt = $pdo->prepare('SELECT domain, user_id, db_name, db_user FROM hosting_accounts WHERE id = ?');
-        $stmt->execute([$accountId]);
-        $account = $stmt->fetch(\PDO::FETCH_ASSOC);
-        if ($account) {
-            $domain = $account['domain'];
-            $username = (string) $pdo->query("SELECT username FROM users WHERE id = " . $pdo->quote($account['user_id']))->fetchColumn();
-            $projectDir = '/home/opc/AshatPlatform/modules/AshatHub/projects/' . $username;
-            $script = '/opt/ashat-hub/bin/deprovision-hosting.sh';
-            $cmd = "sudo {$script} " . escapeshellarg($domain) . ' ' . escapeshellarg($projectDir) . ' ' . $accountId
-                . ' ' . escapeshellarg((string) $account['db_name']) . ' ' . escapeshellarg((string) $account['db_user']) . " 2>&1";
-            shell_exec($cmd);
-        }
-        $stmt = $pdo->prepare('DELETE FROM hosting_accounts WHERE id = ?');
-        $stmt->execute([$accountId]);
-        $ctx->flash('success', 'Deleted.');
-        logAdminAction("hosting_delete", "Hosting deleted");
-        $ctx->redirect('/admin/#tab=hosting');
-    return;
-    }
-
-    private function provisionHostingAccount(array $account): void {
-        $pdo = \Core\Database::connection();
-        $userId = $account['user_id'];
-        $domain = $account['domain'];
-        $accountId = $account['id'];
-        $username = (string) $pdo->query("SELECT username FROM users WHERE id = " . $pdo->quote($userId))->fetchColumn();
-        if ($username === '') { $username = 'user' . substr($userId, 0, 8); }
-
-        // Short, unique names (MySQL identifiers cap at 32 chars — the old
-        // host_ + 32-hex scheme silently failed CREATE USER).
-        $dbName = 'host_' . $accountId;
-        $dbUser = $username;
-        $dbPass = bin2hex(random_bytes(16));
-        $ftpPass = bin2hex(random_bytes(16));
-        $ftpUser = $username;
-
-        // Provisioning runs as root (sudo): site DB + user, chrooted FTP
-        // user, Apache vhost. The app DB user lacks CREATE USER privileges.
-        $script = '/opt/ashat-hub/bin/provision-hosting.sh';
-        $cmd = "sudo {$script} " . escapeshellarg($domain) . ' ' . escapeshellarg($userId) . ' ' . $accountId
-            . ' ' . escapeshellarg($ftpPass) . ' ' . escapeshellarg($dbName) . ' ' . escapeshellarg($dbUser) . ' ' . escapeshellarg($dbPass) . " 2>&1";
-        $output = shell_exec($cmd);
-        if ($output !== null) {
-            error_log("Hosting provision output: " . trim($output));
-        }
-
-        // Update the database record (creds encrypted at rest)
-        $docRoot = '/home/opc/AshatPlatform/modules/AshatHub/projects/' . $username;
-        $stmt = $pdo->prepare('UPDATE hosting_accounts SET status = ?, db_name = ?, db_user = ?, db_host = ?, db_password = ?, ftp_user = ?, ftp_password = ?, document_root = ? WHERE id = ?');
-        $stmt->execute([
-            'active', $dbName, $dbUser, 'localhost',
-            encryptHostingPassword($dbPass), $ftpUser, encryptHostingPassword($ftpPass),
-            $docRoot, $accountId,
-        ]);
     }
 
     /** Return a safe, structured preview of the main-only Ashat Hub update. */

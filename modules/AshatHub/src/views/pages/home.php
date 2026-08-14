@@ -28,7 +28,7 @@
 
     <div class="chip-gold" style="font-family: var(--font-mono);">
       <span class="dot"></span>
-      Free Coding Agents &amp; Tiny Hosting Spots
+      Free AI Coding Agents &amp; Live Preview
     </div>
 
     <h1 class="mt-8" style="font-family: var(--font-heading); font-weight: 600; font-size: clamp(38px, 6vw, 60px); line-height: 1.08; color: var(--text); letter-spacing: -0.015em;">
@@ -37,7 +37,7 @@
     </h1>
 
     <p class="mt-6 text-lg max-w-2xl mx-auto leading-relaxed" style="color: var(--text-soft);">
-      A free browser-based AI coding platform with tiny hosting spots. Build your project, then deploy it to a free hosting slot in seconds.
+      A free browser-based AI coding platform. Describe your app, let AI build it, preview it live, and deploy when ready.
     </p>
 
     <div class="mt-9 flex justify-center gap-3 flex-wrap">
@@ -46,7 +46,7 @@
     </div>
 
     <p class="mt-10 text-xs font-mono" style="color: var(--text-dim);">
-      Free&ensp;·&ensp;AI-Powered&ensp;·&ensp;Includes Hosting
+      Free&ensp;·&ensp;AI-Powered&ensp;·&ensp;Live Preview
     </p>
   </div>
 </section>

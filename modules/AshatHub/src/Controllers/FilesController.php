@@ -140,7 +140,6 @@ final class FilesController
         if (!str_ends_with($path, "/")) { $this->writeFilesystem($userId, $path, $content); }
         $language = \Core\LanguageDetector::detect($path);
         $id       = $repo->save($userId, $path, $content, $language);
-        $this->syncToHosting($userId);
         $ctx->jsonResponse(["file" => $repo->find($id, $userId)]);
     }
 
@@ -150,7 +149,6 @@ final class FilesController
         $file = RepositoryRegistry::file()->find($id, $userId);
         if ($file && !str_ends_with((string) ($file["path"] ?? ""), "/")) { $this->deleteFilesystem($userId, (string) $file["path"]); }
         RepositoryRegistry::file()->delete($id, $userId);
-        $this->syncToHosting($userId);
         $ctx->jsonResponse(["deleted" => $id]);
     }
 
@@ -162,7 +160,6 @@ final class FilesController
         $dir = $this->userProjectDir($userId) . "/" . $path;
         if (is_dir($dir)) { shell_exec("rm -rf " . escapeshellarg($dir)); }
         $count = RepositoryRegistry::file()->deleteByPrefix($userId, $path);
-        $this->syncToHosting($userId);
         $ctx->jsonResponse(["deleted" => $count, "path" => trim($path, "/")]);
     }
 
@@ -260,23 +257,6 @@ final class FilesController
         $zip      = \Core\ZipHelper::create($entries);
         $filename = "project-" . date("Y-m-d-His") . ".zip";
         $ctx->binaryResponse($zip, $filename, "application/zip");
-    }
-
-    private function syncToHosting(string $userId): void
-    {
-        try {
-            $pdo = \Core\Database::connection();
-            $stmt = $pdo->prepare("SELECT domain FROM hosting_accounts WHERE user_id = ? AND status = ?");
-            $stmt->execute([$userId, "active"]);
-            $account = $stmt->fetch(\PDO::FETCH_ASSOC);
-            if (!$account) return;
-            $domain = $account["domain"];
-            $script = "/opt/ashat-hub/bin/sync-hosting-files.sh";
-            $cmd = "sudo {$script} " . escapeshellarg($domain) . " " . escapeshellarg($userId) . " 2>&1";
-            shell_exec($cmd);
-        } catch (\Throwable $e) {
-            error_log("Hosting sync error: " . $e->getMessage());
-        }
     }
 
     private function normalizePath(string $path): string

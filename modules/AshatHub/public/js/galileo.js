@@ -432,7 +432,14 @@
       } else {
         const icon = fileIcon(name);
         const active = node._path === S.activeFile ? ' active' : '';
-        html += '<div class="gs-file-node' + active + '" data-path="' + esc(node._path) + '">' + indent + icon + ' ' + esc(name) + '</div>';
+        const p = esc(node._path);
+        html += '<div class="gs-file-node' + active + '" data-path="' + p + '">' + indent + icon + ' ' + esc(name);
+        html += '<span class="file-actions">';
+        html += '<button class="gs-file-action" onclick="event.stopPropagation();GS.renameFile(\'' + p + '\')" title="Rename">✏</button>';
+        html += '<button class="gs-file-action" onclick="event.stopPropagation();GS.downloadFile(\'' + p + '\')" title="Download">↓</button>';
+        html += '<button class="gs-file-action del" onclick="event.stopPropagation();GS.deleteFile(\'' + p + '\')" title="Delete">✕</button>';
+        html += '</span>';
+        html += '</div>';
       }
     }
     return html;
@@ -559,6 +566,108 @@
       termLine('Failed to save ' + S.activeFile, 'error');
     });
   }
+
+  // ── File Operations ────────────────────────────────────────────
+  GS.newFile = function () {
+    const path = prompt('File path (e.g. src/App.jsx):');
+    if (!path || !path.trim()) return;
+    api('/api/files', {
+      method: 'POST',
+      body: { path: path.trim(), content: '' },
+    }).then(() => {
+      termLine('$ created ' + path.trim(), 'success');
+      refreshFiles();
+      openFile(path.trim());
+    }).catch(() => termLine('Failed to create file', 'error'));
+  };
+
+  GS.newFolder = function () {
+    const path = prompt('Folder path (e.g. src/components):');
+    if (!path || !path.trim()) return;
+    // Create a .gitkeep file to make the folder exist.
+    const folderPath = path.trim().replace(/\/$/, '') + '/.gitkeep';
+    api('/api/files', {
+      method: 'POST',
+      body: { path: folderPath, content: '' },
+    }).then(() => {
+      termLine('$ created folder ' + path.trim(), 'success');
+      refreshFiles();
+    }).catch(() => termLine('Failed to create folder', 'error'));
+  };
+
+  GS.renameFile = function (oldPath) {
+    const name = oldPath.split('/').pop();
+    const newName = prompt('Rename file:', name);
+    if (!newName || newName === name || !newName.trim()) return;
+    const dir = oldPath.split('/').slice(0, -1).join('/');
+    const newPath = dir ? dir + '/' + newName.trim() : newName.trim();
+    api('/api/files/rename', {
+      method: 'POST',
+      body: { path: oldPath, new_path: newPath },
+    }).then(() => {
+      termLine('$ renamed ' + oldPath + ' -> ' + newPath, 'success');
+      if (S.activeFile === oldPath) S.activeFile = newPath;
+      S.openFiles = S.openFiles.map(f => f.path === oldPath ? { ...f, path: newPath } : f);
+      renderEditorTabs();
+      refreshFiles();
+    }).catch(() => termLine('Failed to rename', 'error'));
+  };
+
+  GS.deleteFile = function (path) {
+    if (!confirm('Delete ' + path + '?')) return;
+    // Find the file ID from S.files.
+    const file = S.files.find(f => f.path === path);
+    if (file && file.id) {
+      api('/api/files/' + file.id, { method: 'DELETE' })
+        .then(() => {
+          termLine('$ deleted ' + path, 'success');
+          closeFile(path);
+          refreshFiles();
+        }).catch(() => termLine('Failed to delete', 'error'));
+    } else {
+      // Try by path.
+      api('/api/files/read?path=' + encodeURIComponent(path))
+        .then(d => {
+          const id = d.file?.id || d.id;
+          if (id) return api('/api/files/' + id, { method: 'DELETE' });
+          throw new Error('not found');
+        })
+        .then(() => {
+          termLine('$ deleted ' + path, 'success');
+          closeFile(path);
+          refreshFiles();
+        }).catch(() => termLine('Failed to delete', 'error'));
+    }
+  };
+
+  GS.downloadFile = function (path) {
+    window.open('/api/files/read?path=' + encodeURIComponent(path) + '&download=1', '_blank');
+    termLine('$ downloading ' + path);
+  };
+
+  GS.uploadFile = function () {
+    // Create a temporary file input.
+    const input = document.createElement('input');
+    input.type = 'file';
+    input.multiple = true;
+    input.onchange = async () => {
+      for (const file of input.files) {
+        const content = await file.text();
+        const path = file.name;
+        try {
+          await api('/api/files', {
+            method: 'POST',
+            body: { path, content },
+          });
+          termLine('$ uploaded ' + path, 'success');
+        } catch {
+          termLine('Failed to upload ' + path, 'error');
+        }
+      }
+      refreshFiles();
+    };
+    input.click();
+  };
 
   // ── Preview ────────────────────────────────────────────────────
   GS.startPreview = function () {

@@ -335,6 +335,55 @@ $files           = $view->files;
       justify-content: space-between;
     }
 
+    .gs-file-tree-actions {
+      display: flex;
+      gap: 2px;
+    }
+
+    .gs-ft-btn {
+      width: 22px;
+      height: 22px;
+      border-radius: 4px;
+      border: none;
+      background: transparent;
+      color: var(--gs-text-dim);
+      font-size: 12px;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      transition: all 0.1s;
+    }
+
+    .gs-ft-btn:hover { background: var(--gs-surface-3); color: var(--gs-text); }
+
+    .gs-file-node .file-actions {
+      margin-left: auto;
+      display: flex;
+      gap: 2px;
+      opacity: 0;
+      transition: opacity 0.1s;
+    }
+
+    .gs-file-node:hover .file-actions { opacity: 1; }
+
+    .gs-file-action {
+      width: 18px;
+      height: 18px;
+      border-radius: 3px;
+      border: none;
+      background: transparent;
+      color: var(--gs-text-dim);
+      font-size: 10px;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+
+    .gs-file-action:hover { background: var(--gs-surface-3); color: var(--gs-text); }
+    .gs-file-action.del:hover { color: var(--gs-err); }
+
     .gs-file-tree-list {
       flex: 1;
       overflow-y: auto;
@@ -1339,6 +1388,11 @@ $files           = $view->files;
             <div class="gs-file-tree-panel">
               <div class="gs-file-tree-header">
                 <span>Files</span>
+                <div class="gs-file-tree-actions">
+                  <button class="gs-ft-btn" onclick="GS.newFile()" title="New File">+</button>
+                  <button class="gs-ft-btn" onclick="GS.newFolder()" title="New Folder">📁+</button>
+                  <button class="gs-ft-btn" onclick="GS.uploadFile()" title="Upload">↑</button>
+                </div>
               </div>
               <div class="gs-file-tree-list" id="gsFileTree"></div>
             </div>

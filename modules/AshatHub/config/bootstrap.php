@@ -170,7 +170,7 @@ define('EMAIL_VERIFICATION_ENABLED', filter_var($__env('EMAIL_VERIFICATION_ENABL
 define('MAIL_FROM_ADDRESS', (string) $__env('MAIL_FROM_ADDRESS', ''));
 define('MAIL_FROM_NAME', (string) $__env('MAIL_FROM_NAME', APP_NAME));
 
-define('APP_VERSION', '6');
+define('APP_VERSION', '7');
 define('APP_VERSION_DISPLAY', 'v' . APP_VERSION);
 unset($__env);
 

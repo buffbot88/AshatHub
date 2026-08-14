@@ -981,6 +981,26 @@ $files           = $view->files;
 
     .gs-new-chat:hover { border-color: var(--gs-accent); color: var(--gs-accent); }
 
+    .gs-sidebar-search {
+      padding: 0 8px 4px;
+    }
+
+    .gs-search-input {
+      width: 100%;
+      padding: 6px 10px;
+      background: var(--gs-surface-2);
+      border: 1px solid var(--gs-border);
+      border-radius: 6px;
+      color: var(--gs-text);
+      font-size: 12px;
+      font-family: var(--gs-font);
+      outline: none;
+      transition: border-color 0.15s;
+    }
+
+    .gs-search-input::placeholder { color: var(--gs-text-dim); }
+    .gs-search-input:focus { border-color: var(--gs-accent); }
+
     .gs-conv-item.active { background: var(--gs-accent-soft); border-left: 2px solid var(--gs-accent); color: var(--gs-text); font-weight: 500; }
     .gs-conv-item { border-left: 2px solid transparent; }
 
@@ -1247,6 +1267,9 @@ $files           = $view->files;
           <button class="gs-sidebar-close" onclick="GS.toggleSidebar()">✕</button>
         </div>
         <button class="gs-new-chat" onclick="GS.newChat()">+ New Chat</button>
+        <div class="gs-sidebar-search">
+          <input type="text" class="gs-search-input" id="gsConvSearch" placeholder="Search chats..." oninput="GS.filterConversations(this.value)">
+        </div>
         <div class="gs-conv-list" id="gsConvList"></div>
         <div class="gs-archived-toggle" id="gsArchivedToggle" onclick="GS.toggleArchived()">
           <span class="gs-archived-icon">📦</span>

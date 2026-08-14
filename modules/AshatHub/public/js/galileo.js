@@ -27,6 +27,7 @@
     previewStatus: 'stopped',
     archivedConversations: [],
     archivedOpen: false,
+    convSearchQuery: '',
 
     isSending: false,
     sidebarOpen: false,
@@ -933,7 +934,9 @@
     const c = $('gsConvList');
     if (!c) return;
     c.innerHTML = '';
+    const q = S.convSearchQuery.toLowerCase();
     for (const conv of S.conversations) {
+      if (q && !conv.title.toLowerCase().includes(q)) continue;
       const d = document.createElement('div');
       d.className = 'gs-conv-item' + (conv.id === S.conversationId ? ' active' : '');
       d.textContent = conv.title;
@@ -941,7 +944,16 @@
       d.oncontextmenu = (e) => showConvMenu(e, conv.id, conv.title);
       c.appendChild(d);
     }
+    if (q && !c.children.length) {
+      c.innerHTML = '<div style="padding:8px 10px;font-size:12px;color:var(--gs-text-dim)">No matching chats</div>';
+    }
   }
+
+  GS.filterConversations = function (query) {
+    S.convSearchQuery = query.trim();
+    renderConvList();
+    if (S.archivedOpen) renderArchivedList();
+  };
 
   // ── Context Menu ──────────────────────────────────────────────
   let ctxConvId = null;
@@ -1063,11 +1075,13 @@
     const count = $('gsArchivedCount');
     if (!c) return;
     c.innerHTML = '';
+    const q = S.convSearchQuery.toLowerCase();
+    const filtered = S.archivedConversations.filter(conv => !q || conv.title.toLowerCase().includes(q));
     if (count) {
-      count.textContent = S.archivedConversations.length || '';
-      count.style.display = S.archivedConversations.length ? 'flex' : 'none';
+      count.textContent = filtered.length || '';
+      count.style.display = filtered.length ? 'flex' : 'none';
     }
-    for (const conv of S.archivedConversations) {
+    for (const conv of filtered) {
       const d = document.createElement('div');
       d.className = 'gs-conv-item';
       d.textContent = conv.title;
@@ -1078,7 +1092,6 @@
         ctxConvId = conv.id;
         const menu = $('gsContextMenu');
         if (!menu) return;
-        // Show unarchive option instead of archive
         const archiveItem = menu.querySelector('[data-action="archive"]');
         if (archiveItem) archiveItem.textContent = '📤 Unarchive';
         menu.style.left = e.clientX + 'px';
@@ -1086,6 +1099,9 @@
         menu.classList.add('open');
       };
       c.appendChild(d);
+    }
+    if (q && !filtered.length) {
+      c.innerHTML = '<div style="padding:8px 10px;font-size:12px;color:var(--gs-text-dim)">No matching archived chats</div>';
     }
   }
 

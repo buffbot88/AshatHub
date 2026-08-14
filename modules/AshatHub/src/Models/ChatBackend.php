@@ -26,7 +26,7 @@ final class ChatBackend
     {
         if ($mode === 'local') {
             $url = rtrim(ConfigBag::getInstance()->intentRouterUrl(), '/');
-            return new self('local', $url . '/v1/chat', '', self::defaultIntentRouterLabel(), false);
+            return new self('local', $url . '/v1/chat/completions', '', self::defaultIntentRouterLabel(), false);
         }
 
         $brainstem = is_array($brainstem) ? $brainstem : [];
@@ -38,7 +38,7 @@ final class ChatBackend
 
     public function isAvailable(): bool
     {
-        return $this->endpoint !== '' && $this->endpoint !== '/v1/chat/completions' && $this->endpoint !== '/v1/chat';
+        return $this->endpoint !== '' && $this->backend !== '';
     }
 
     public function backendName(): string
@@ -60,7 +60,7 @@ final class ChatBackend
     {
         $headers = ['Content-Type: application/json'];
         if ($this->apiKey !== '') {
-            $headers[] = 'Authorization: Bearer ' . $this->apiKey;
+            $headers[] = 'X-Ashat-Key: ' . $this->apiKey;
         }
 
         $payload = [
@@ -82,7 +82,7 @@ final class ChatBackend
 
     public static function localVL(array $messages, int $maxTokens = 1500): ?string
     {
-        $url = rtrim(ConfigBag::getInstance()->intentRouterUrl(), '/') . '/v1/chat';
+        $url = rtrim(ConfigBag::getInstance()->intentRouterUrl(), '/') . '/v1/chat/completions';
         $resp = SystemValidationEngine::postJson($url, ['Content-Type: application/json'], [
             'messages' => $messages,
             'temperature' => 0.2,

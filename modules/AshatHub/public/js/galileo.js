@@ -835,6 +835,10 @@
     if (modified) parts.push('<span style="color:var(--gs-accent)">' + modified + ' modified</span>');
     if (deleted) parts.push('<span style="color:var(--gs-err)">' + deleted + ' deleted</span>');
     if (parts.length) html += ' &mdash; ' + parts.join(', ');
+    html += '<span class="gs-changes-actions">';
+    html += '<button class="gs-action-btn accept" onclick="GS.acceptAll()">Accept All</button>';
+    html += '<button class="gs-action-btn revert" onclick="GS.revertAll()">Revert All</button>';
+    html += '</span>';
     html += '</div>';
 
     for (let i = 0; i < S.changes.length; i++) {
@@ -857,6 +861,12 @@
       }
       html += '<div class="gs-change-actions">';
       html += '<button class="gs-action-btn" onclick="GS.openChangeFile(\'' + esc(ch.path) + '\')">Open in Editor</button>';
+      if (ch.type !== 'created') {
+        html += '<button class="gs-action-btn revert" onclick="GS.revertFile(' + i + ')">Revert</button>';
+      }
+      if (ch.type !== 'deleted') {
+        html += '<button class="gs-action-btn accept" onclick="GS.acceptFile(' + i + ')">Accept</button>';
+      }
       html += '</div>';
       html += '</div>';
       html += '</div>';
@@ -951,6 +961,95 @@
   GS.openChangeFile = function (path) {
     openFile(path);
     GS.switchView('source');
+  };
+
+  GS.acceptFile = function (idx) {
+    const ch = S.changes[idx];
+    if (!ch) return;
+    // Accept = keep the new content (already saved). Remove from changes.
+    S.changes.splice(idx, 1);
+    updateChangesBadge();
+    renderChanges();
+    termLine('$ accepted ' + ch.path, 'success');
+  };
+
+  GS.revertFile = function (idx) {
+    const ch = S.changes[idx];
+    if (!ch || !ch.oldContent && ch.type !== 'deleted') return;
+    if (!confirm('Revert ' + ch.path + ' to its previous state?')) return;
+
+    if (ch.type === 'created') {
+      // Revert creation = delete the file.
+      const file = S.files.find(f => f.path === ch.path);
+      if (file && file.id) {
+        api('/api/files/' + file.id, { method: 'DELETE' })
+          .then(() => {
+            S.changes.splice(idx, 1);
+            closeFile(ch.path);
+            refreshFiles();
+            updateChangesBadge();
+            renderChanges();
+            termLine('$ reverted (deleted) ' + ch.path, 'success');
+          }).catch(() => termLine('Failed to revert', 'error'));
+      }
+    } else {
+      // Revert modification = write old content back.
+      api('/api/files', {
+        method: 'POST',
+        body: { path: ch.path, content: ch.oldContent || '' },
+      }).then(() => {
+        S.changes.splice(idx, 1);
+        // Update editor if file is open.
+        if (S.activeFile === ch.path && S.monacoEditor) {
+          S.monacoEditor.setValue(ch.oldContent || '');
+        }
+        refreshFiles();
+        updateChangesBadge();
+        renderChanges();
+        termLine('$ reverted ' + ch.path, 'success');
+      }).catch(() => termLine('Failed to revert', 'error'));
+    }
+  };
+
+  GS.acceptAll = function () {
+    if (!S.changes.length) return;
+    if (!confirm('Accept all ' + S.changes.length + ' changes?')) return;
+    S.changes = [];
+    updateChangesBadge();
+    renderChanges();
+    termLine('$ accepted all changes', 'success');
+  };
+
+  GS.revertAll = function () {
+    if (!S.changes.length) return;
+    if (!confirm('Revert all ' + S.changes.length + ' changes? This cannot be undone.')) return;
+    // Revert each file sequentially.
+    let i = S.changes.length - 1;
+    function revertNext() {
+      if (i < 0) {
+        S.changes = [];
+        updateChangesBadge();
+        renderChanges();
+        refreshFiles();
+        termLine('$ reverted all changes', 'success');
+        return;
+      }
+      const ch = S.changes[i];
+      if (ch.type === 'created') {
+        const file = S.files.find(f => f.path === ch.path);
+        if (file && file.id) {
+          api('/api/files/' + file.id, { method: 'DELETE' }).catch(() => {});
+        }
+      } else {
+        api('/api/files', {
+          method: 'POST',
+          body: { path: ch.path, content: ch.oldContent || '' },
+        }).catch(() => {});
+      }
+      i--;
+      setTimeout(revertNext, 100);
+    }
+    revertNext();
   };
 
   // ── File Refresh ───────────────────────────────────────────────

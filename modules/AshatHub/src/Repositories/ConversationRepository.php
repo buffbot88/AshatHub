@@ -24,12 +24,15 @@ final class ConversationRepository
     /**
      * Get all conversations for a user+project, ordered by most recent.
      */
-    public function listByProject(string $userId, string $projectId): array
+    public function listByProject(string $userId, string $projectId, bool $includeArchived = false): array
     {
-        $stmt = $this->db->prepare(
-            'SELECT id, title, created_at, updated_at FROM conversations '
-            . 'WHERE user_id = ? AND project_id = ? ORDER BY updated_at DESC LIMIT 50'
-        );
+        $sql = 'SELECT id, title, archived, created_at, updated_at FROM conversations '
+            . 'WHERE user_id = ? AND project_id = ?';
+        if (!$includeArchived) {
+            $sql .= ' AND archived = 0';
+        }
+        $sql .= ' ORDER BY updated_at DESC LIMIT 50';
+        $stmt = $this->db->prepare($sql);
         $stmt->execute([$userId, $projectId]);
         return $stmt->fetchAll(\PDO::FETCH_ASSOC) ?: [];
     }
@@ -69,6 +72,14 @@ final class ConversationRepository
             'UPDATE conversations SET title = ? WHERE id = ?'
         );
         $stmt->execute([$title, $conversationId]);
+    }
+
+    public function setArchived(string $conversationId, bool $archived): void
+    {
+        $stmt = $this->db->prepare(
+            'UPDATE conversations SET archived = ? WHERE id = ?'
+        );
+        $stmt->execute([$archived ? 1 : 0, $conversationId]);
     }
 
     /**

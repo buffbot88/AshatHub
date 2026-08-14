@@ -795,9 +795,78 @@
       d.className = 'gs-conv-item' + (conv.id === S.conversationId ? ' active' : '');
       d.textContent = conv.title;
       d.onclick = () => loadConv(conv.id);
+      d.oncontextmenu = (e) => showConvMenu(e, conv.id, conv.title);
       c.appendChild(d);
     }
   }
+
+  // ── Context Menu ──────────────────────────────────────────────
+  let ctxConvId = null;
+
+  function showConvMenu(e, convId, title) {
+    e.preventDefault();
+    e.stopPropagation();
+    ctxConvId = convId;
+    const menu = $('gsContextMenu');
+    if (!menu) return;
+    menu.style.left = e.clientX + 'px';
+    menu.style.top = e.clientY + 'px';
+    menu.classList.add('open');
+  }
+
+  function hideCtxMenu() {
+    const menu = $('gsContextMenu');
+    if (menu) menu.classList.remove('open');
+    ctxConvId = null;
+  }
+
+  document.addEventListener('click', hideCtxMenu);
+  document.addEventListener('contextmenu', (e) => {
+    if (!e.target.closest('.gs-conv-item')) hideCtxMenu();
+  });
+
+  GS.ctxRename = function () {
+    hideCtxMenu();
+    if (!ctxConvId) return;
+    const conv = S.conversations.find(c => c.id === ctxConvId);
+    const oldTitle = conv ? conv.title : '';
+    const newTitle = prompt('Rename conversation:', oldTitle);
+    if (newTitle === null || newTitle.trim() === '' || newTitle === oldTitle) return;
+
+    api('/api/galileo/conversations/' + ctxConvId + '/rename', {
+      method: 'POST',
+      body: { title: newTitle.trim() },
+    }).then(() => {
+      if (conv) conv.title = newTitle.trim();
+      renderConvList();
+    }).catch(() => {});
+  };
+
+  GS.ctxArchive = function () {
+    hideCtxMenu();
+    if (!ctxConvId) return;
+    api('/api/galileo/conversations/' + ctxConvId + '/archive', {
+      method: 'POST',
+      body: { archived: true },
+    }).then(() => {
+      S.conversations = S.conversations.filter(c => c.id !== ctxConvId);
+      if (S.conversationId === ctxConvId) GS.newChat();
+      renderConvList();
+    }).catch(() => {});
+  };
+
+  GS.ctxDelete = function () {
+    hideCtxMenu();
+    if (!ctxConvId) return;
+    if (!confirm('Delete this conversation? This cannot be undone.')) return;
+
+    api('/api/galileo/conversations/' + ctxConvId, { method: 'DELETE' })
+      .then(() => {
+        S.conversations = S.conversations.filter(c => c.id !== ctxConvId);
+        if (S.conversationId === ctxConvId) GS.newChat();
+        renderConvList();
+      }).catch(() => {});
+  };
 
   // Load a conversation — fetch messages from server.
   async function loadConv(id) {

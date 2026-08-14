@@ -50,6 +50,8 @@ $router->group('/api', function () use ($router) {
             $router->get('/conversations/{id}/messages', [\Controllers\ConversationController::class, 'messages']);
             $router->post('/conversations/{id}/messages',[\Controllers\ConversationController::class, 'addMessages']);
             $router->delete('/conversations/{id}',       [\Controllers\ConversationController::class, 'delete']);
+            $router->post('/conversations/{id}/rename',   [\Controllers\ConversationController::class, 'rename']);
+            $router->post('/conversations/{id}/archive',  [\Controllers\ConversationController::class, 'archive']);
             $router->post('/conversations/sync',         [\Controllers\ConversationController::class, 'sync']);
 
             // Agent jobs

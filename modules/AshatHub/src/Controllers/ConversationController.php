@@ -126,6 +126,50 @@ final class ConversationController
     }
 
     /**
+     * POST /api/galileo/conversations/{id}/rename — rename a conversation.
+     */
+    public function rename(RequestContext $ctx, string $id): void
+    {
+        $body = $ctx->jsonBody();
+        $title = trim((string) ($body['title'] ?? ''));
+
+        if ($title === '') {
+            $ctx->jsonResponse(['error' => 'title_required'], 400);
+            return;
+        }
+
+        $repo = RepositoryRegistry::conversation();
+        $conv = $repo->find($id);
+
+        if ($conv === null || $conv['user_id'] !== (string) $ctx->user()['id']) {
+            $ctx->jsonResponse(['error' => 'not_found'], 404);
+            return;
+        }
+
+        $repo->updateTitle($id, $title);
+        $ctx->jsonResponse(['ok' => true, 'title' => $title]);
+    }
+
+    /**
+     * POST /api/galileo/conversations/{id}/archive — toggle archive status.
+     */
+    public function archive(RequestContext $ctx, string $id): void
+    {
+        $repo = RepositoryRegistry::conversation();
+        $conv = $repo->find($id);
+
+        if ($conv === null || $conv['user_id'] !== (string) $ctx->user()['id']) {
+            $ctx->jsonResponse(['error' => 'not_found'], 404);
+            return;
+        }
+
+        $body = $ctx->jsonBody();
+        $archived = (bool) ($body['archived'] ?? true);
+        $repo->setArchived($id, $archived);
+        $ctx->jsonResponse(['ok' => true, 'archived' => $archived]);
+    }
+
+    /**
      * POST /api/galileo/conversations/sync — sync localStorage conversations to server.
      *
      * Used during migration: the JS frontend sends its localStorage conversations

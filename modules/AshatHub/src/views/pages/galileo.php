@@ -1007,6 +1007,48 @@ $files           = $view->files;
     .gs-deploy-btn:disabled { opacity: 0.4; cursor: not-allowed; }
     .gs-deploy-btn.deploying { background: var(--gs-warn); color: #1d0f06; }
 
+    /* ── Context Menu ──────────────────────────────────────────── */
+    .gs-ctx-menu {
+      position: fixed;
+      z-index: 500;
+      background: var(--gs-surface);
+      border: 1px solid var(--gs-border);
+      border-radius: var(--gs-radius);
+      box-shadow: 0 8px 32px rgba(0,0,0,0.6);
+      min-width: 160px;
+      padding: 4px;
+      display: none;
+      animation: gs-ctx-in 0.1s ease;
+    }
+
+    .gs-ctx-menu.open { display: block; }
+
+    @keyframes gs-ctx-in { from { opacity: 0; transform: scale(0.95); } to { opacity: 1; transform: scale(1); } }
+
+    .gs-ctx-item {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      padding: 7px 12px;
+      border-radius: 4px;
+      font-size: 13px;
+      color: var(--gs-text-soft);
+      cursor: pointer;
+      transition: background 0.08s;
+      user-select: none;
+    }
+
+    .gs-ctx-item:hover { background: var(--gs-surface-3); color: var(--gs-text); }
+
+    .gs-ctx-danger { color: var(--gs-err); }
+    .gs-ctx-danger:hover { background: rgba(239,68,68,0.12); color: var(--gs-err); }
+
+    .gs-ctx-divider {
+      height: 1px;
+      background: var(--gs-border-subtle);
+      margin: 4px 8px;
+    }
+
     /* ── Responsive ────────────────────────────────────────────── */
     @media (max-width: 900px) {
       .gs-chat-panel { width: 100% !important; min-width: 0; }
@@ -1175,6 +1217,14 @@ $files           = $view->files;
 
       </div>
     </div>
+  </div>
+
+  <!-- ═══ CONTEXT MENU ═══════════════════════════════════════════ -->
+  <div class="gs-ctx-menu" id="gsContextMenu">
+    <div class="gs-ctx-item" onclick="GS.ctxRename()">✏️ Rename</div>
+    <div class="gs-ctx-item" onclick="GS.ctxArchive()">📦 Archive</div>
+    <div class="gs-ctx-divider"></div>
+    <div class="gs-ctx-item gs-ctx-danger" onclick="GS.ctxDelete()">🗑️ Delete</div>
   </div>
 
   <!-- ═══ SCRIPTS ═════════════════════════════════════════════════ -->

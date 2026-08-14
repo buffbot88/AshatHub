@@ -31,7 +31,17 @@ final class ConversationController
     {
         $userId = (string) $ctx->user()['id'];
         $repo = RepositoryRegistry::conversation();
-        $conversations = $repo->listByProject($userId, $projectId);
+
+        // Support ?archived=1 to fetch only archived conversations.
+        $archivedParam = (string) ($_GET['archived'] ?? '');
+        if ($archivedParam === '1') {
+            // Fetch only archived.
+            $all = $repo->listByProject($userId, $projectId, true);
+            $conversations = array_values(array_filter($all, fn($c) => (int) ($c['archived'] ?? 0) === 1));
+        } else {
+            $conversations = $repo->listByProject($userId, $projectId, false);
+        }
+
         $ctx->jsonResponse(['conversations' => $conversations]);
     }
 

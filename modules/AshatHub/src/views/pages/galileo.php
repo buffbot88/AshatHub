@@ -902,6 +902,53 @@ $files           = $view->files;
       padding: 4px 8px;
     }
 
+    .gs-archived-toggle {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      padding: 6px 10px;
+      margin: 0 8px;
+      border-radius: 6px;
+      font-size: 12px;
+      color: var(--gs-text-dim);
+      cursor: pointer;
+      transition: all 0.12s;
+      user-select: none;
+    }
+
+    .gs-archived-toggle:hover { background: var(--gs-surface-3); color: var(--gs-text-soft); }
+
+    .gs-archived-icon { font-size: 13px; }
+
+    .gs-archived-count {
+      min-width: 16px;
+      height: 16px;
+      padding: 0 4px;
+      border-radius: 8px;
+      font-size: 10px;
+      font-weight: 600;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      background: var(--gs-surface-3);
+      color: var(--gs-text-dim);
+    }
+
+    .gs-archived-chevron {
+      margin-left: auto;
+      font-size: 10px;
+      transition: transform 0.15s;
+    }
+
+    .gs-archived-toggle.open .gs-archived-chevron { transform: rotate(90deg); }
+
+    .gs-archived-list .gs-conv-item {
+      opacity: 0.6;
+      font-size: 12px;
+    }
+
+    .gs-archived-list .gs-conv-item:hover { opacity: 1; }
+
     .gs-conv-item {
       display: flex;
       align-items: center;
@@ -1113,6 +1160,13 @@ $files           = $view->files;
         </div>
         <button class="gs-new-chat" onclick="GS.newChat()">+ New Chat</button>
         <div class="gs-conv-list" id="gsConvList"></div>
+        <div class="gs-archived-toggle" id="gsArchivedToggle" onclick="GS.toggleArchived()">
+          <span class="gs-archived-icon">📦</span>
+          <span>Archived</span>
+          <span class="gs-archived-count" id="gsArchivedCount"></span>
+          <span class="gs-archived-chevron" id="gsArchivedChevron">▸</span>
+        </div>
+        <div class="gs-conv-list gs-archived-list" id="gsArchivedList" style="display:none"></div>
       </div>
 
       <!-- Chat scroll -->
@@ -1222,7 +1276,7 @@ $files           = $view->files;
   <!-- ═══ CONTEXT MENU ═══════════════════════════════════════════ -->
   <div class="gs-ctx-menu" id="gsContextMenu">
     <div class="gs-ctx-item" onclick="GS.ctxRename()">✏️ Rename</div>
-    <div class="gs-ctx-item" onclick="GS.ctxArchive()">📦 Archive</div>
+    <div class="gs-ctx-item" data-action="archive" onclick="GS.ctxArchive()">📦 Archive</div>
     <div class="gs-ctx-divider"></div>
     <div class="gs-ctx-item gs-ctx-danger" onclick="GS.ctxDelete()">🗑️ Delete</div>
   </div>

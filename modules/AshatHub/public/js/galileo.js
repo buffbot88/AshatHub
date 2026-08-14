@@ -25,6 +25,8 @@
 
     previewUrl: null,
     previewStatus: 'stopped',
+    archivedConversations: [],
+    archivedOpen: false,
 
     isSending: false,
     sidebarOpen: false,
@@ -816,7 +818,12 @@
 
   function hideCtxMenu() {
     const menu = $('gsContextMenu');
-    if (menu) menu.classList.remove('open');
+    if (menu) {
+      menu.classList.remove('open');
+      // Reset archive text back to default.
+      const archiveItem = menu.querySelector('[data-action="archive"]');
+      if (archiveItem) archiveItem.textContent = '📦 Archive';
+    }
     ctxConvId = null;
   }
 
@@ -863,10 +870,83 @@
     api('/api/galileo/conversations/' + ctxConvId, { method: 'DELETE' })
       .then(() => {
         S.conversations = S.conversations.filter(c => c.id !== ctxConvId);
+        S.archivedConversations = S.archivedConversations.filter(c => c.id !== ctxConvId);
         if (S.conversationId === ctxConvId) GS.newChat();
         renderConvList();
+        renderArchivedList();
       }).catch(() => {});
   };
+
+  GS.ctxUnarchive = function () {
+    hideCtxMenu();
+    if (!ctxConvId) return;
+    api('/api/galileo/conversations/' + ctxConvId + '/archive', {
+      method: 'POST',
+      body: { archived: false },
+    }).then(() => {
+      const conv = S.archivedConversations.find(c => c.id === ctxConvId);
+      if (conv) {
+        S.archivedConversations = S.archivedConversations.filter(c => c.id !== ctxConvId);
+        S.conversations.unshift(conv);
+        renderConvList();
+        renderArchivedList();
+      }
+    }).catch(() => {});
+  };
+
+  // ── Archived Conversations ─────────────────────────────────────
+  GS.toggleArchived = function () {
+    S.archivedOpen = !S.archivedOpen;
+    const toggle = $('gsArchivedToggle');
+    const list = $('gsArchivedList');
+    if (toggle) toggle.classList.toggle('open', S.archivedOpen);
+    if (list) list.style.display = S.archivedOpen ? 'block' : 'none';
+    if (S.archivedOpen && S.archivedConversations.length === 0) {
+      loadArchived();
+    }
+  };
+
+  async function loadArchived() {
+    try {
+      // Fetch all conversations including archived.
+      const d = await api('/api/galileo/conversations/' + encodeURIComponent(S.projectId) + '?archived=1');
+      S.archivedConversations = (d.conversations || []).map(c => ({
+        id: c.id, title: c.title, created_at: c.created_at, messages: [],
+      }));
+      renderArchivedList();
+    } catch {}
+  }
+
+  function renderArchivedList() {
+    const c = $('gsArchivedList');
+    const count = $('gsArchivedCount');
+    if (!c) return;
+    c.innerHTML = '';
+    if (count) {
+      count.textContent = S.archivedConversations.length || '';
+      count.style.display = S.archivedConversations.length ? 'flex' : 'none';
+    }
+    for (const conv of S.archivedConversations) {
+      const d = document.createElement('div');
+      d.className = 'gs-conv-item';
+      d.textContent = conv.title;
+      d.onclick = () => loadConv(conv.id);
+      d.oncontextmenu = (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        ctxConvId = conv.id;
+        const menu = $('gsContextMenu');
+        if (!menu) return;
+        // Show unarchive option instead of archive
+        const archiveItem = menu.querySelector('[data-action="archive"]');
+        if (archiveItem) archiveItem.textContent = '📤 Unarchive';
+        menu.style.left = e.clientX + 'px';
+        menu.style.top = e.clientY + 'px';
+        menu.classList.add('open');
+      };
+      c.appendChild(d);
+    }
+  }
 
   // Load a conversation — fetch messages from server.
   async function loadConv(id) {

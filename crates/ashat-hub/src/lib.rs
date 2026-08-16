@@ -503,6 +503,14 @@ async fn showcase() -> impl IntoResponse {
                 updated: "2026-07",
             },
             ShowcaseProject {
+                id: "icarus",
+                name: "Icarus Coding Agent CLI",
+                description: "A local-first coding agent CLI with file operations, shell tools, Git context, transaction recording, and undo support.",
+                category: "project",
+                status: "in-development",
+                updated: "2026-08",
+            },
+            ShowcaseProject {
                 id: "paws-and-parcels",
                 name: "Paws & Parcels",
                 description: "A game about running a postal delivery service in a cozy animal village. Build routes, manage packages, and explore the neighborhood.",

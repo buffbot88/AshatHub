@@ -136,7 +136,7 @@ export default function App() {
   const memberTab: MemberTab | undefined = ['community', 'docs', 'support', 'account', 'activity'].includes(view) ? view as MemberTab : undefined;
   const showMemberSurface = ['community', 'docs', 'support', 'account', 'activity'].includes(view);
 
-  const studioProjects = showcase.filter(p => p.category === 'studio' || p.category === 'project');
+  const studioProjects = showcase.filter(p => (p.category === 'studio' || p.category === 'project') && !['ashat', 'ashat-ai', 'ashat-hub'].includes(p.id));
   const gameProjects = showcase.filter(p => p.category === 'game');
 
   return (

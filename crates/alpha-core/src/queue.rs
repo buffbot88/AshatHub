@@ -1,7 +1,7 @@
+use anyhow::Result;
 use std::collections::VecDeque;
 use std::sync::Arc;
-use tokio::sync::{Semaphore, OwnedSemaphorePermit};
-use anyhow::Result;
+use tokio::sync::Semaphore;
 
 pub struct RequestQueue {
     queue: VecDeque<QueuedRequest>,
@@ -34,17 +34,22 @@ impl RequestQueue {
         }
 
         self.queue.push_back(QueuedRequest { id: request_id });
-        tracing::debug!("Enqueued request: {}, queue size: {}", self.queue.front().map(|r| r.id.as_str()).unwrap_or("unknown"), self.queue.len());
-        
+        tracing::debug!(
+            "Enqueued request: {}, queue size: {}",
+            self.queue
+                .front()
+                .map(|r| r.id.as_str())
+                .unwrap_or("unknown"),
+            self.queue.len()
+        );
+
         Ok(())
     }
 
-    /// Try to acquire a slot for processing
-    pub async fn acquire_slot(&self) -> Result<OwnedSemaphorePermit> {
+    /// Clone the semaphore handle without holding the queue lock while waiting.
+    /// Callers must acquire the returned semaphore outside the RwLock guard.
+    pub fn semaphore(&self) -> Arc<Semaphore> {
         Arc::clone(&self.semaphore)
-            .acquire_owned()
-            .await
-            .map_err(|e| anyhow::anyhow!("Failed to acquire slot: {}", e))
     }
 
     /// Get current queue size

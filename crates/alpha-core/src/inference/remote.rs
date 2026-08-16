@@ -1,8 +1,11 @@
 use anyhow::Result;
 use reqwest::Client;
 use serde::{Deserialize, Serialize};
+use std::sync::atomic::{AtomicUsize, Ordering};
 
-use alpha_common::{ChatMessage, ChatRequest, Config};
+use alpha_common::{AgentEndpoint, ChatMessage, ChatRequest, Config};
+
+static NEXT_ENDPOINT: AtomicUsize = AtomicUsize::new(0);
 
 pub struct RemoteInference {
     config: Config,
@@ -46,17 +49,27 @@ pub struct Usage {
 impl RemoteInference {
     pub fn new(config: Config) -> Self {
         let client = Client::builder()
-            .timeout(std::time::Duration::from_secs(120))
+            .timeout(std::time::Duration::from_secs(180))
             .build()
             .expect("Failed to create HTTP client");
 
         Self { config, client }
     }
 
-    /// Send a request to Omega server
+    fn endpoints(&self) -> Vec<AgentEndpoint> {
+        if !self.config.agents.endpoints.is_empty() {
+            return self.config.agents.endpoints.clone();
+        }
+
+        // Backward-compatible fallback for older config files.
+        vec![AgentEndpoint {
+            id: "omega".to_string(),
+            url: self.config.omega.url.clone(),
+        }]
+    }
+
+    /// Send a request across the configured Omega/Beta/Delta pool.
     pub async fn infer(&self, request: &ChatRequest) -> Result<OmegaResponse> {
-        let endpoint = format!("{}/v1/chat/completions", self.config.omega.url);
-        
         let payload = OmegaRequest {
             model: self.config.omega.model.clone(),
             messages: request.messages.clone(),
@@ -65,80 +78,108 @@ impl RemoteInference {
             stream: false,
         };
 
-        let mut last_error = None;
-        let max_retries = 3;
         let backoff = [1, 3, 5];
+        let mut errors = Vec::new();
+        let endpoints = self.endpoints();
+        if endpoints.is_empty() {
+            return Err(anyhow::anyhow!("No coding agent endpoints configured"));
+        }
+        let start = NEXT_ENDPOINT.fetch_add(1, Ordering::Relaxed) % endpoints.len();
 
-        for attempt in 0..max_retries {
-            match self.client
-                .post(&endpoint)
-                .header(&self.config.omega.auth_header, &self.config.omega.api_key)
-                .header("Content-Type", "application/json")
-                .json(&payload)
-                .send()
-                .await
-            {
-                Ok(response) => {
-                    let status = response.status();
-                    
-                    if status.is_success() {
-                        let body: OmegaResponse = response.json().await?;
-                        return Ok(body);
+        for offset in 0..endpoints.len() {
+            let endpoint_config = &endpoints[(start + offset) % endpoints.len()];
+            let endpoint = format!(
+                "{}/v1/chat/completions",
+                endpoint_config.url.trim_end_matches('/')
+            );
+
+            for (attempt, delay) in backoff.iter().enumerate() {
+                match self
+                    .client
+                    .post(&endpoint)
+                    .header(&self.config.omega.auth_header, &self.config.omega.api_key)
+                    .header("Content-Type", "application/json")
+                    .json(&payload)
+                    .send()
+                    .await
+                {
+                    Ok(response) => {
+                        let status = response.status();
+
+                        if status.is_success() {
+                            let body: OmegaResponse = response.json().await?;
+                            tracing::info!("Coding request served by {}", endpoint_config.id);
+                            return Ok(body);
+                        }
+
+                        let body = response.text().await.unwrap_or_default();
+                        if status.as_u16() == 429 || status.as_u16() >= 500 {
+                            tracing::warn!(
+                                "Transient error from {}: {}, attempt {}/{}",
+                                endpoint_config.id,
+                                status,
+                                attempt + 1,
+                                backoff.len()
+                            );
+                            errors.push(format!("{} returned {}", endpoint_config.id, status));
+                            if attempt + 1 < backoff.len() {
+                                tokio::time::sleep(std::time::Duration::from_secs(*delay)).await;
+                            }
+                            continue;
+                        }
+
+                        errors.push(format!(
+                            "{} returned {}: {}",
+                            endpoint_config.id, status, body
+                        ));
+                        break;
                     }
-
-                    // Check for transient errors
-                    if status.as_u16() == 429 || status.as_u16() >= 500 {
+                    Err(error) => {
                         tracing::warn!(
-                            "Transient error from Omega: {}, attempt {}/{}",
-                            status,
+                            "Connection error to {}: {}, attempt {}/{}",
+                            endpoint_config.id,
+                            error,
                             attempt + 1,
-                            max_retries
+                            backoff.len()
                         );
-                        tokio::time::sleep(std::time::Duration::from_secs(backoff[attempt])).await;
-                        continue;
+                        errors.push(format!("{} connection failed", endpoint_config.id));
+                        if attempt + 1 < backoff.len() {
+                            tokio::time::sleep(std::time::Duration::from_secs(*delay)).await;
+                        }
                     }
-
-                    // Non-transient error
-                    let body = response.text().await.unwrap_or_default();
-                    return Err(anyhow::anyhow!("Omega error {}: {}", status, body));
-                }
-                Err(e) => {
-                    tracing::warn!(
-                        "Connection error to Omega: {}, attempt {}/{}",
-                        e,
-                        attempt + 1,
-                        max_retries
-                    );
-                    last_error = Some(e);
-                    tokio::time::sleep(std::time::Duration::from_secs(backoff[attempt])).await;
                 }
             }
         }
 
         Err(anyhow::anyhow!(
-            "Failed to connect to Omega after {} attempts: {:?}",
-            max_retries,
-            last_error
+            "All coding agent endpoints failed: {}",
+            errors.join("; ")
         ))
     }
 
-    /// Get the base URL
+    /// Get the legacy primary URL for diagnostics.
     #[allow(dead_code)]
     pub fn base_url(&self) -> &str {
         &self.config.omega.url
     }
 
-    /// Check if Omega is reachable
+    /// Check whether at least one configured agent endpoint is reachable.
     #[allow(dead_code)]
     pub async fn health_check(&self) -> bool {
-        let endpoint = format!("{}/health", self.config.omega.url);
-        
-        self.client
-            .get(&endpoint)
-            .header(&self.config.omega.auth_header, &self.config.omega.api_key)
-            .send()
-            .await
-            .map(|r| r.status().is_success())
-            .unwrap_or(false)
+        for endpoint_config in self.endpoints() {
+            let endpoint = format!("{}/health", endpoint_config.url.trim_end_matches('/'));
+            let reachable = self
+                .client
+                .get(&endpoint)
+                .header(&self.config.omega.auth_header, &self.config.omega.api_key)
+                .send()
+                .await
+                .map(|response| response.status().is_success())
+                .unwrap_or(false);
+            if reachable {
+                return true;
+            }
+        }
+        false
     }
 }

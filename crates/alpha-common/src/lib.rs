@@ -1,12 +1,19 @@
-//! Shared config & request types for Ashat Delta.
+//! Shared config & request types for Ashat AI.
 
 #[derive(serde::Deserialize, Clone)]
 pub struct Config {
     pub server: ServerConfig,
     pub models: ModelsConfig,
     pub omega: OmegaConfig,
+    /// IP-based Omega/Beta/Delta failover endpoints.
+    #[serde(default)]
+    pub agents: AgentPoolConfig,
     pub queue: QueueConfig,
     pub pool: PoolConfig,
+    #[serde(default)]
+    pub text_worker: TextWorkerConfig,
+    #[serde(default)]
+    pub vision: VisionConfig,
 }
 
 #[derive(serde::Deserialize, Clone)]
@@ -23,12 +30,72 @@ pub struct ModelsConfig {
     pub cpu_cap: u32,
 }
 
+/// Always-on text worker (350M). Handles intent classification,
+/// build planning, conversation, brainstorming.
+#[derive(serde::Deserialize, Clone)]
+pub struct TextWorkerConfig {
+    pub model: String,
+    pub port: u16,
+    #[serde(default = "default_ctx_size")]
+    pub ctx_size: u32,
+    #[serde(default = "default_true")]
+    pub always_on: bool,
+}
+
+impl Default for TextWorkerConfig {
+    fn default() -> Self {
+        Self {
+            model: "../../models/LFM2.5-350M-Q4_K_M.gguf".into(),
+            port: 3005,
+            ctx_size: 4096,
+            always_on: true,
+        }
+    }
+}
+
+fn default_ctx_size() -> u32 {
+    4096
+}
+fn default_true() -> bool {
+    true
+}
+
+/// On-demand vision pool (450M VL). Only started when an image
+/// needs to be read. Auto-stops after idle timeout.
+#[derive(serde::Deserialize, Clone)]
+pub struct VisionConfig {
+    pub idle_timeout_secs: u64,
+    #[serde(default = "default_true")]
+    pub on_demand: bool,
+}
+
+impl Default for VisionConfig {
+    fn default() -> Self {
+        Self {
+            idle_timeout_secs: 300,
+            on_demand: true,
+        }
+    }
+}
+
 #[derive(serde::Deserialize, Clone)]
 pub struct OmegaConfig {
     pub url: String,
     pub api_key: String,
     pub auth_header: String,
     pub model: String,
+}
+
+#[derive(serde::Deserialize, Clone, Default)]
+pub struct AgentPoolConfig {
+    #[serde(default)]
+    pub endpoints: Vec<AgentEndpoint>,
+}
+
+#[derive(serde::Deserialize, Clone)]
+pub struct AgentEndpoint {
+    pub id: String,
+    pub url: String,
 }
 
 #[derive(serde::Deserialize, Clone)]
@@ -83,6 +150,16 @@ impl ChatMessage {
                 })
                 .collect::<Vec<_>>()
                 .join(" "),
+        }
+    }
+
+    /// Returns true if this message contains image parts.
+    pub fn has_image(&self) -> bool {
+        match &self.content {
+            MessageContent::Text(_) => false,
+            MessageContent::Parts(parts) => parts
+                .iter()
+                .any(|p| matches!(p, ContentPart::ImageUrl { .. })),
         }
     }
 }

@@ -1,10 +1,11 @@
 mod api;
 
-use anyhow::Result;
 use alpha_common::Config;
-use alpha_core::demand::InstancePool;
+use alpha_core::demand::VisionPool;
 use alpha_core::queue::RequestQueue;
 use alpha_core::router::IntentRouter;
+use alpha_core::text_worker::TextWorker;
+use anyhow::Result;
 use axum::extract::DefaultBodyLimit;
 use std::sync::Arc;
 use tokio::sync::RwLock;
@@ -15,21 +16,30 @@ use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
 pub struct AppState {
     pub queue: Arc<RwLock<RequestQueue>>,
     pub router: Arc<IntentRouter>,
-    pub pool: Arc<InstancePool>,
+    pub text_worker: Arc<TextWorker>,
+    pub vision_pool: Arc<VisionPool>,
+    pub config: Config,
 }
 
 #[tokio::main]
 async fn main() -> Result<()> {
     // Initialize tracing
     tracing_subscriber::registry()
-        .with(tracing_subscriber::EnvFilter::try_from_default_env()
-            .unwrap_or_else(|_| "ashat_ai=info,tower_http=info".into()))
+        .with(
+            tracing_subscriber::EnvFilter::try_from_default_env()
+                .unwrap_or_else(|_| "ashat_ai=info,tower_http=info".into()),
+        )
         .with(tracing_subscriber::fmt::layer())
         .init();
 
     // Load config
     let config = load_config().await?;
-    tracing::info!("Loaded config - server port: {}", config.server.port);
+    tracing::info!(
+        "Loaded config - server port: {}, text worker port: {}, VL idle timeout: {}s",
+        config.server.port,
+        config.text_worker.port,
+        config.vision.idle_timeout_secs
+    );
 
     // Initialize intent router
     let intent_router = IntentRouter::new(config.clone());
@@ -37,19 +47,35 @@ async fn main() -> Result<()> {
     // Initialize request queue
     let queue = RequestQueue::new(config.queue.max_requests, config.queue.max_concurrent);
 
-    // Demand pool: spawn min instances, supervise + respawn in the background.
-    // Non-fatal: if llama-server isn't up yet, requests spawn instances on demand.
-    let pool = Arc::new(InstancePool::new(config.clone()));
-    if let Err(e) = pool.ensure_min().await {
-        tracing::warn!("initial pool spawn failed: {} (supervision will retry)", e);
+    // Initialize the always-on text worker (350M).
+    let text_worker = Arc::new(TextWorker::new(config.clone()));
+    if config.text_worker.always_on {
+        if let Err(e) = text_worker.ensure_running().await {
+            tracing::warn!(
+                "text worker initial start failed: {} (supervisor will retry)",
+                e
+            );
+        }
     }
-    alpha_core::supervision::spawn(pool.clone(), std::time::Duration::from_secs(10));
+
+    // Initialize the on-demand vision pool (450M VL).
+    // min_instances = 0: VL instances are only started when images arrive.
+    let vision_pool = Arc::new(VisionPool::new(config.clone()));
+
+    // Start supervision: text worker health + VL idle shutdown.
+    alpha_core::supervision::spawn(
+        text_worker.clone(),
+        vision_pool.clone(),
+        std::time::Duration::from_secs(10),
+    );
 
     // Create shared state
     let state = AppState {
         queue: Arc::new(RwLock::new(queue)),
         router: Arc::new(intent_router),
-        pool,
+        text_worker,
+        vision_pool,
+        config: config.clone(),
     };
 
     // Build CORS layer

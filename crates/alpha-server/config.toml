@@ -5,19 +5,46 @@ port = 3000
 [models]
 local_model = "../../models/LFM2.5-VL-450M-Q8_0.gguf"
 mmproj = "../../models/mmproj-LFM2.5-VL-450m-Q8_0.gguf"
-max_instances = 2
+max_instances = 1
 cpu_cap = 90
 
 [omega]
-url = "https://ashatneuralhost.agpstudios.org"
+# Legacy primary fields retained for compatibility; all coding traffic uses the IP pool below.
+url = "https://129.213.94.124"
 api_key = "WOGAJLhHgRUA1Jz8mGkaKLOpj4tK0yFM9vUDhsBeEr6jEBhZkeJHhayQVtfel9yh"
 auth_header = "X-Ashat-Key"
 model = "LFM2.5-1.2B-Instruct-Q4_K_M.gguf"
 
+[agents]
+# Verified HTTPS endpoints using the Alpha-trusted Ashat private CA.
+# The shared X-Ashat-Key is identical across all three agent servers.
+endpoints = [
+  { id = "omega", url = "https://129.213.94.124" },
+  { id = "beta",  url = "https://150.136.208.93:8082" },
+  { id = "delta", url = "https://129.213.147.225:8088" },
+]
+
 [queue]
 max_requests = 32
-max_concurrent = 3
+# One always-on text worker is available; serialize inference and queue bursts safely.
+max_concurrent = 9
 
+# Vision pool (450M VL) — on-demand only, no minimum instances.
+# Instances are spawned when an image arrives, shut down after idle timeout.
 [pool]
-min_instances = 1
+min_instances = 0
 port_base = 3001
+
+# Always-on text worker (350M) — handles intent classification,
+# build planning, conversation, brainstorming.
+[text_worker]
+model = "../../models/LFM2.5-350M-Q4_K_M.gguf"
+port = 3005
+ctx_size = 4096
+always_on = true
+
+# Vision on-demand settings.
+# VL instances auto-shutdown after idle_timeout_secs to free RAM.
+[vision]
+idle_timeout_secs = 300
+on_demand = true

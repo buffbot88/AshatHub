@@ -9,8 +9,8 @@ import { AdminSurface } from './components/AdminSurface';
 import './styles.css';
 
 type User = { id: string; display_name: string; username: string; email: string; role: string };
-interface ServerSnapshot { id: string; label: string; ip: string; online: boolean; active_users: number; activity_total: number }
-interface TelemetryResponse { servers: ServerSnapshot[]; updated_at: number }
+interface ServerSnapshot { id: string; label: string; online: boolean; active_users: number; activity_total: number; tokens_per_second: number; total_tokens_generated: number }
+interface TelemetryResponse { servers: ServerSnapshot[]; slowest_tokens_per_second: number; fastest_tokens_per_second: number; total_tokens_generated: number; updated_at: number }
 interface ShowcaseProject { id: string; name: string; description: string; category: string; status: string; updated: string }
 interface ShowcaseResponse { projects: ShowcaseProject[] }
 type View = 'home' | 'projects' | 'games' | 'galileo' | 'community' | 'docs' | 'support' | 'account' | 'activity' | 'telemetry' | 'admin' | 'terms' | 'privacy' | 'error';
@@ -36,15 +36,15 @@ function ServerCard({ server }: { server: ServerSnapshot }) {
   return (
     <article className="server-card">
       <div className="server-card-header">
-        <div><span className="eyebrow">{server.label}</span><strong>{server.ip}</strong></div>
+        <div><span className="eyebrow">{server.label}</span><strong>{server.online ? 'Telemetry connected' : 'Unavailable'}</strong></div>
         <span className={`server-status ${server.online ? 'online' : 'offline'}`}><span className="status-dot" /> {server.online ? 'online' : 'offline'}</span>
       </div>
       <div className="server-model">{server.online ? 'Telemetry gateway connected' : 'Unavailable'}</div>
       <div className="metrics-grid">
         <Metric label="Active users" value={server.active_users.toLocaleString()} />
         <Metric label="Activity" value={server.activity_total.toLocaleString()} />
-        <Metric label="Endpoint" value={server.online ? 'Ready' : 'Offline'} />
-        <Metric label="Updated" value={new Date().toLocaleTimeString()} />
+        <Metric label="Tokens / second" value={server.tokens_per_second.toFixed(1)} />
+        <Metric label="Tokens generated" value={server.total_tokens_generated.toLocaleString()} />
       </div>
     </article>
   );
@@ -204,5 +204,5 @@ function StudioFooter({ navigate }: { navigate: (path: string) => void }) {
 
 function TelemetrySection({ user, telemetry, telemetryError, updatedAt }: { user: User | null; telemetry: TelemetryResponse | null; telemetryError: string | null; updatedAt: Date | null }) {
   if (!user) return null;
-  return <section className="telemetry-section"><div className="section-heading"><div><span className="eyebrow">Live ecosystem</span><h2>Agent telemetry</h2></div><div className="refresh-state">{telemetryError ? telemetryError : updatedAt ? `Updated ${updatedAt.toLocaleTimeString()}` : 'Connecting...'}</div></div><div className="server-grid">{telemetry?.servers.map((server) => <ServerCard key={server.id} server={server} />)}{!telemetry && !telemetryError && <div className="loading-card">Connecting to AshatHub...</div>}{telemetryError && <div className="loading-card error-card">{telemetryError}</div>}</div></section>;
+  return <section className="telemetry-section"><div className="section-heading"><div><span className="eyebrow">Live ecosystem</span><h2>Agent telemetry</h2></div><div className="refresh-state">{telemetryError ? telemetryError : updatedAt ? `Updated ${updatedAt.toLocaleTimeString()}` : 'Connecting...'}</div></div>{telemetry && <div className="telemetry-summary"><Metric label="Slowest tokens / second" value={telemetry.slowest_tokens_per_second.toFixed(1)} /><Metric label="Fastest tokens / second" value={telemetry.fastest_tokens_per_second.toFixed(1)} /><Metric label="Total tokens generated" value={telemetry.total_tokens_generated.toLocaleString()} /></div>}<div className="server-grid">{telemetry?.servers.map((server) => <ServerCard key={server.id} server={server} />)}{!telemetry && !telemetryError && <div className="loading-card">Connecting to AshatHub...</div>}{telemetryError && <div className="loading-card error-card">{telemetryError}</div>}</div></section>;
 }

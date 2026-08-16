@@ -191,7 +191,6 @@ pub(crate) struct AuthConfig {
 struct TelemetryTarget {
     id: &'static str,
     label: &'static str,
-    ip: &'static str,
     base_url: String,
 }
 
@@ -204,6 +203,9 @@ struct HealthResponse {
 #[derive(Debug, Serialize)]
 struct TelemetryResponse {
     servers: Vec<ServerSnapshot>,
+    slowest_tokens_per_second: f64,
+    fastest_tokens_per_second: f64,
+    total_tokens_generated: u64,
     updated_at: u64,
 }
 
@@ -211,10 +213,11 @@ struct TelemetryResponse {
 struct ServerSnapshot {
     id: &'static str,
     label: &'static str,
-    ip: &'static str,
     online: bool,
     active_users: u64,
     activity_total: u64,
+    tokens_per_second: f64,
+    total_tokens_generated: u64,
 }
 
 pub async fn start_galileo_worker(
@@ -269,19 +272,16 @@ pub fn state_from_env() -> Result<AppState, Box<dyn std::error::Error + Send + S
         TelemetryTarget {
             id: "omega",
             label: "Omega",
-            ip: "129.213.94.124",
             base_url: env_url("ASHAT_OMEGA_TELEMETRY_URL", "https://129.213.94.124"),
         },
         TelemetryTarget {
             id: "beta",
             label: "Beta",
-            ip: "150.136.208.93",
             base_url: env_url("ASHAT_BETA_TELEMETRY_URL", "https://150.136.208.93:8082"),
         },
         TelemetryTarget {
             id: "delta",
             label: "Delta",
-            ip: "129.213.147.225",
             base_url: env_url("ASHAT_DELTA_TELEMETRY_URL", "https://129.213.147.225:8088"),
         },
     ];
@@ -528,8 +528,22 @@ pub(crate) async fn collect_telemetry(state: &AppState) -> TelemetryResponse {
     let delta = snapshot(&state.client, &state.targets[2]);
     let (omega, beta, delta) = tokio::join!(omega, beta, delta);
 
+    let servers = vec![omega, beta, delta];
+    let speeds: Vec<f64> = servers
+        .iter()
+        .map(|server| server.tokens_per_second)
+        .filter(|speed| *speed > 0.0)
+        .collect();
+    let slowest_tokens_per_second = speeds.iter().copied().fold(f64::INFINITY, f64::min);
     TelemetryResponse {
-        servers: vec![omega, beta, delta],
+        slowest_tokens_per_second: if slowest_tokens_per_second.is_finite() {
+            slowest_tokens_per_second
+        } else {
+            0.0
+        },
+        fastest_tokens_per_second: speeds.iter().copied().fold(0.0, f64::max),
+        total_tokens_generated: servers.iter().map(|server| server.total_tokens_generated).sum(),
+        servers,
         updated_at: SystemTime::now()
             .duration_since(UNIX_EPOCH)
             .map(|duration| duration.as_secs())
@@ -564,7 +578,6 @@ async fn snapshot(client: &reqwest::Client, target: &TelemetryTarget) -> ServerS
     ServerSnapshot {
         id: target.id,
         label: target.label,
-        ip: target.ip,
         online,
         active_users: summary
             .and_then(|value| value.get("active_users"))
@@ -574,7 +587,21 @@ async fn snapshot(client: &reqwest::Client, target: &TelemetryTarget) -> ServerS
             .and_then(|value| value.get("total_requests"))
             .and_then(Value::as_u64)
             .unwrap_or_default(),
+        tokens_per_second: metric_f64(summary, &["tokens_per_second", "generation_tps", "tps"]),
+        total_tokens_generated: metric_u64(summary, &["total_tokens_generated", "tokens_generated", "total_tokens"]),
     }
+}
+
+fn metric_f64(value: Option<&Value>, keys: &[&str]) -> f64 {
+    keys.iter()
+        .find_map(|key| value.and_then(|value| value.get(*key)).and_then(Value::as_f64))
+        .unwrap_or(0.0)
+}
+
+fn metric_u64(value: Option<&Value>, keys: &[&str]) -> u64 {
+    keys.iter()
+        .find_map(|key| value.and_then(|value| value.get(*key)).and_then(Value::as_u64))
+        .unwrap_or_default()
 }
 
 async fn fetch_json(client: &reqwest::Client, url: String) -> Option<Value> {

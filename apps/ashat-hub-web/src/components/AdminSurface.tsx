@@ -13,7 +13,7 @@ function csrfToken(): string {
   return cookie ? decodeURIComponent(cookie.slice('ashat_rust_csrf='.length)) : '';
 }
 
-async function request<T>(url: string, init?: RequestInit): Promise<T> {
+async function request<T>(url: string, init?: RequestInit, retried = false): Promise<T> {
   const response = await fetch(url, {
     credentials: 'same-origin',
     headers: { Accept: 'application/json', ...(init?.body ? { 'Content-Type': 'application/json', 'X-CSRF-Token': csrfToken() } : {}), ...(init?.headers || {}) },
@@ -22,10 +22,13 @@ async function request<T>(url: string, init?: RequestInit): Promise<T> {
   const text = await response.text();
   let body: (T & { error?: ApiError }) | null = null;
   try { body = text ? JSON.parse(text) as T & { error?: ApiError } : null; } catch { /* handled below */ }
-  if (!response.ok) {
-    const error = body?.error;
-    throw new Error(typeof error === 'string' ? error : error?.message || error?.code || `Request failed (${response.status})`);
+  const error = body?.error;
+  const message = typeof error === 'string' ? error : error?.message || error?.code;
+  if (response.status === 403 && message === 'csrf_failed' && !retried) {
+    await fetch(`${API}/auth/session`, { credentials: 'same-origin' });
+    return request<T>(url, init, true);
   }
+  if (!response.ok) throw new Error(message || `Request failed (${response.status})`);
   return (body || {}) as T;
 }
 

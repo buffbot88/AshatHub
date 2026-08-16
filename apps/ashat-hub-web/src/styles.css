@@ -1,21 +1,21 @@
-@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Cormorant+Garamond:wght@500;600;700&family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap');
 
 :root {
-  --bg: #12141a;
-  --bg-soft: #181b22;
-  --surface: #1e2128;
-  --surface-2: #252830;
-  --surface-3: #2e313a;
-  --line: #2e313a;
-  --line-soft: #252830;
-  --text: #e2e4e8;
-  --muted: #9ca3ae;
-  --dim: #6b7280;
-  --faint: #4b5060;
-  --accent: #5ba4b5;
-  --accent-bright: #72b8c8;
-  --accent-dim: #3d7a89;
-  --gold: #c9a84c;
+  --bg: #0a0a0a;
+  --bg-soft: #101010;
+  --surface: #121212;
+  --surface-2: #171717;
+  --surface-3: #24211b;
+  --line: rgba(201,162,74,.22);
+  --line-soft: rgba(201,162,74,.14);
+  --text: #f3f0e8;
+  --muted: #beb7aa;
+  --dim: #857e72;
+  --faint: #514b40;
+  --accent: #c9a24a;
+  --accent-bright: #e0bc67;
+  --accent-dim: #a88435;
+  --gold: #c9a24a;
   --ok: #4ade80;
   --warn: #fbbf24;
   --err: #f87171;
@@ -197,3 +197,15 @@ p { line-height: 1.6; }
 }
 
 @media (prefers-reduced-motion: reduce) { *, *::before, *::after { animation: none !important; transition: none !important; scroll-behavior: auto !important; } }
+
+/* ── AGP Studios homepage ── */
+.hub-shell { max-width: 1320px; margin: 0 auto; padding: 0 40px 72px; }
+.hub-header { max-width: none; border-color: var(--line-soft); }
+.brand-mark { font-family: 'Cormorant Garamond', serif; font-size: 23px; letter-spacing: .03em; }.brand-a { color: var(--accent); border-color: var(--accent-dim); border-radius: 2px; }.brand-accent { color: var(--accent); }
+.site-nav-link { color: var(--muted); border-radius: 2px; }.site-nav-link:hover, .site-nav-link.selected { color: var(--accent-bright); background: transparent; }.header-actions { display: flex; align-items: center; gap: 12px; }.header-cta, .primary-button { padding: 9px 15px; color: #17130b; background: var(--accent); border: 1px solid var(--accent); border-radius: 4px; font-weight: 700; }.header-cta:hover, .primary-button:hover { color: #0a0a0a; background: var(--accent-bright); }
+.home-hero { display: grid; grid-template-columns: minmax(0, 1fr) 360px; align-items: center; gap: 80px; max-width: 1120px; min-height: 480px; margin: 0 auto; border-bottom: 1px solid var(--line-soft); }.home-hero .hero-copy { padding: 64px 0; }.eyebrow { color: var(--accent); }.hero-copy h1 { max-width: 650px; font: 600 clamp(44px, 6vw, 60px)/.98 'Cormorant Garamond', serif; letter-spacing: -.025em; }.hero-copy p { max-width: 560px; color: var(--muted); }.hero-actions { display: flex; gap: 10px; margin-top: 26px; }.secondary-button { border-radius: 4px; border-color: var(--accent-dim); }.secondary-button:hover { color: var(--accent-bright); border-color: var(--accent); background: var(--surface-2); }
+.hero-ornament { position: relative; display: grid; place-items: center; width: 280px; height: 280px; margin: auto; color: var(--accent); border: 1px solid var(--line); transform: rotate(45deg); }.hero-ornament::before, .hero-ornament::after { position: absolute; content: ''; inset: 20px; border: 1px solid var(--line-soft); }.hero-ornament::after { inset: 48px; }.hero-ornament span { z-index: 1; transform: rotate(-45deg); font: 600 42px 'Cormorant Garamond', serif; letter-spacing: .12em; }.hero-ornament i { position: absolute; width: 1px; height: 110px; background: var(--accent-dim); }.hero-ornament i:nth-of-type(1) { transform: rotate(0deg); }.hero-ornament i:nth-of-type(2) { transform: rotate(90deg); }.hero-ornament i:nth-of-type(3) { width: 150px; height: 1px; transform: rotate(45deg); opacity: .45; }
+.home-section { max-width: 1120px; margin: 0 auto; padding: 72px 0 0; }.home-section h2, .ashat-feature h2 { font: 600 34px/1 'Cormorant Garamond', serif; }.text-button { color: var(--accent); }.project-card { border-color: var(--line); border-radius: 4px; background: var(--surface); }.project-card:hover { border-color: var(--accent-dim); transform: translateY(-2px); transition: transform .15s, border-color .15s; }.project-card-thumb { height: 130px; background: linear-gradient(135deg, #121212, #1a1711); border-color: var(--line-soft); }.project-glyph { color: var(--accent); font: 42px 'Cormorant Garamond', serif; }.project-card-body h3 { font-family: 'Cormorant Garamond', serif; font-size: 24px; }.project-card-body p { color: var(--muted); }
+.ashat-feature { display: grid; grid-template-columns: 1fr 1fr; gap: 56px; align-items: center; padding: 40px; border: 1px solid var(--line); background: var(--surface); }.ashat-feature p { max-width: 480px; color: var(--muted); }.ashat-frame { display: grid; align-content: center; gap: 14px; min-height: 230px; padding: 28px; border: 1px solid var(--line); background: #0d0d0d; }.frame-bar, .frame-line { display: block; width: 65%; height: 8px; background: var(--accent-dim); opacity: .7; }.frame-bar { width: 28%; height: 3px; margin-bottom: 18px; }.frame-line.wide { width: 88%; }.frame-line.short { width: 45%; }.frame-cursor { display: block; width: 8px; height: 18px; background: var(--accent); }
+.studio-footer { display: grid; grid-template-columns: 2fr repeat(3, 1fr); gap: 30px; max-width: 1120px; margin: 88px auto 0; padding: 34px 0 0; border-top: 1px solid var(--line); color: var(--muted); }.footer-brand { display: block; color: var(--text); font: 600 25px 'Cormorant Garamond', serif; }.footer-brand span { color: var(--accent); }.studio-footer p { max-width: 230px; font-size: 13px; }.footer-label { display: block; margin-bottom: 12px; color: var(--accent); font: 10px 'JetBrains Mono', monospace; letter-spacing: .1em; text-transform: uppercase; }.studio-footer button, .studio-footer a { display: block; margin: 0 0 9px; padding: 0; color: var(--muted); background: none; border: 0; font-size: 13px; text-decoration: none; }.studio-footer button:hover, .studio-footer a:hover { color: var(--accent-bright); }.footer-bottom { grid-column: 1/-1; padding-top: 18px; color: var(--dim); border-top: 1px solid var(--line-soft); font-size: 12px; }
+@media (max-width: 800px) { .hub-shell { padding: 0 16px 40px; }.header-actions { width: 100%; justify-content: space-between; }.home-hero, .ashat-feature { grid-template-columns: 1fr; gap: 20px; }.home-hero { min-height: 0; }.hero-ornament { width: 190px; height: 190px; margin: 10px auto 40px; }.hero-copy h1 { font-size: 46px; }.studio-footer { grid-template-columns: repeat(2, 1fr); margin-top: 56px; }.studio-footer > :first-child, .footer-bottom { grid-column: 1/-1; } }

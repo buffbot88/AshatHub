@@ -61,7 +61,7 @@ function ProjectCard({ project }: { project: ShowcaseProject }) {
   const card = (
     <article className="project-card">
       <div className="project-card-thumb">
-        {project.category === 'game' ? '🎮' : project.category === 'studio' ? '⚡' : '🔧'}
+        <span className="project-glyph" aria-hidden="true">{project.category === 'game' ? '◈' : project.category === 'studio' ? '✦' : '⌘'}</span>
       </div>
       <div className="project-card-body">
         <h3>{project.name}</h3>
@@ -144,29 +144,20 @@ export default function App() {
       <header className="hub-header">
         <button type="button" className="brand-mark brand-button" onClick={() => navigate('/')}><span className="brand-a">A</span><span>AGP<span className="brand-accent">Studios</span></span></button>
         <nav className="site-nav" aria-label="Primary navigation">
-          <button type="button" className={view === 'home' ? 'site-nav-link selected' : 'site-nav-link'} onClick={() => navigate('/')}>Home</button>
           <button type="button" className={view === 'projects' ? 'site-nav-link selected' : 'site-nav-link'} onClick={() => navigate('/projects')}>Projects</button>
           <button type="button" className={view === 'games' ? 'site-nav-link selected' : 'site-nav-link'} onClick={() => navigate('/games')}>Games</button>
+          <button type="button" className={view === 'galileo' ? 'site-nav-link selected' : 'site-nav-link'} onClick={() => navigate('/galileo')}>Ashat</button>
           <button type="button" className={view === 'community' ? 'site-nav-link selected' : 'site-nav-link'} onClick={() => navigate('/community')}>Community</button>
           {user?.role.toLowerCase() === 'admin' && <button type="button" className={view === 'admin' ? 'site-nav-link selected' : 'site-nav-link'} onClick={() => navigate('/admin')}>Admin</button>}
         </nav>
-        <AuthPanel onChange={handleAuthChange} />
+        <div className="header-actions"><AuthPanel onChange={handleAuthChange} /><button type="button" className="header-cta" onClick={() => navigate('/galileo')}>Launch Ashat</button></div>
       </header>
 
       {showHome && <>
-        <section className="hero-copy">
-          <span className="eyebrow">AGP Studios</span>
-          <h1>Software, games, and tools built independently.</h1>
-          <p>From browser-based development environments to game worlds and experimental systems.</p>
-        </section>
-        <section className="workspace-section">
-          <div className="section-heading">
-            <div><span className="eyebrow">What we build</span><h2>Projects</h2></div>
-          </div>
-          <div className="project-grid">
-            {showcase.filter(project => project.id !== 'ashat-hub').map(project => <ProjectCard key={project.id} project={project} />)}
-          </div>
-        </section>
+        <section className="home-hero"><div className="hero-copy"><span className="eyebrow">Independent software studio</span><h1>Software, games, and tools built with purpose.</h1><p>AGP Studios builds practical tools, focused software, and memorable experiences—with Ashat as our coding agent platform.</p><div className="hero-actions"><button type="button" className="primary-button" onClick={() => navigate('/projects')}>Explore Projects</button><button type="button" className="secondary-button" onClick={() => navigate('/galileo')}>Launch Ashat</button></div></div><div className="hero-ornament" aria-hidden="true"><span>AGP</span><i /><i /><i /></div></section>
+        <section className="home-section workspace-section"><div className="section-heading"><div><span className="eyebrow">Selected work</span><h2>Projects</h2></div><button type="button" className="text-button" onClick={() => navigate('/projects')}>View all →</button></div><div className="project-grid">{studioProjects.slice(0, 3).map(project => <ProjectCard key={project.id} project={project} />)}</div></section>
+        <section className="ashat-feature home-section"><div><span className="eyebrow">The flagship platform</span><h2>Ashat</h2><p>A focused coding agent workspace for building, organizing, previewing, and shipping software without losing the thread.</p><button type="button" className="primary-button" onClick={() => navigate('/galileo')}>Open Ashat</button></div><div className="ashat-frame" aria-label="Ashat workspace preview"><span className="frame-bar" /><span className="frame-line wide" /><span className="frame-line" /><span className="frame-line short" /><span className="frame-cursor" /></div></section>
+        {gameProjects.length > 0 && <section className="home-section"><div className="section-heading"><div><span className="eyebrow">Other worlds</span><h2>Games</h2></div><button type="button" className="text-button" onClick={() => navigate('/games')}>Explore games →</button></div><div className="project-grid">{gameProjects.slice(0, 3).map(project => <ProjectCard key={project.id} project={project} />)}</div></section>}
       </>}
 
       {view === 'projects' && <>
@@ -202,8 +193,13 @@ export default function App() {
       {view === 'privacy' && <LegalPage kind="privacy" />}
       {view === 'error' && <section className="member-panel legal-panel"><span className="eyebrow">Ashat platform</span><h2>Page unavailable</h2><p>The requested page could not be found.</p></section>}
       {showHome && <TelemetrySection user={user} telemetry={telemetry} telemetryError={telemetryError} updatedAt={updatedAt} />}
+      {showHome && <StudioFooter navigate={navigate} />}
     </main>
   );
+}
+
+function StudioFooter({ navigate }: { navigate: (path: string) => void }) {
+  return <footer className="studio-footer"><div><strong className="footer-brand">AGP<span>Studios</span></strong><p>Independent software, games, and tools built with purpose.</p></div><div><span className="footer-label">Explore</span><button onClick={() => navigate('/projects')}>Projects</button><button onClick={() => navigate('/games')}>Games</button><button onClick={() => navigate('/community')}>Community</button></div><div><span className="footer-label">Ashat</span><button onClick={() => navigate('/galileo')}>Overview</button><button onClick={() => navigate('/docs')}>Documentation</button><button onClick={() => navigate('/support')}>Support</button></div><div><span className="footer-label">AGP Studios</span><button onClick={() => navigate('/privacy')}>Privacy</button><button onClick={() => navigate('/terms')}>Terms</button><a href="https://github.com/buffbot88/AshatHostingPlatform">GitHub</a></div><div className="footer-bottom">© {new Date().getFullYear()} AGP Studios</div></footer>;
 }
 
 function TelemetrySection({ user, telemetry, telemetryError, updatedAt }: { user: User | null; telemetry: TelemetryResponse | null; telemetryError: string | null; updatedAt: Date | null }) {

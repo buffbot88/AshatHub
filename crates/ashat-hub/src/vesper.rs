@@ -203,6 +203,8 @@ pub(crate) fn routes() -> Router<AppState> {
         .route("/api/v1/auth/logout", post(vesper_logout))
         .route("/api/v1/updates/check", get(vesper_check_update))
         .route("/api/v1/updates/download/{filename}", get(vesper_download))
+        .route("/updates/check", get(vesper_check_update))
+        .route("/updates/download/{filename}", get(vesper_download))
         .route("/api/v1/models/list", get(vesper_models_list))
         .route("/api/v1/models/download/{filename}", get(vesper_models_download))
 }
@@ -507,8 +509,18 @@ async fn vesper_check_update(
 
 async fn vesper_download(
     State(state): State<AppState>,
+    headers: HeaderMap,
     AxumPath(filename): AxumPath<String>,
 ) -> Response {
+    let ip = client_ip(&headers, &state);
+    if let Some(retry_after) = state.auth_rate_limiter.check(
+        &format!("vesper:download:{ip}"),
+        10,
+        Duration::from_secs(60),
+    ) {
+        return crate::response::rate_limit_response(retry_after);
+    }
+
     let Some(pool) = state.db.as_ref() else {
         return error_response(StatusCode::SERVICE_UNAVAILABLE, "auth_unavailable");
     };

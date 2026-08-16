@@ -1,3 +1,0 @@
-#!/usr/bin/env sh
-DIR=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
-exec php "$DIR/ashat-github-push.php" "$@"

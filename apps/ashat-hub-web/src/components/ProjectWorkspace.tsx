@@ -417,12 +417,12 @@ export function ProjectWorkspace({ user, onTaskChange }: { user: User | null; on
         <div><span className="eyebrow">Galileo web studio</span><h2>{activeProject?.name || 'Your projects'}</h2></div>
         <div className="workspace-actions">
           <select value={projectId} onChange={(event) => { setProjectId(event.target.value); setConversationId(''); }}><option value="">Select project</option>{projects.map((project) => <option key={project.id} value={project.id}>{project.name}</option>)}</select>
-          <button type="button" className="secondary-button" onClick={() => setCreatingProject((value) => !value)}>+ Project</button>
+          <button type="button" className="secondary-button" onClick={() => setCreatingProject((value) => !value)}>+ New Project</button>
         </div>
       </div>
       {creatingProject && <form className="create-project-form" onSubmit={(event) => void createProject(event)}><input value={projectName} onChange={(event) => setProjectName(event.target.value)} placeholder="Project name" autoFocus /><button type="submit">Create project</button></form>}
       {error && <p className="workspace-error" role="alert">{error}</p>}
-      {!projectId && <p className="muted">Create or select a project to begin a Galileo conversation.</p>}
+      {!projectId && <div className="galileo-empty"><span className="eyebrow">Galileo</span><h2>What do you want to build?</h2><p className="muted">Create a project, then ask Ashat to turn the idea into a working application.</p></div>}
       {projectId && <>
         <div className="galileo-grid">
           <aside className="conversation-sidebar">

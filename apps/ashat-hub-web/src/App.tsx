@@ -1,8 +1,6 @@
 import { useCallback, useEffect, useState } from 'react';
 import { AuthPanel } from './components/AuthPanel';
 import { ProjectWorkspace } from './components/ProjectWorkspace';
-import { TaskFrame } from './components/TaskFrame';
-import type { TaskFrameData } from './components/TaskFrame';
 import { MemberSurfaces } from './components/MemberSurfaces';
 import type { MemberTab } from './components/MemberSurfaces';
 import { AdminSurface } from './components/AdminSurface';
@@ -86,7 +84,6 @@ export default function App() {
   const [telemetryError, setTelemetryError] = useState<string | null>(null);
   const [updatedAt, setUpdatedAt] = useState<Date | null>(null);
   const [user, setUser] = useState<User | null>(null);
-  const [task, setTask] = useState<TaskFrameData | null>(null);
   const [view, setView] = useState<View>(() => viewForPath(window.location.pathname));
   const [showcase, setShowcase] = useState<ShowcaseProject[]>([]);
 
@@ -130,7 +127,6 @@ export default function App() {
   }, [loadTelemetry]);
 
   const handleAuthChange = useCallback((nextUser: User | null) => setUser(nextUser), []);
-  const handleTaskChange = useCallback((nextTask: TaskFrameData | null) => setTask(nextTask), []);
   const showWorkspace = view === 'galileo';
   const showHome = view === 'home';
   const memberTab: MemberTab | undefined = ['community', 'docs', 'support', 'account', 'activity'].includes(view) ? view as MemberTab : undefined;
@@ -140,7 +136,7 @@ export default function App() {
   const gameProjects = showcase.filter(p => p.category === 'game');
 
   return (
-    <main className="hub-shell">
+    <main className={showWorkspace ? 'hub-shell app-shell' : 'hub-shell'}>
       <header className="hub-header">
         <button type="button" className="brand-mark brand-button" onClick={() => navigate('/')}><span className="brand-a">A</span><span>AGP<span className="brand-accent">Studios</span></span></button>
         <nav className="site-nav" aria-label="Primary navigation">
@@ -182,10 +178,7 @@ export default function App() {
         </div>
       </>}
 
-      {view === 'galileo' && <section className="hero-copy compact-hero galileo-intro"><span className="eyebrow">Galileo web studio</span><h1>Build, preview, and ship.</h1><p>Galileo is the web-based studio platform. Use Ashat, the coding AI, alongside your files, live preview, terminal, and deployment controls.</p></section>}
-
-
-      {showWorkspace && <><TaskFrame task={task} /><ProjectWorkspace user={user} onTaskChange={handleTaskChange} /></>}
+      {showWorkspace && <ProjectWorkspace user={user} onTaskChange={() => {}} />}
       {showMemberSurface && <MemberSurfaces user={user} initialTab={memberTab} />}
       {view === 'admin' && <AdminSurface user={user} />}
       {view === 'telemetry' && <><MemberSurfaces user={user} initialTab="activity" /><TelemetrySection user={user} telemetry={telemetry} telemetryError={telemetryError} updatedAt={updatedAt} /></>}
@@ -193,7 +186,7 @@ export default function App() {
       {view === 'privacy' && <LegalPage kind="privacy" />}
       {view === 'error' && <section className="member-panel legal-panel"><span className="eyebrow">Ashat platform</span><h2>Page unavailable</h2><p>The requested page could not be found.</p></section>}
       {showHome && <TelemetrySection user={user} telemetry={telemetry} telemetryError={telemetryError} updatedAt={updatedAt} />}
-      <StudioFooter navigate={navigate} />
+      {!showWorkspace && <StudioFooter navigate={navigate} />}
     </main>
   );
 }

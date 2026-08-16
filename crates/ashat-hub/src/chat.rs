@@ -34,6 +34,13 @@ struct ChatResponse {
     content: String,
 }
 
+#[derive(Debug, Deserialize)]
+struct IcarusRequest {
+    message: String,
+    project_root: String,
+    context: Value,
+}
+
 #[derive(Debug, Deserialize, Serialize)]
 struct DiscoveryResponse {
     kind: String,
@@ -47,6 +54,89 @@ pub(crate) fn routes() -> Router<AppState> {
         .route("/api/galileo/chat", post(chat))
         .route("/api/galileo/chat/stream", post(chat))
         .route("/api/galileo/discovery", post(discovery))
+        .route("/api/icarus/agent", post(icarus_agent))
+}
+
+async fn icarus_agent(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Json(input): Json<IcarusRequest>,
+) -> Response {
+    let Some(pool) = state.db.as_ref() else {
+        return error_response(StatusCode::SERVICE_UNAVAILABLE, "auth_unavailable");
+    };
+    let Some(user) = auth::authenticated_user(pool, &state, &headers)
+        .await
+        .ok()
+        .flatten()
+    else {
+        return error_response(StatusCode::UNAUTHORIZED, "unauthenticated");
+    };
+
+    let message = input.message.trim();
+    if message.is_empty() {
+        return error_response(StatusCode::BAD_REQUEST, "message_required");
+    }
+    if message.chars().count() > 50_000
+        || input.project_root.is_empty()
+        || input.project_root.len() > 1_024
+        || !input.project_root.is_ascii()
+    {
+        return error_response(StatusCode::BAD_REQUEST, "invalid_icarus_request");
+    }
+    let context_size = serde_json::to_string(&input.context)
+        .map(|value| value.len())
+        .unwrap_or(usize::MAX);
+    if context_size > 200_000 || !input.context.is_object() {
+        return error_response(StatusCode::PAYLOAD_TOO_LARGE, "context_too_large");
+    }
+    if let Some(retry_after) = state.operation_rate_limiter.check(
+        &format!("icarus:{}", user.id),
+        30,
+        std::time::Duration::from_secs(60),
+    ) {
+        state.metrics.record_rate_limited();
+        return rate_limit_response(retry_after);
+    }
+
+    let Some(upstream) = state.chat_upstream.as_ref() else {
+        return error_response(StatusCode::SERVICE_UNAVAILABLE, "chat_engine_not_configured");
+    };
+    let prompt = format!(
+        "LOCAL WORKSPACE METADATA (do not access this path; Icarus owns local filesystem operations):\\nroot: {}\\ncontext: {}\\n\\nUSER REQUEST:\\n{}",
+        input.project_root,
+        serde_json::to_string(&input.context).unwrap_or_default(),
+        message
+    );
+    let body = serde_json::json!({
+        "model": "local",
+        "messages": [
+            {"role": "system", "content": "You are Ashat, the coding AI. Give precise, practical answers using only the supplied workspace context."},
+            {"role": "user", "content": prompt}
+        ],
+        "stream": false
+    });
+    let response = match state.client.post(upstream).json(&body).send().await {
+        Ok(response) if response.status().is_success() => response,
+        Ok(_) => return error_response(StatusCode::BAD_GATEWAY, "chat_engine_error"),
+        Err(error) => {
+            tracing::warn!(?error, "Icarus adapter upstream request failed");
+            return error_response(StatusCode::BAD_GATEWAY, "chat_engine_unavailable");
+        }
+    };
+    let body = match response.json::<Value>().await {
+        Ok(body) => body,
+        Err(_) => return error_response(StatusCode::BAD_GATEWAY, "chat_engine_invalid_response"),
+    };
+    let content = body
+        .get("content")
+        .and_then(Value::as_str)
+        .or_else(|| body.get("choices").and_then(|value| value.get(0)).and_then(|value| value.get("message")).and_then(|value| value.get("content")).and_then(Value::as_str))
+        .unwrap_or_default();
+    if content.is_empty() {
+        return error_response(StatusCode::BAD_GATEWAY, "chat_engine_empty_response");
+    }
+    Json(ChatResponse { content: content.to_owned() }).into_response()
 }
 
 async fn discovery(

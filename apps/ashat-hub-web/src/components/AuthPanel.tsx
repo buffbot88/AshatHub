@@ -107,31 +107,20 @@ export function AuthPanel({ onChange }: { onChange: (user: User | null) => void 
     finally { setBusy(false); }
   }
 
-  // Signed-in view with account panel.
+  // Signed-in view with one compact account menu.
   if (user) {
     return (
-      <div className="auth-chip">
-        <div className="auth-user-info">
-          Signed in as {user.display_name || user.username}
-          {user.role === 'admin' && <span className="auth-role-badge">Admin</span>}
-        </div>
-        <div className="auth-account-section">
+      <details className="auth-menu">
+        <summary className="auth-menu-trigger"><span>{user.display_name || user.username}</span>{user.role === 'admin' && <span className="auth-role-badge">Admin</span>}<span className="auth-menu-chevron">⌄</span></summary>
+        <div className="auth-menu-panel">
+          <span className="auth-menu-email">{user.email}</span>
           <div className="auth-account-row">
             <span className="auth-account-label">Google</span>
-            {googleStatus?.linked ? (
-              <>
-                <span className="auth-account-status linked">Linked ({googleStatus.google_email})</span>
-                <button type="button" className="auth-btn-sm auth-btn-unlink" onClick={() => void unlinkGoogle()} disabled={busy}>Unlink</button>
-              </>
-            ) : (
-              <button type="button" className="auth-btn-sm auth-btn-link" onClick={() => void linkGoogle()} disabled={busy || !googleStatus?.configured}>
-                Link Google
-              </button>
-            )}
+            {googleStatus?.linked ? <><span className="auth-account-status linked">Linked</span><button type="button" className="auth-btn-sm auth-btn-unlink" onClick={() => void unlinkGoogle()} disabled={busy}>Unlink</button></> : <button type="button" className="auth-btn-sm auth-btn-link" onClick={() => void linkGoogle()} disabled={busy || !googleStatus?.configured}>Link</button>}
           </div>
+          <button type="button" className="auth-logout" onClick={() => void logout()} disabled={busy}>Sign out</button>
         </div>
-        <button type="button" className="auth-logout" onClick={() => void logout()} disabled={busy}>Sign out</button>
-      </div>
+      </details>
     );
   }
 

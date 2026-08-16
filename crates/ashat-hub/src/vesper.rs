@@ -207,6 +207,7 @@ pub(crate) fn routes() -> Router<AppState> {
         .route("/updates/download/{filename}", get(vesper_download))
         .route("/api/v1/models/list", get(vesper_models_list))
         .route("/api/v1/models/download/{filename}", get(vesper_models_download))
+        .route("/api/v1/models/announce", post(vesper_models_announce))
 }
 
 // ─── Auth endpoints ─────────────────────────────────────────────────
@@ -710,6 +711,10 @@ struct ModelInfo {
     platform_rid: String,
     min_ram_mb: i32,
     quantization: String,
+    size_bytes: i64,
+    checksum: String,
+    origin: String,
+    seeds: Vec<String>,
 }
 
 #[derive(Debug, FromRow)]
@@ -727,6 +732,8 @@ struct ModelRow {
     platform_rid: String,
     min_ram_mb: i32,
     quantization: String,
+    checksum: String,
+    origin_url: String,
 }
 
 #[derive(Debug, Serialize)]
@@ -746,7 +753,8 @@ async fn vesper_models_list(
     // Build query with optional filters.
     let mut sql = String::from(
         "SELECT id, name, slug, description, model_type, version, filename, signature,
-                file_size, download_url, platform_rid, min_ram_mb, quantization
+                file_size, download_url, platform_rid, min_ram_mb, quantization,
+                checksum, origin_url
          FROM vesper_models WHERE is_active = 1",
     );
 
@@ -777,9 +785,16 @@ async fn vesper_models_list(
         }
     };
 
-    let models: Vec<ModelInfo> = rows
-        .into_iter()
-        .map(|r| ModelInfo {
+    let mut models = Vec::with_capacity(rows.len());
+    for r in rows {
+        let seeds = sqlx::query_scalar::<_, String>(
+            "SELECT origin_url FROM vesper_model_seeds WHERE model_id = ? ORDER BY last_seen DESC",
+        )
+        .bind(&r.id)
+        .fetch_all(pool)
+        .await
+        .unwrap_or_default();
+        models.push(ModelInfo {
             id: r.id,
             name: r.name,
             slug: r.slug,
@@ -793,11 +808,105 @@ async fn vesper_models_list(
             platform_rid: r.platform_rid,
             min_ram_mb: r.min_ram_mb,
             quantization: r.quantization,
-        })
-        .collect();
+            size_bytes: r.file_size,
+            checksum: r.checksum,
+            origin: r.origin_url,
+            seeds,
+        });
+    }
 
     let total = models.len();
     Json(ModelListResponse { models, total }).into_response()
+}
+
+#[derive(Debug, Deserialize)]
+struct ModelAnnounceRequest {
+    filename: String,
+    size_bytes: i64,
+    checksum: String,
+    origin: String,
+}
+
+async fn vesper_models_announce(
+    State(state): State<AppState>,
+    VesperUser { user_id, .. }: VesperUser,
+    Json(input): Json<ModelAnnounceRequest>,
+) -> Response {
+    let filename = input.filename.trim();
+    let checksum = input.checksum.trim();
+    let origin = input.origin.trim();
+    if filename.is_empty()
+        || filename.len() > 255
+        || filename.contains("..")
+        || filename.contains('/')
+        || filename.contains('\\')
+        || input.size_bytes <= 0
+        || checksum.is_empty()
+        || checksum.len() > 128
+        || !checksum.is_ascii()
+        || !(origin.starts_with("http://") || origin.starts_with("https://"))
+        || origin.len() > 512
+    {
+        return error_response(StatusCode::BAD_REQUEST, "invalid_model_announcement");
+    }
+    let Some(pool) = state.db.as_ref() else {
+        return error_response(StatusCode::SERVICE_UNAVAILABLE, "models_unavailable");
+    };
+
+    let model_id = match sqlx::query_scalar::<_, String>(
+        "SELECT id FROM vesper_models WHERE filename = ? LIMIT 1",
+    )
+    .bind(filename)
+    .fetch_optional(pool)
+    .await
+    {
+        Ok(Some(id)) => id,
+        Ok(None) => {
+            let id = format!("vm-{}", Uuid::new_v4().simple());
+            let slug = format!("seed-{}", Uuid::new_v4().simple());
+            if sqlx::query(
+                "INSERT INTO vesper_models
+                 (id,name,slug,description,model_type,version,filename,checksum,file_size,origin_url,is_active)
+                 VALUES (?,?,?,'','llm','1.0.0',?,?,?, ?,1)",
+            )
+            .bind(&id)
+            .bind(filename)
+            .bind(&slug)
+            .bind(filename)
+            .bind(checksum)
+            .bind(input.size_bytes)
+            .bind(origin)
+            .execute(pool)
+            .await
+            .is_err()
+            {
+                return error_response(StatusCode::SERVICE_UNAVAILABLE, "models_unavailable");
+            }
+            id
+        }
+        Err(error) => {
+            tracing::error!(?error, "Vesper model lookup failed");
+            return error_response(StatusCode::SERVICE_UNAVAILABLE, "models_unavailable");
+        }
+    };
+
+    if let Err(error) = sqlx::query(
+        "INSERT INTO vesper_model_seeds (id,model_id,user_id,origin_url,last_seen)
+         VALUES (?,?,?,?,UTC_TIMESTAMP())
+         ON DUPLICATE KEY UPDATE origin_url=VALUES(origin_url), last_seen=UTC_TIMESTAMP()",
+    )
+    .bind(Uuid::new_v4().to_string())
+    .bind(&model_id)
+    .bind(&user_id)
+    .bind(origin)
+    .execute(pool)
+    .await
+    {
+        tracing::error!(?error, "Vesper model seed announcement failed");
+        return error_response(StatusCode::SERVICE_UNAVAILABLE, "models_unavailable");
+    }
+
+    Json(serde_json::json!({"ok": true, "model_id": model_id})).into_response()
 }
 
 async fn vesper_models_download(
@@ -816,7 +925,8 @@ async fn vesper_models_download(
     // Look up the model.
     let model = sqlx::query_as::<_, ModelRow>(
         "SELECT id, name, slug, description, model_type, version, filename, signature,
-                file_size, download_url, platform_rid, min_ram_mb, quantization
+                file_size, download_url, platform_rid, min_ram_mb, quantization,
+                checksum, origin_url
          FROM vesper_models WHERE filename = ? AND is_active = 1 LIMIT 1",
     )
     .bind(&filename)

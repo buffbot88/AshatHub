@@ -627,6 +627,7 @@ pub(crate) async fn enforce_csrf(
             path,
             "/api/auth/login" | "/api/auth/register" | "/api/sso/verify-session"
             | "/api/v1/auth/login" | "/api/v1/auth/status" | "/api/v1/auth/logout"
+            | "/api/v1/models/announce"
         )
     {
         return Ok(());

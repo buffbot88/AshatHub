@@ -429,7 +429,7 @@ Preview requirements:
 
 * reload
 * open externally
-* responsive sizing
+* desktop viewport sizing
 * runtime loading state
 * crash/error display
 * connection status
@@ -886,6 +886,18 @@ Existing security rules should remain:
 
 ---
 
+## 25.1. Project Storage Boundary
+
+Galileo's canonical persistent project root is `/var/oled/data/projects/<user>/<project>`.
+
+Platform runtime code, services, dependencies, swap, and protected system workspaces remain on the root filesystem. `/var/oled/pcp` is reserved for Oracle Performance Co-Pilot and must not be mixed with project data.
+
+Project migration is staged: copy with metadata preserved, verify file counts and critical checksums, update service configuration, validate file operations and previews, then retain the original until rollback acceptance is complete. Project access must enforce user/project boundaries, quotas, path canonicalization, traversal prevention, and symlink escape protection.
+
+The storage migration build plan, including operational risks and rollback controls, is documented in `docs/storage-layout-build-plan.md`.
+
+---
+
 # 26. Existing Features to Retain
 
 The following current Chat Studio functionality remains useful and should be migrated where practical:
@@ -1105,25 +1117,15 @@ Detailed raw information can remain available through diagnostics/terminal where
 
 ---
 
-# 36. Responsive Behavior
+# 36. Platform Scope
 
-Desktop is the primary target.
+Galileo Studio is desktop web only for this phase.
 
-For narrower displays:
+The supported experience is a desktop browser with the full conversation workspace and its supporting Source, Preview, Terminal, and Changes surfaces.
 
-```text
-Chat
-```
+Do not add mobile-web layouts, mobile navigation, touch-specific controls, or phone-sized workspace behavior during the proof and adoption phase. A future native mobile app is a separate product decision and will only be considered after Galileo has demonstrated adoption and demand.
 
-remains primary.
-
-Source, Preview, and Terminal become full-screen panels or drawers.
-
-Possible mobile navigation:
-
-```text
-Chat | Source | Preview | Terminal
-```
+The immediate goal is to prove that Galileo works reliably for desktop users and that people actively want to use it.
 
 ---
 

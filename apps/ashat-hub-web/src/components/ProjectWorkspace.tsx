@@ -24,7 +24,7 @@ function csrfToken(): string {
   return cookie ? decodeURIComponent(cookie.slice('ashat_rust_csrf='.length)) : '';
 }
 
-async function request<T>(url: string, init?: RequestInit): Promise<T> {
+async function request<T>(url: string, init?: RequestInit, retried = false): Promise<T> {
   const response = await fetch(url, {
     credentials: 'same-origin',
     headers: {
@@ -38,11 +38,13 @@ async function request<T>(url: string, init?: RequestInit): Promise<T> {
   const text = await response.text();
   let body: (T & { error?: ApiError }) | null = null;
   try { body = text ? JSON.parse(text) as T & { error?: ApiError } : null; } catch { /* handled below */ }
-  if (!response.ok) {
-    const error = body?.error;
-    const message = typeof error === 'string' ? error : error?.message || error?.code;
-    throw new Error(message || `Request failed (${response.status})`);
+  const error = body?.error;
+  const message = typeof error === 'string' ? error : error?.message || error?.code;
+  if (response.status === 403 && message === 'csrf_failed' && !retried) {
+    await fetch(`${RUST_API}/auth/session`, { credentials: 'same-origin' });
+    return request<T>(url, init, true);
   }
+  if (!response.ok) throw new Error(message || `Request failed (${response.status})`);
   return (body || {}) as T;
 }
 
@@ -407,12 +409,12 @@ export function ProjectWorkspace({ user, onTaskChange }: { user: User | null; on
     catch (reason) { setError(reason instanceof Error ? reason.message : 'Save failed'); }
   }
 
-  if (!user) return <section className="workspace-section workspace-locked"><span className="eyebrow">Galileo staging workspace</span><h2>Sign in to open your projects.</h2><p className="muted">The Rust workspace uses the same PHP-compatible account boundary while this migration is in staging.</p></section>;
+  if (!user) return <section className="workspace-section workspace-locked"><span className="eyebrow">Galileo web studio</span><h2>Sign in to open your projects.</h2><p className="muted">Sign in to use the Galileo web studio and your saved projects.</p></section>;
 
   return (
-    <section className="workspace-section" aria-label="Galileo workspace">
+    <section className="workspace-section galileo-studio" aria-label="Galileo workspace">
       <div className="section-heading workspace-heading">
-        <div><span className="eyebrow">Galileo staging workspace</span><h2>{activeProject?.name || 'Your projects'}</h2></div>
+        <div><span className="eyebrow">Galileo web studio</span><h2>{activeProject?.name || 'Your projects'}</h2></div>
         <div className="workspace-actions">
           <select value={projectId} onChange={(event) => { setProjectId(event.target.value); setConversationId(''); }}><option value="">Select project</option>{projects.map((project) => <option key={project.id} value={project.id}>{project.name}</option>)}</select>
           <button type="button" className="secondary-button" onClick={() => setCreatingProject((value) => !value)}>+ Project</button>

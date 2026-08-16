@@ -93,7 +93,7 @@ async fn users(
     let offset = (page - 1) * 50;
     let search = query.q.unwrap_or_default();
     let result = sqlx::query_as::<_, AdminUserRow>(
-        "SELECT id,username,email,display_name,role,is_active,email_verified_at
+        "SELECT id,username,email,display_name,role,is_active,CAST(email_verified_at AS CHAR) AS email_verified_at
          FROM users
          WHERE (?='' OR username LIKE CONCAT('%',?,'%') OR email LIKE CONCAT('%',?,'%') OR display_name LIKE CONCAT('%',?,'%'))
          ORDER BY username LIMIT 50 OFFSET ?",

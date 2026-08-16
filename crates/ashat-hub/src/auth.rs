@@ -626,6 +626,7 @@ pub(crate) async fn enforce_csrf(
         || matches!(
             path,
             "/api/auth/login" | "/api/auth/register" | "/api/sso/verify-session"
+            | "/api/v1/auth/login" | "/api/v1/auth/status" | "/api/v1/auth/logout"
         )
     {
         return Ok(());
@@ -785,7 +786,7 @@ fn public_user(user: &UserWithPassword) -> PublicUser {
     }
 }
 
-fn new_token() -> String {
+pub(crate) fn new_token() -> String {
     let suffix: String = rand::thread_rng()
         .sample_iter(&Alphanumeric)
         .take(32)
@@ -794,7 +795,7 @@ fn new_token() -> String {
     format!("{}{}", Uuid::new_v4().simple(), suffix)
 }
 
-fn hash_token(token: &str) -> String {
+pub(crate) fn hash_token(token: &str) -> String {
     let mut hasher = Sha256::new();
     hasher.update(token.as_bytes());
     format!("{:x}", hasher.finalize())
@@ -811,7 +812,7 @@ fn constant_time_equal(left: &str, right: &str) -> bool {
         == 0
 }
 
-fn cookie_value(headers: &HeaderMap, name: &str) -> Option<String> {
+pub(crate) fn cookie_value(headers: &HeaderMap, name: &str) -> Option<String> {
     let raw = headers.get(header::COOKIE)?.to_str().ok()?;
     raw.split(';').find_map(|part| {
         let (key, value) = part.trim().split_once('=')?;

@@ -6,9 +6,9 @@ CSRF=$(grep -o 'content="[a-f0-9]\{64\}"' /tmp/chat-page.html | head -1 | sed 's
 AJ=(-sk -b $JAR -H "$HOST" -H "X-Requested-With: XMLHttpRequest" -H "X-CSRF-Token: $CSRF" -H "Content-Type: application/json")
 
 echo "=== 1. FILES ON DISK (apache-writable now) ==="
-ls -la /home/opc/AshatPlatform/modules/AshatHub/projects/p3test1786239463/ 2>/dev/null
+ls -la /var/oled/data/AshatHub/modules/AshatHub/projects/p3test1786239463/ 2>/dev/null
 echo "--- Spec.md (first 12 lines) ---"
-head -12 /home/opc/AshatPlatform/modules/AshatHub/projects/p3test1786239463/Spec.md 2>/dev/null
+head -12 /var/oled/data/AshatHub/modules/AshatHub/projects/p3test1786239463/Spec.md 2>/dev/null
 
 echo "=== 2. EXPLORER (/api/files/) ==="
 curl "${AJ[@]}" "$BASE/api/files/" | python3 -c "

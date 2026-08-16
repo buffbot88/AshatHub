@@ -34,10 +34,12 @@ mod compat;
 mod conversations;
 mod deployment;
 mod galileo_jobs;
+mod google_auth;
 mod member;
 mod preview;
 mod projects;
 mod response;
+mod vesper;
 mod web;
 
 const REMOTE_TIMEOUT: Duration = Duration::from_secs(4);
@@ -154,6 +156,10 @@ pub struct AppState {
     pub(crate) db: Option<MySqlPool>,
     pub(crate) auth: AuthConfig,
     pub(crate) projects_root: std::path::PathBuf,
+    pub(crate) releases_dir: std::path::PathBuf,
+    pub(crate) hub_public_url: Option<String>,
+    pub(crate) backup_public_url: Option<String>,
+    pub(crate) deploy_domain: Option<String>,
     pub(crate) deploy_root: std::path::PathBuf,
     pub(crate) deploy_backup_root: std::path::PathBuf,
     pub(crate) web_root: std::path::PathBuf,
@@ -163,6 +169,7 @@ pub struct AppState {
     pub(crate) job_upstream: Option<String>,
     pub(crate) auth_rate_limiter: AuthRateLimiter,
     pub(crate) operation_rate_limiter: AuthRateLimiter,
+    pub(crate) google_oauth: Option<google_auth::GoogleOAuthConfig>,
     pub(crate) metrics: Arc<GatewayMetrics>,
     migrations_ready: Arc<AtomicBool>,
 }
@@ -229,6 +236,7 @@ pub fn app(state: AppState) -> Router {
         .route("/ready", get(ready))
         .route("/api/health", get(health))
         .route("/api/telemetry", get(telemetry))
+        .route("/api/showcase", get(showcase))
         .route("/api/admin/metrics", get(admin_metrics))
         .merge(auth::routes())
         .merge(admin::routes())
@@ -240,6 +248,8 @@ pub fn app(state: AppState) -> Router {
         .merge(preview::routes())
         .merge(changes::routes())
         .merge(deployment::routes())
+        .merge(google_auth::routes())
+        .merge(vesper::routes())
         .merge(member::routes())
         .merge(web::routes())
         .layer(DefaultBodyLimit::max(MAX_REQUEST_BODY_BYTES))
@@ -302,6 +312,20 @@ pub fn state_from_env() -> Result<AppState, Box<dyn std::error::Error + Send + S
         projects_root: env::var("ASHAT_PROJECTS_ROOT")
             .map(std::path::PathBuf::from)
             .unwrap_or_else(|_| std::path::PathBuf::from("modules/AshatHub/projects")),
+        releases_dir: env::var("ASHAT_RELEASES_DIR")
+            .map(std::path::PathBuf::from)
+            .unwrap_or_else(|_| std::path::PathBuf::from("storage/vesper-releases")),
+        hub_public_url: env::var("ASHAT_HUB_PUBLIC_URL")
+            .ok()
+            .filter(|v| !v.trim().is_empty()),
+        backup_public_url: env::var("ASHAT_BACKUP_PUBLIC_URL")
+            .ok()
+            .filter(|v| !v.trim().is_empty())
+            .map(|v| v.trim_end_matches('/').to_owned()),
+        deploy_domain: env::var("ASHAT_DEPLOY_DOMAIN")
+            .ok()
+            .filter(|v| !v.trim().is_empty())
+            .map(|v| v.trim().trim_end_matches('.').to_owned()),
         deploy_root: env::var("ASHAT_DEPLOY_ROOT")
             .map(std::path::PathBuf::from)
             .unwrap_or_else(|_| std::path::PathBuf::from("modules/AshatHub/public/host")),
@@ -324,6 +348,7 @@ pub fn state_from_env() -> Result<AppState, Box<dyn std::error::Error + Send + S
             .filter(|value| !value.trim().is_empty()),
         auth_rate_limiter: AuthRateLimiter::new(),
         operation_rate_limiter: AuthRateLimiter::new(),
+        google_oauth: google_auth::GoogleOAuthConfig::from_env(),
         metrics: Arc::new(GatewayMetrics::default()),
         migrations_ready: Arc::new(AtomicBool::new(false)),
         auth: AuthConfig {
@@ -446,6 +471,47 @@ async fn telemetry(
     auth::AuthenticatedUser(_user): auth::AuthenticatedUser,
 ) -> impl IntoResponse {
     (StatusCode::OK, Json(collect_telemetry(&state).await))
+}
+
+#[derive(Debug, Serialize)]
+struct ShowcaseProject {
+    id: &'static str,
+    name: &'static str,
+    description: &'static str,
+    category: &'static str,
+    status: &'static str,
+    updated: &'static str,
+}
+
+async fn showcase() -> impl IntoResponse {
+    Json(serde_json::json!({
+        "projects": [
+            ShowcaseProject {
+                id: "galileo",
+                name: "Galileo Studio",
+                description: "A browser-based development environment for building and shipping web projects. Edit files, work with coding assistants, preview Vite applications live, and deploy from the same workspace.",
+                category: "studio",
+                status: "in-development",
+                updated: "2026-08",
+            },
+            ShowcaseProject {
+                id: "vesper",
+                name: "Vesper",
+                description: "Internal tooling and infrastructure management for the Ashat agent fleet.",
+                category: "project",
+                status: "in-development",
+                updated: "2026-07",
+            },
+            ShowcaseProject {
+                id: "paws-and-parcels",
+                name: "Paws & Parcels",
+                description: "A game about running a postal delivery service in a cozy animal village. Build routes, manage packages, and explore the neighborhood.",
+                category: "game",
+                status: "in-development",
+                updated: "2026-06",
+            },
+        ]
+    }))
 }
 
 pub(crate) async fn collect_telemetry(state: &AppState) -> TelemetryResponse {

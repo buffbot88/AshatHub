@@ -6,6 +6,7 @@
 *.crt
 *.csr
 *.p12
+google*.json
 *_rsa
 id_rsa
 modules/AshatHub/config/server_config.json

@@ -5,7 +5,7 @@ use std::{
 
 use axum::{
     extract::{Path as AxumPath, State},
-    http::{header, StatusCode, Uri},
+    http::{header, HeaderMap, StatusCode, Uri},
     response::{IntoResponse, Response},
     routing::get,
     Router,
@@ -19,10 +19,14 @@ pub(crate) fn routes() -> Router<AppState> {
     Router::new()
         .route("/", get(index))
         .route("/host/*path", get(host))
+        .route("/x/*path", get(backup_host))
         .fallback(fallback)
 }
 
-async fn index(State(state): State<AppState>) -> Response {
+async fn index(State(state): State<AppState>, headers: HeaderMap) -> Response {
+    if let Some(response) = serve_custom_host(&state, &headers, "index.html").await {
+        return response;
+    }
     serve_spa(&state.web_root)
 }
 
@@ -53,12 +57,65 @@ async fn host(State(state): State<AppState>, AxumPath(path): AxumPath<String>) -
     serve_file(&path).unwrap_or_else(|| error_response(StatusCode::NOT_FOUND, "not_found"))
 }
 
-async fn fallback(State(state): State<AppState>, uri: Uri) -> Response {
+async fn backup_host(State(state): State<AppState>, AxumPath(path): AxumPath<String>) -> Response {
+    let mut segments = path.split('/').filter(|segment| !segment.is_empty());
+    let Some(project_id) = segments.next() else {
+        return error_response(StatusCode::NOT_FOUND, "not_found");
+    };
+    if !safe_segment(project_id) {
+        return error_response(StatusCode::NOT_FOUND, "not_found");
+    }
+    let relative = segments.collect::<Vec<_>>().join("/");
+    if relative.split('/').any(|segment| {
+        segment.starts_with('.')
+            || !segment
+                .bytes()
+                .all(|byte| byte.is_ascii_alphanumeric() || matches!(byte, b'-' | b'_' | b'.'))
+    }) {
+        return error_response(StatusCode::NOT_FOUND, "not_found");
+    }
+    let Some(pool) = state.db.as_ref() else {
+        return error_response(StatusCode::SERVICE_UNAVAILABLE, "database_not_configured");
+    };
+    let users = match sqlx::query_scalar::<_, String>(
+        "SELECT user_id FROM galileo_deployments WHERE project_id=? AND status='deployed' LIMIT 2",
+    )
+    .bind(project_id)
+    .fetch_all(pool)
+    .await
+    {
+        Ok(users) => users,
+        Err(error) => {
+            tracing::warn!(?error, "backup deployment lookup failed");
+            return error_response(StatusCode::SERVICE_UNAVAILABLE, "deployment_unavailable");
+        }
+    };
+    let Some(user_id) = users.first().filter(|_| users.len() == 1) else {
+        return error_response(StatusCode::NOT_FOUND, "deployment_not_found");
+    };
+    let relative = if relative.is_empty() {
+        "index.html".to_owned()
+    } else {
+        relative
+    };
+    let Some(path) = safe_join(
+        &state.deploy_root,
+        &format!("{}/{}", user_id, format!("{}/{}", project_id, relative)),
+    ) else {
+        return error_response(StatusCode::NOT_FOUND, "not_found");
+    };
+    serve_file(&path).unwrap_or_else(|| error_response(StatusCode::NOT_FOUND, "not_found"))
+}
+
+async fn fallback(State(state): State<AppState>, headers: HeaderMap, uri: Uri) -> Response {
     let path = uri.path();
+    if let Some(response) = serve_custom_host(&state, &headers, path.trim_start_matches('/')).await {
+        return response;
+    }
     if path.starts_with("/api/") || path == "/api" {
         return error_response(StatusCode::NOT_FOUND, "not_found");
     }
-    if path.starts_with("/host/") {
+    if path.starts_with("/host/") || path.starts_with("/x/") {
         return error_response(StatusCode::NOT_FOUND, "not_found");
     }
     if path.split('/').any(|segment| segment == "..") {
@@ -74,6 +131,43 @@ async fn fallback(State(state): State<AppState>, uri: Uri) -> Response {
         }
     }
     serve_spa(&state.web_root)
+}
+
+async fn serve_custom_host(
+    state: &AppState,
+    headers: &HeaderMap,
+    relative: &str,
+) -> Option<Response> {
+    let domain = state.deploy_domain.as_deref()?;
+    let host = headers.get("host")?.to_str().ok()?.split(':').next()?;
+    let suffix = format!(".{domain}");
+    let subdomain = host.strip_suffix(&suffix)?;
+    if !safe_segment(subdomain) {
+        return None;
+    }
+    let pool = state.db.as_ref()?;
+    let row = sqlx::query_as::<_, (String, String)>(
+        "SELECT user_id, project_id FROM galileo_deployments WHERE subdomain=? AND status='deployed'",
+    )
+    .bind(subdomain)
+    .fetch_optional(pool)
+    .await
+    .ok()??;
+    let relative = if relative.is_empty() { "index.html" } else { relative };
+    if relative.split('/').any(|segment| {
+        segment.is_empty()
+            || segment.starts_with('.')
+            || !segment
+                .bytes()
+                .all(|byte| byte.is_ascii_alphanumeric() || matches!(byte, b'-' | b'_' | b'.'))
+    }) {
+        return None;
+    }
+    let path = safe_join(
+        &state.deploy_root,
+        &format!("{}/{}/{}", row.0, row.1, relative),
+    )?;
+    serve_file(&path)
 }
 
 fn serve_spa(root: &Path) -> Response {
@@ -133,6 +227,14 @@ fn safe_join(root: &Path, relative: &str) -> Option<PathBuf> {
     canonical_candidate
         .starts_with(&canonical_root)
         .then_some(canonical_candidate)
+}
+
+fn safe_segment(value: &str) -> bool {
+    !value.is_empty()
+        && value.len() <= 120
+        && value
+            .bytes()
+            .all(|byte| byte.is_ascii_alphanumeric() || matches!(byte, b'-' | b'_'))
 }
 
 fn content_type(path: &Path) -> &'static str {

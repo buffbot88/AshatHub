@@ -11,9 +11,13 @@ import './styles.css';
 type User = { id: string; display_name: string; username: string; email: string; role: string };
 interface ServerSnapshot { id: string; label: string; ip: string; online: boolean; active_users: number; activity_total: number }
 interface TelemetryResponse { servers: ServerSnapshot[]; updated_at: number }
-type View = 'home' | 'galileo' | 'community' | 'docs' | 'support' | 'account' | 'activity' | 'telemetry' | 'admin' | 'terms' | 'privacy' | 'error';
+interface ShowcaseProject { id: string; name: string; description: string; category: string; status: string; updated: string }
+interface ShowcaseResponse { projects: ShowcaseProject[] }
+type View = 'home' | 'projects' | 'games' | 'galileo' | 'community' | 'docs' | 'support' | 'account' | 'activity' | 'telemetry' | 'admin' | 'terms' | 'privacy' | 'error';
 
 function viewForPath(path: string): View {
+  if (path === '/projects') return 'projects';
+  if (path === '/games') return 'games';
   if (path === '/galileo') return 'galileo';
   if (path.startsWith('/community')) return 'community';
   if (path.startsWith('/docs')) return 'docs';
@@ -50,6 +54,28 @@ function Metric({ label, value }: { label: string; value: string }) {
   return <div className="metric"><span>{label}</span><strong>{value}</strong></div>;
 }
 
+function ProjectCard({ project }: { project: ShowcaseProject }) {
+  const statusClass = project.status === 'live' ? 'live' : project.status === 'in-development' ? 'in-development' : 'archived';
+  const statusLabel = project.status === 'live' ? 'Live' : project.status === 'in-development' ? 'In Development' : 'Archived';
+  const url = project.id === 'galileo' ? '/galileo' : project.id === 'paws-and-parcels' ? 'https://pawsandparcels.agpstudios.org/' : undefined;
+  const card = (
+    <article className="project-card">
+      <div className="project-card-thumb">
+        {project.category === 'game' ? '🎮' : project.category === 'studio' ? '⚡' : '🔧'}
+      </div>
+      <div className="project-card-body">
+        <h3>{project.name}</h3>
+        <p>{project.description}</p>
+        <div className="project-card-footer">
+          <span className={`project-status ${statusClass}`}>{statusLabel}</span>
+          <span className="project-card-updated">{project.updated}</span>
+        </div>
+      </div>
+    </article>
+  );
+  return url ? <a className="project-card-link" href={url}>{card}</a> : card;
+}
+
 function LegalPage({ kind }: { kind: 'terms' | 'privacy' }) {
   const title = kind === 'terms' ? 'Terms of Service' : 'Privacy Policy';
   return <section className="member-panel legal-panel"><span className="eyebrow">Ashat platform</span><h2>{title}</h2><p>This page is served by the Rust gateway and Vite application. The current policy text is maintained as a versioned application document rather than a PHP-rendered view.</p><p className="muted">For account, project, conversation, deployment, and support data, Ashat applies authenticated ownership checks, bounded retention, and the security controls documented in the Rust migration plan.</p></section>;
@@ -62,6 +88,7 @@ export default function App() {
   const [user, setUser] = useState<User | null>(null);
   const [task, setTask] = useState<TaskFrameData | null>(null);
   const [view, setView] = useState<View>(() => viewForPath(window.location.pathname));
+  const [showcase, setShowcase] = useState<ShowcaseProject[]>([]);
 
   const navigate = useCallback((path: string) => {
     window.history.pushState({}, '', path);
@@ -73,6 +100,13 @@ export default function App() {
     const onPopState = () => setView(viewForPath(window.location.pathname));
     window.addEventListener('popstate', onPopState);
     return () => window.removeEventListener('popstate', onPopState);
+  }, []);
+
+  useEffect(() => {
+    fetch('/api/showcase', { cache: 'no-store' })
+      .then(r => r.ok ? r.json() : null)
+      .then((data: ShowcaseResponse | null) => { if (data?.projects) setShowcase(data.projects); })
+      .catch(() => {});
   }, []);
 
   const loadTelemetry = useCallback(async () => {
@@ -93,31 +127,72 @@ export default function App() {
     if (!user || (view !== 'home' && view !== 'telemetry')) return undefined;
     const timer = window.setInterval(() => void loadTelemetry(), 8000);
     return () => window.clearInterval(timer);
-  }, [loadTelemetry, user, view]);
+  }, [loadTelemetry]);
 
   const handleAuthChange = useCallback((nextUser: User | null) => setUser(nextUser), []);
   const handleTaskChange = useCallback((nextTask: TaskFrameData | null) => setTask(nextTask), []);
-  const showWorkspace = view === 'home' || view === 'galileo';
+  const showWorkspace = view === 'galileo';
+  const showHome = view === 'home';
   const memberTab: MemberTab | undefined = ['community', 'docs', 'support', 'account', 'activity'].includes(view) ? view as MemberTab : undefined;
   const showMemberSurface = ['community', 'docs', 'support', 'account', 'activity'].includes(view);
+
+  const studioProjects = showcase.filter(p => p.category === 'studio' || p.category === 'project');
+  const gameProjects = showcase.filter(p => p.category === 'game');
 
   return (
     <main className="hub-shell">
       <header className="hub-header">
-        <button type="button" className="brand-mark brand-button" onClick={() => navigate('/')}><span className="brand-a">A</span><span>ASHAT<span className="brand-accent">Hub</span></span></button>
+        <button type="button" className="brand-mark brand-button" onClick={() => navigate('/')}><span className="brand-a">A</span><span>AGP<span className="brand-accent">Studios</span></span></button>
         <nav className="site-nav" aria-label="Primary navigation">
-          <button type="button" className={view === 'galileo' ? 'site-nav-link selected' : 'site-nav-link'} onClick={() => navigate('/galileo')}>Galileo</button>
+          <button type="button" className={view === 'home' ? 'site-nav-link selected' : 'site-nav-link'} onClick={() => navigate('/')}>Home</button>
+          <button type="button" className={view === 'projects' ? 'site-nav-link selected' : 'site-nav-link'} onClick={() => navigate('/projects')}>Projects</button>
+          <button type="button" className={view === 'games' ? 'site-nav-link selected' : 'site-nav-link'} onClick={() => navigate('/games')}>Games</button>
           <button type="button" className={view === 'community' ? 'site-nav-link selected' : 'site-nav-link'} onClick={() => navigate('/community')}>Community</button>
-          <button type="button" className={view === 'docs' ? 'site-nav-link selected' : 'site-nav-link'} onClick={() => navigate('/docs')}>Docs</button>
-          {user && <button type="button" className={view === 'account' ? 'site-nav-link selected' : 'site-nav-link'} onClick={() => navigate('/account')}>Account</button>}
           {user?.role.toLowerCase() === 'admin' && <button type="button" className={view === 'admin' ? 'site-nav-link selected' : 'site-nav-link'} onClick={() => navigate('/admin')}>Admin</button>}
         </nav>
         <AuthPanel onChange={handleAuthChange} />
-        <span className="migration-badge">{user ? 'Rust session active' : 'Rust + Vite'}</span>
       </header>
 
-      {view === 'home' && <section className="hero-copy"><span className="eyebrow">AshatHostingPlatform</span><h1>One workspace for building with Ashat.</h1><p>Galileo is the Rust and Vite workspace for building, previewing, and sharing projects across the Ashat platform.</p></section>}
-      {view === 'galileo' && <section className="hero-copy compact-hero"><span className="eyebrow">Rust + Vite workspace</span><h1>Build, preview, and ship.</h1><p>The Galileo development studio is served as a Vite application and backed entirely by the Rust gateway.</p></section>}
+      {showHome && <>
+        <section className="hero-copy">
+          <span className="eyebrow">AGP Studios</span>
+          <h1>Software, games, and tools built independently.</h1>
+          <p>From browser-based development environments to game worlds and experimental systems.</p>
+        </section>
+        <section className="workspace-section">
+          <div className="section-heading">
+            <div><span className="eyebrow">What we build</span><h2>Projects</h2></div>
+          </div>
+          <div className="project-grid">
+            {showcase.filter(project => project.id !== 'ashat-hub').map(project => <ProjectCard key={project.id} project={project} />)}
+          </div>
+        </section>
+      </>}
+
+      {view === 'projects' && <>
+        <section className="hero-copy compact-hero">
+          <span className="eyebrow">Projects</span>
+          <h1>Tools and platforms.</h1>
+          <p>Development environments, infrastructure, and internal tooling.</p>
+        </section>
+        <div className="project-grid">
+          {studioProjects.map(project => <ProjectCard key={project.id} project={project} />)}
+        </div>
+      </>}
+
+      {view === 'games' && <>
+        <section className="hero-copy compact-hero">
+          <span className="eyebrow">Games</span>
+          <h1>Game worlds.</h1>
+          <p>Interactive experiences built with care.</p>
+        </section>
+        <div className="project-grid">
+          {gameProjects.length > 0 ? gameProjects.map(project => <ProjectCard key={project.id} project={project} />) : <p className="muted">No games listed yet.</p>}
+        </div>
+      </>}
+
+      {view === 'galileo' && <section className="hero-copy compact-hero"><span className="eyebrow">Studio</span><h1>Build, preview, and ship.</h1><p>Galileo is a browser-based development workspace. Edit files, work with coding assistants, preview Vite applications live, and deploy from the same workspace.</p></section>}
+
 
       {showWorkspace && <><TaskFrame task={task} /><ProjectWorkspace user={user} onTaskChange={handleTaskChange} /></>}
       {showMemberSurface && <MemberSurfaces user={user} initialTab={memberTab} />}
@@ -125,13 +200,13 @@ export default function App() {
       {view === 'telemetry' && <><MemberSurfaces user={user} initialTab="activity" /><TelemetrySection user={user} telemetry={telemetry} telemetryError={telemetryError} updatedAt={updatedAt} /></>}
       {view === 'terms' && <LegalPage kind="terms" />}
       {view === 'privacy' && <LegalPage kind="privacy" />}
-      {view === 'error' && <section className="member-panel legal-panel"><span className="eyebrow">Rust gateway</span><h2>Page unavailable</h2><p>The requested page could not be found.</p></section>}
-      {view === 'home' && <TelemetrySection user={user} telemetry={telemetry} telemetryError={telemetryError} updatedAt={updatedAt} />}
+      {view === 'error' && <section className="member-panel legal-panel"><span className="eyebrow">Ashat platform</span><h2>Page unavailable</h2><p>The requested page could not be found.</p></section>}
+      {showHome && <TelemetrySection user={user} telemetry={telemetry} telemetryError={telemetryError} updatedAt={updatedAt} />}
     </main>
   );
 }
 
 function TelemetrySection({ user, telemetry, telemetryError, updatedAt }: { user: User | null; telemetry: TelemetryResponse | null; telemetryError: string | null; updatedAt: Date | null }) {
-  if (!user) return <section className="telemetry-section workspace-locked"><span className="eyebrow">Live ecosystem</span><h2>Sign in to inspect telemetry.</h2></section>;
+  if (!user) return null;
   return <section className="telemetry-section"><div className="section-heading"><div><span className="eyebrow">Live ecosystem</span><h2>Agent telemetry</h2></div><div className="refresh-state">{telemetryError ? telemetryError : updatedAt ? `Updated ${updatedAt.toLocaleTimeString()}` : 'Connecting...'}</div></div><div className="server-grid">{telemetry?.servers.map((server) => <ServerCard key={server.id} server={server} />)}{!telemetry && !telemetryError && <div className="loading-card">Connecting to AshatHub...</div>}{telemetryError && <div className="loading-card error-card">{telemetryError}</div>}</div></section>;
 }

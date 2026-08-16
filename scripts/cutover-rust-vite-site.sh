@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-ROOT=/home/opc/AshatPlatform
+ROOT=/var/oled/data/AshatHub
 DIST="$ROOT/apps/ashat-hub-web/dist"
 CONF=/etc/httpd/conf.d/ashathub-rust-vite.conf
 
@@ -9,6 +9,11 @@ if [[ ! -f "$DIST/index.html" ]]; then
   echo "Vite production bundle is missing: $DIST/index.html" >&2
   exit 1
 fi
+
+# The backup hostname must be covered by the same certificate.
+sudo certbot certonly --webroot -w "$DIST" --cert-name agpstudios.org \
+  --non-interactive --agree-tos -m admin@agpstudios.org --expand \
+  -d agpstudios.org -d www.agpstudios.org -d ashat.ra3.us
 
 sudo tee "$CONF" >/dev/null <<CONF
 # AshatHub Rust + Vite production site.
@@ -19,7 +24,7 @@ ProxyRequests Off
 
 <VirtualHost *:80>
     ServerName agpstudios.org
-    ServerAlias www.agpstudios.org
+    ServerAlias www.agpstudios.org ashat.ra3.us *.agpstudios.org
     DocumentRoot $DIST
 
     ProxyPass        /api/ http://127.0.0.1:3100/api/
@@ -30,6 +35,8 @@ ProxyRequests Off
     ProxyPassReverse /ready http://127.0.0.1:3100/ready
     ProxyPass        /host/ http://127.0.0.1:3100/host/
     ProxyPassReverse /host/ http://127.0.0.1:3100/host/
+    ProxyPass        /x/ http://127.0.0.1:3100/x/
+    ProxyPassReverse /x/ http://127.0.0.1:3100/x/
 
     <Directory "$DIST">
         Options -Indexes
@@ -49,7 +56,7 @@ ProxyRequests Off
 
 <VirtualHost *:443>
     ServerName agpstudios.org
-    ServerAlias www.agpstudios.org
+    ServerAlias www.agpstudios.org ashat.ra3.us *.agpstudios.org
     DocumentRoot $DIST
 
     SSLEngine on
@@ -64,6 +71,8 @@ ProxyRequests Off
     ProxyPassReverse /ready http://127.0.0.1:3100/ready
     ProxyPass        /host/ http://127.0.0.1:3100/host/
     ProxyPassReverse /host/ http://127.0.0.1:3100/host/
+    ProxyPass        /x/ http://127.0.0.1:3100/x/
+    ProxyPassReverse /x/ http://127.0.0.1:3100/x/
 
     <Directory "$DIST">
         Options -Indexes

@@ -15,7 +15,7 @@ This makes `/var/oled/data` the correct expansion point for Galileo projects and
 ```text
 /root filesystem
 ├── /home/opc/picord                 Picord runtime and source
-├── /home/opc/AshatPlatform          Ashat Platform runtime and source
+├── /var/oled/data/AshatHub          Ashat Platform runtime and source
 ├── /home/opc/PawsandParcels         Existing protected workspace during migration
 ├── /home/opc/.cargo, .rustup, ...   Runtime/toolchain dependencies
 └── swap files                       Required memory reserve

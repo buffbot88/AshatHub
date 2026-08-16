@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
-ROOT=/home/opc/AshatPlatform
-sudo -u opc -H bash -lc 'source ~/.cargo/env; cd /home/opc/AshatPlatform; cargo build --release -p ashat-hub --bins'
+ROOT=/var/oled/data/AshatHub
+sudo -u opc -H bash -lc 'source ~/.cargo/env; cd /var/oled/data/AshatHub; cargo build --release -p ashat-hub --bins'
 sudo install -d -m 755 /usr/local/libexec/ashat-hub
 sudo install -m 755 "$ROOT/target/release/ashat-hub" /usr/local/libexec/ashat-hub/ashat-hub
 sudo install -m 755 "$ROOT/target/release/import_legacy" /usr/local/libexec/ashat-hub/import_legacy
@@ -20,7 +20,7 @@ Wants=network-online.target
 Type=simple
 User=opc
 Group=opc
-WorkingDirectory=/home/opc/AshatPlatform
+WorkingDirectory=/var/oled/data/AshatHub
 EnvironmentFile=/etc/ashat-ai/ashat-hub.env
 ExecStart=/usr/local/libexec/ashat-hub/ashat-hub
 Restart=always

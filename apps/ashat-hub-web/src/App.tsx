@@ -68,7 +68,7 @@ function ProjectCard({ project }: { project: ShowcaseProject }) {
         <p>{project.description}</p>
         <div className="project-card-footer">
           <span className={`project-status ${statusClass}`}>{statusLabel}</span>
-          <span className="project-card-updated">{project.updated}</span>
+          <span className="project-card-action">{url ? 'Open' : 'View'} →</span>
         </div>
       </div>
     </article>
@@ -153,7 +153,7 @@ export default function App() {
       </header>
 
       {showHome && <>
-        <section className="home-hero"><div className="hero-copy"><span className="eyebrow">Independent software studio</span><h1>Software, games, and tools built with purpose.</h1><p>AGP Studios builds practical tools, focused software, and memorable experiences—with Ashat as our coding agent platform.</p><div className="hero-actions"><button type="button" className="primary-button" onClick={() => navigate('/projects')}>Explore Projects</button><button type="button" className="secondary-button" onClick={() => navigate('/galileo')}>Launch Galileo</button></div></div><div className="hero-ornament" aria-hidden="true"><span>AGP</span><i /><i /><i /></div></section>
+        <section className="home-hero"><div className="hero-copy"><span className="eyebrow">Independent software studio</span><h1>Software, games, and tools built with purpose.</h1><p>AGP Studios builds practical software, games, and tools—including Galileo, our browser-based development studio powered by the Ashat coding agent.</p><div className="hero-actions"><button type="button" className="primary-button" onClick={() => navigate('/projects')}>Explore Projects</button><button type="button" className="secondary-button" onClick={() => navigate('/galileo')}>Launch Galileo</button></div></div><div className="hero-ornament" aria-hidden="true"><span>AGP</span><i /><i /><i /></div></section>
         <section className="home-section workspace-section"><div className="section-heading"><div><span className="eyebrow">Selected work</span><h2>Projects</h2></div><button type="button" className="text-button" onClick={() => navigate('/projects')}>View all →</button></div><div className="project-grid">{studioProjects.slice(0, 3).map(project => <ProjectCard key={project.id} project={project} />)}</div></section>
         <section className="ashat-feature home-section"><div><span className="eyebrow">The flagship AI</span><h2>Ashat</h2><p>Ashat is the coding AI inside Galileo, helping you understand projects, plan changes, and move from idea to working software.</p><button type="button" className="primary-button" onClick={() => navigate('/galileo')}>Open Galileo</button></div><div className="ashat-frame" aria-label="Ashat workspace preview"><span className="frame-bar" /><span className="frame-line wide" /><span className="frame-line" /><span className="frame-line short" /><span className="frame-cursor" /></div></section>
         {gameProjects.length > 0 && <section className="home-section"><div className="section-heading"><div><span className="eyebrow">Other worlds</span><h2>Games</h2></div><button type="button" className="text-button" onClick={() => navigate('/games')}>Explore games →</button></div><div className="project-grid">{gameProjects.slice(0, 3).map(project => <ProjectCard key={project.id} project={project} />)}</div></section>}

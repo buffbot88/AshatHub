@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useState } from 'react';
+import type { FormEvent } from 'react';
 import { AuthPanel } from './components/AuthPanel';
 import { ProjectWorkspace } from './components/ProjectWorkspace';
 import { MemberSurfaces } from './components/MemberSurfaces';
@@ -11,7 +12,7 @@ interface ServerSnapshot { id: string; label: string; online: boolean; active_us
 interface TelemetryResponse { servers: ServerSnapshot[]; slowest_tokens_per_second: number; fastest_tokens_per_second: number; total_tokens_generated: number; updated_at: number }
 interface ShowcaseProject { id: string; name: string; description: string; category: string; status: string; updated: string }
 interface ShowcaseResponse { projects: ShowcaseProject[] }
-type View = 'home' | 'projects' | 'games' | 'galileo' | 'community' | 'docs' | 'support' | 'account' | 'activity' | 'telemetry' | 'admin' | 'terms' | 'privacy' | 'error';
+type View = 'home' | 'projects' | 'games' | 'galileo' | 'community' | 'docs' | 'support' | 'account' | 'activity' | 'telemetry' | 'admin' | 'terms' | 'privacy' | 'vesper-auth' | 'error';
 
 function viewForPath(path: string): View {
   if (path === '/projects') return 'projects';
@@ -26,6 +27,7 @@ function viewForPath(path: string): View {
   if (path.startsWith('/admin')) return 'admin';
   if (path.startsWith('/terms')) return 'terms';
   if (path.startsWith('/privacy')) return 'privacy';
+  if (path.startsWith('/auth/vesper')) return 'vesper-auth';
   if (path.startsWith('/error')) return 'error';
   return 'home';
 }
@@ -129,6 +131,7 @@ export default function App() {
   const handleAuthChange = useCallback((nextUser: User | null) => setUser(nextUser), []);
   const showWorkspace = view === 'galileo';
   const showHome = view === 'home';
+  if (view === 'vesper-auth') return <VesperAuthPage />;
   const memberTab: MemberTab | undefined = ['community', 'docs', 'support', 'account', 'activity'].includes(view) ? view as MemberTab : undefined;
   const showMemberSurface = ['community', 'docs', 'support', 'account', 'activity'].includes(view);
 
@@ -189,6 +192,41 @@ export default function App() {
       {!showWorkspace && <StudioFooter navigate={navigate} />}
     </main>
   );
+}
+
+function VesperAuthPage() {
+  const [username, setUsername] = useState('');
+  const [password, setPassword] = useState('');
+  const [error, setError] = useState('');
+  const [busy, setBusy] = useState(false);
+  const redirect = new URLSearchParams(window.location.search).get('redirect') || '';
+
+  function callbackUrl() {
+    try {
+      const url = new URL(redirect);
+      if (url.protocol !== 'http:' || !['127.0.0.1', 'localhost'].includes(url.hostname) || url.pathname !== '/callback' || !url.port) return null;
+      return url;
+    } catch { return null; }
+  }
+
+  async function submit(event: FormEvent) {
+    event.preventDefault(); setError('');
+    const callback = callbackUrl();
+    if (!callback) { setError('Invalid Vesper callback. Start the sign-in flow again from the desktop app.'); return; }
+    setBusy(true);
+    try {
+      const response = await fetch('/api/v1/auth/login', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ username, password }) });
+      const data = await response.json() as { session_token?: string; user_id?: string; username?: string; role?: string; error?: string | { code?: string; message?: string } };
+      if (!response.ok || !data.session_token || !data.user_id || !data.username || !data.role) {
+        const detail = typeof data.error === 'string' ? data.error : data.error?.message || data.error?.code;
+        throw new Error(detail || 'Invalid credentials');
+      }
+      callback.search = new URLSearchParams({ token: data.session_token, user_id: data.user_id, username: data.username, role: data.role }).toString();
+      window.location.assign(callback.toString());
+    } catch (reason) { setError(reason instanceof Error ? reason.message : 'Sign-in failed'); setBusy(false); }
+  }
+
+  return <main className="vesper-auth-page"><section className="vesper-auth-card"><span className="eyebrow">Vesper Studios</span><h1>Sign in to Vesper</h1><p className="muted">Authorize the Vesper desktop app through AGP Studios.</p><form onSubmit={(event) => void submit(event)}><input value={username} onChange={(event) => setUsername(event.target.value)} placeholder="Username or email" autoComplete="username" required /><input value={password} onChange={(event) => setPassword(event.target.value)} placeholder="Password" type="password" autoComplete="current-password" required /><button type="submit" className="primary-button" disabled={busy}>{busy ? 'Signing in…' : 'Continue to Vesper'}</button>{error && <small className="auth-error">{error}</small>}</form></section></main>;
 }
 
 function StudioFooter({ navigate }: { navigate: (path: string) => void }) {

@@ -95,7 +95,7 @@ pub(crate) fn routes() -> Router<AppState> {
 }
 
 /// Redirect the user to Google's OAuth consent screen.
-async fn google_login(State(state): State<AppState>) -> Response {
+async fn google_login(State(state): State<AppState>, headers: axum::http::HeaderMap) -> Response {
     let Some(oauth) = &state.google_oauth else {
         return error_response(
             StatusCode::SERVICE_UNAVAILABLE,
@@ -126,9 +126,16 @@ async fn google_login(State(state): State<AppState>) -> Response {
 
     let mut response = Redirect::temporary(&auth_url).into_response();
     // Store state token in a short-lived cookie for CSRF protection.
+    // Set Domain to just the hostname (no port) so the cookie is sent back
+    // regardless of which port the OAuth callback arrives on.
+    let domain = headers
+        .get(header::HOST)
+        .and_then(|h| h.to_str().ok())
+        .and_then(|h| h.split(':').next())
+        .unwrap_or("localhost");
     let cookie = format!(
-        "ashat_google_state={}; Path=/; SameSite=Lax; Max-Age=600; HttpOnly",
-        state_token
+        "ashat_google_state={}; Path=/; SameSite=Lax; Max-Age=600; HttpOnly; Domain={}",
+        state_token, domain
     );
     if let Ok(header_value) = axum::http::HeaderValue::from_str(&cookie) {
         response
@@ -309,9 +316,14 @@ async fn google_link(
     );
 
     let mut response = Redirect::temporary(&auth_url).into_response();
+    let link_domain = headers
+        .get(header::HOST)
+        .and_then(|h| h.to_str().ok())
+        .and_then(|h| h.split(':').next())
+        .unwrap_or("localhost");
     let cookie = format!(
-        "ashat_google_state={}; Path=/; SameSite=Lax; Max-Age=600; HttpOnly",
-        state_token
+        "ashat_google_state={}; Path=/; SameSite=Lax; Max-Age=600; HttpOnly; Domain={}",
+        state_token, link_domain
     );
     if let Ok(header_value) = axum::http::HeaderValue::from_str(&cookie) {
         response

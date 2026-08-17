@@ -233,11 +233,11 @@ export function ProjectWorkspace({ user, onTaskChange }: { user: User | null; on
   }, [job?.id, user, loadFiles, loadChanges, onTaskChange]);
 
   useEffect(() => {
-    if (panel !== 'terminal' || !preview || preview.status !== 'running') return undefined;
+    if (bottomPanel !== 'terminal' || !preview || preview.status !== 'running') return undefined;
     void loadPreviewLog();
     const timer = window.setInterval(() => void loadPreviewLog(), 2000);
     return () => window.clearInterval(timer);
-  }, [panel, preview?.status, loadPreviewLog]);
+  }, [bottomPanel, preview?.status, loadPreviewLog]);
 
   async function createProject(event: FormEvent) {
     event.preventDefault();
@@ -340,7 +340,7 @@ export function ProjectWorkspace({ user, onTaskChange }: { user: User | null; on
     setPreviewBusy(true); setError(null);
     try {
       const data = await request<PreviewStatus>(`${RUST_API}/galileo/preview/${action}`, { method: 'POST', body: JSON.stringify({ project_id: projectId }) });
-      setPreview(data); setPanel(action === 'stop' ? 'source' : 'preview');
+      setPreview(data); setPanel('preview');
       if (action !== 'stop') await loadPreviewLog();
     } catch (reason) { setError(reason instanceof Error ? reason.message : 'Preview operation failed'); }
     finally { setPreviewBusy(false); }

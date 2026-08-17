@@ -34,7 +34,7 @@ impl GoogleOAuthConfig {
         })
     }
 
-    fn is_configured(&self) -> bool {
+    pub(crate) fn is_configured(&self) -> bool {
         !self.client_id.is_empty() && !self.client_secret.is_empty()
     }
 }
@@ -47,8 +47,8 @@ pub(crate) struct GoogleCallbackParams {
 }
 
 #[derive(Debug, Deserialize)]
-struct GoogleTokenResponse {
-    access_token: String,
+pub(crate) struct GoogleTokenResponse {
+    pub(crate) access_token: String,
     #[allow(dead_code)]
     token_type: String,
     #[allow(dead_code)]
@@ -58,10 +58,10 @@ struct GoogleTokenResponse {
 }
 
 #[derive(Debug, Deserialize)]
-struct GoogleUserInfo {
+pub(crate) struct GoogleUserInfo {
     #[serde(alias = "sub")]
-    id: String,
-    email: String,
+    pub(crate) id: String,
+    pub(crate) email: String,
     name: Option<String>,
     picture: Option<String>,
     #[serde(alias = "email_verified")]
@@ -403,7 +403,7 @@ async fn google_status(
 
 // ─── helpers ───────────────────────────────────────────────────────
 
-async fn exchange_code(
+pub(crate) async fn exchange_code(
     oauth: &GoogleOAuthConfig,
     code: &str,
 ) -> Result<GoogleTokenResponse, reqwest::Error> {
@@ -428,7 +428,7 @@ async fn exchange_code(
         .await
 }
 
-async fn fetch_google_user(access_token: &str) -> Result<GoogleUserInfo, reqwest::Error> {
+pub(crate) async fn fetch_google_user(access_token: &str) -> Result<GoogleUserInfo, reqwest::Error> {
     let client = reqwest::Client::builder()
         .timeout(Duration::from_secs(10))
         .build()?;
@@ -442,7 +442,7 @@ async fn fetch_google_user(access_token: &str) -> Result<GoogleUserInfo, reqwest
         .await
 }
 
-async fn find_user_by_email(pool: &MySqlPool, email: &str) -> Option<String> {
+pub(crate) async fn find_user_by_email(pool: &MySqlPool, email: &str) -> Option<String> {
     sqlx::query_scalar::<_, String>("SELECT id FROM users WHERE email = ? LIMIT 1")
         .bind(email)
         .fetch_optional(pool)
@@ -451,7 +451,7 @@ async fn find_user_by_email(pool: &MySqlPool, email: &str) -> Option<String> {
         .flatten()
 }
 
-async fn create_user_from_google(pool: &MySqlPool, google_user: &GoogleUserInfo) -> String {
+pub(crate) async fn create_user_from_google(pool: &MySqlPool, google_user: &GoogleUserInfo) -> String {
     let id = Uuid::new_v4().to_string();
     let username = format!("google_{}", &google_user.id[..8.min(google_user.id.len())]);
     let display_name = google_user
@@ -474,7 +474,7 @@ async fn create_user_from_google(pool: &MySqlPool, google_user: &GoogleUserInfo)
     id
 }
 
-async fn link_google_to_user(pool: &MySqlPool, user_id: &str, google_user: &GoogleUserInfo) {
+pub(crate) async fn link_google_to_user(pool: &MySqlPool, user_id: &str, google_user: &GoogleUserInfo) {
     let id = Uuid::new_v4().to_string();
     let _ = sqlx::query(
         "INSERT INTO google_accounts (id, user_id, google_id, email, name, avatar_url)

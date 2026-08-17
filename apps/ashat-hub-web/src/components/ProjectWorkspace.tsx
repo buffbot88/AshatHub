@@ -13,7 +13,8 @@ type Job = { id: string; project_id: string; request: string; status: string; re
 type Change = { id: number; job_id: string; project_id: string; path: string; operation: string; before_exists: number; before_content?: string | null; after_content?: string | null; state: string; created_at: number; updated_at: number };
 type PreviewStatus = { project_id: string; status: string; url?: string | null; port?: number | null; started_at?: number | null };
 type Deployment = { ok: boolean; project_id: string; status: string; url?: string | null; backup_url?: string | null; subdomain?: string | null; deployment_id?: string | null; file_count?: number | null };
-type WorkspacePanel = 'source' | 'preview' | 'terminal' | 'changes';
+type WorkspacePanel = 'preview' | 'code';
+type BottomPanel = 'terminal' | 'changes';
 type ApiError = string | { message?: string; code?: string };
 
 const RUST_API = '/api';
@@ -98,7 +99,8 @@ export function ProjectWorkspace({ user, onTaskChange }: { user: User | null; on
   const [jobEvents, setJobEvents] = useState<JobEvent[]>([]);
   const jobEventsRef = useRef<JobEvent[]>([]);
   const [sending, setSending] = useState(false);
-  const [panel, setPanel] = useState<WorkspacePanel>('source');
+  const [panel, setPanel] = useState<WorkspacePanel>('preview');
+  const [bottomPanel, setBottomPanel] = useState<BottomPanel>('terminal');
   const [preview, setPreview] = useState<PreviewStatus | null>(null);
   const [previewLog, setPreviewLog] = useState('');
   const [changes, setChanges] = useState<Change[]>([]);
@@ -413,37 +415,118 @@ export function ProjectWorkspace({ user, onTaskChange }: { user: User | null; on
 
   return (
     <section className="workspace-section galileo-studio" aria-label="Galileo workspace">
-      <div className="section-heading workspace-heading">
-        <div><span className="eyebrow">Galileo web studio</span><h2>{activeProject?.name || 'Your projects'}</h2></div>
-        <div className="workspace-actions">
-          <select value={projectId} onChange={(event) => { setProjectId(event.target.value); setConversationId(''); }}><option value="">Select project</option>{projects.map((project) => <option key={project.id} value={project.id}>{project.name}</option>)}</select>
-          <button type="button" className="secondary-button" onClick={() => setCreatingProject((value) => !value)}>+ New Project</button>
-        </div>
-      </div>
-      {creatingProject && <form className="create-project-form" onSubmit={(event) => void createProject(event)}><input value={projectName} onChange={(event) => setProjectName(event.target.value)} placeholder="Project name" autoFocus /><button type="submit">Create project</button></form>}
       {error && <p className="workspace-error" role="alert">{error}</p>}
       {!projectId && <div className="galileo-empty"><span className="eyebrow">Galileo</span><h2>What do you want to build?</h2><p className="muted">Create a project, then ask Ashat to turn the idea into a working application.</p></div>}
+      {creatingProject && <form className="create-project-form" onSubmit={(event) => void createProject(event)}><input value={projectName} onChange={(event) => setProjectName(event.target.value)} placeholder="Project name" autoFocus /><button type="submit">Create project</button></form>}
       {projectId && <>
-        <div className="galileo-grid">
-          <aside className="conversation-sidebar">
-            <div className="sidebar-header"><span className="eyebrow">Conversations</span><button type="button" onClick={() => void createConversation()}>+</button></div>
-            {conversations.map((conversation) => <button type="button" className={conversation.id === conversationId ? 'conversation-row selected' : 'conversation-row'} key={conversation.id} onClick={() => setConversationId(conversation.id)}><span>{conversation.title}</span><small>{new Date(conversation.updated_at).toLocaleDateString()}</small></button>)}
-            {!conversations.length && <span className="muted">No conversations yet.</span>}
-          </aside>
-          <div className="conversation-pane">
-            <div className="message-list">{messages.map((message, index) => <article className={`message message-${message.role}`} key={`${message.created_at}-${index}`}><span className="message-role">{message.role === 'user' ? 'You' : 'Ashat'}</span><p>{message.content}</p></article>)}{!messages.length && <div className="empty-conversation"><span className="eyebrow">New conversation</span><p>Ask Ashat to understand the project, explain a file, or propose the next build.</p></div>}</div>
-            <form className="chat-composer" onSubmit={(event) => void sendMessage(event)}><textarea value={draft} onChange={(event) => setDraft(event.target.value)} placeholder="Tell Ashat what you want to build or change..." rows={3} disabled={sending} /><div><small>{sending ? 'Ashat is thinking...' : 'Messages are saved to this conversation.'}</small><button type="submit" disabled={!draft.trim() || sending}>Send</button></div></form>
+        {/* ── Left: Ashat Chat Panel ── */}
+        <div className="chat-panel">
+          <div className="chat-header">
+            <div>
+              <span className="eyebrow">Ashat</span>
+              <h2>{activeProject?.name || 'Your projects'}</h2>
+            </div>
+            <div className="chat-header-actions">
+              <select value={projectId} onChange={(event) => { setProjectId(event.target.value); setConversationId(''); }}><option value="">Select project</option>{projects.map((project) => <option key={project.id} value={project.id}>{project.name}</option>)}</select>
+              <button type="button" className="secondary-button" onClick={() => setCreatingProject((value) => !value)}>+ New</button>
+            </div>
           </div>
+          <form className="discovery-form" onSubmit={(event) => void discover(event)}><label htmlFor="galileo-request">Plan a change</label><div><input id="galileo-request" value={requestText} onChange={(event) => setRequestText(event.target.value)} placeholder="Review project and propose a change" /><button type="submit" disabled={!requestText.trim()}>Inspect</button></div></form>
+          <div className="chat-messages">
+            {messages.map((message, index) => (
+              <article className={`message message-${message.role}`} key={`${message.created_at}-${index}`}>
+                <span className="message-role">{message.role === 'user' ? 'You' : 'Ashat'}</span>
+                <p>{message.content}</p>
+              </article>
+            ))}
+            {discovery && <div className="discovery-result"><p>{discovery}</p>{plan && <><strong>{plan.summary || 'Build plan'}</strong>{plan.architecture && <p>{plan.architecture}</p>}<ul>{plan.files.map((file) => <li key={file.path}><code>{file.path}</code> — {file.purpose}</li>)}</ul><button type="button" onClick={() => void approvePlan()}>Approve and queue build</button></>}{job && ['queued', 'running'].includes(job.status) && <button type="button" className="cancel-button" onClick={() => void cancelJob()}>Cancel build</button>}</div>}
+            {job && jobEvents.length > 0 && (
+              <div className="activity-timeline">
+                <span className="message-role">Ashat</span>
+                {jobEvents.map((event) => (
+                  <div className={`activity-item activity-${event.kind}`} key={event.id}>
+                    <span className="activity-icon">{event.kind === 'complete' ? '✓' : event.kind === 'failed' ? '✗' : event.kind === 'cancelled' ? '○' : '●'}</span>
+                    <span>{eventMessage(event)}</span>
+                  </div>
+                ))}
+              </div>
+            )}
+            {!messages.length && !discovery && !job && <div className="empty-conversation"><span className="eyebrow">New project</span><p>Ask Ashat to build something, or describe the application you want to create.</p></div>}
+          </div>
+          <form className="chat-composer" onSubmit={(event) => void sendMessage(event)}>
+            <textarea value={draft} onChange={(event) => setDraft(event.target.value)} placeholder="Ask Ashat to build or change something..." rows={2} disabled={sending} />
+            <div>
+              <small>{sending ? 'Ashat is thinking...' : 'Describe what you want to build.'}</small>
+              <button type="submit" disabled={!draft.trim() || sending}>Send</button>
+            </div>
+          </form>
         </div>
-        <form className="discovery-form" onSubmit={(event) => void discover(event)}><label htmlFor="galileo-request">Plan a change against the current project</label><div><input id="galileo-request" value={requestText} onChange={(event) => setRequestText(event.target.value)} placeholder="Review this project and propose the next change" /><button type="submit" disabled={!requestText.trim()}>Inspect</button></div></form>
-        {discovery && <div className="discovery-result"><p>{discovery}</p>{plan && <><strong>{plan.summary || 'Build plan'}</strong>{plan.architecture && <p>{plan.architecture}</p>}<ul>{plan.files.map((file) => <li key={file.path}><code>{file.path}</code> - {file.purpose}</li>)}</ul><button type="button" onClick={() => void approvePlan()}>Approve and queue build</button></>}{job && ['queued', 'running'].includes(job.status) && <button type="button" className="cancel-button" onClick={() => void cancelJob()}>Cancel build</button>}</div>}
-        <div className="workspace-tabs" role="tablist" aria-label="Project tools">
-          {(['source', 'preview', 'terminal', 'changes'] as WorkspacePanel[]).map((name) => <button type="button" role="tab" aria-selected={panel === name} className={panel === name ? 'workspace-tab selected' : 'workspace-tab'} key={name} onClick={() => setPanel(name)}>{name[0].toUpperCase() + name.slice(1)}{name === 'changes' && changes.filter((change) => change.state === 'pending').length > 0 ? ` (${changes.filter((change) => change.state === 'pending').length})` : ''}</button>)}
+
+        {/* ── Right: Workspace Panel ── */}
+        <div className="workspace-panel">
+          <div className="workspace-header">
+            <div className="workspace-main-tabs" role="tablist" aria-label="Workspace view">
+              <button type="button" role="tab" aria-selected={panel === 'preview'} className={panel === 'preview' ? 'workspace-tab selected' : 'workspace-tab'} onClick={() => setPanel('preview')}>Preview</button>
+              <button type="button" role="tab" aria-selected={panel === 'code'} className={panel === 'code' ? 'workspace-tab selected' : 'workspace-tab'} onClick={() => setPanel('code')}>Code</button>
+            </div>
+            <div className="workspace-header-actions">
+              <span className={`preview-state state-${preview?.status || 'stopped'}`}>{preview?.status || 'stopped'}</span>
+              {preview?.status === 'running' ? <button type="button" className="secondary-button" onClick={() => void previewAction('stop')} disabled={previewBusy}>Stop</button> : <button type="button" className="secondary-button" onClick={() => void previewAction('start')} disabled={previewBusy}>Preview</button>}
+              <button type="button" className="header-cta" onClick={() => void deployProject()} disabled={previewBusy || preview?.status !== 'running'}>Deploy</button>
+            </div>
+          </div>
+          <div className="workspace-main">
+            {panel === 'preview' && (
+              preview?.url ? <iframe className="preview-frame" title="Project preview" src={`${RUST_API}${preview.url}`} /> : <div className="tool-empty"><span className="eyebrow">Preview</span><p>Start the preview to see your application running.</p></div>
+            )}
+            {panel === 'code' && (
+              <div className="workspace-grid">
+                <div className="file-list">
+                  <div className="file-actions">
+                    <button type="button" onClick={() => void createFile()}>+ File</button>
+                    <button type="button" onClick={() => void createFolder()}>+ Folder</button>
+                    <button type="button" onClick={importProject}>Import</button>
+                    <button type="button" onClick={exportProject}>Export</button>
+                  </div>
+                  {files.map((file) => <button type="button" className={file.path === path ? 'file-row selected' : 'file-row'} key={file.path} onClick={() => void openFile(file.path)}><span>{file.path}</span><small>{file.size.toLocaleString()} B</small></button>)}
+                  {!files.length && <span className="muted">No files yet.</span>}
+                </div>
+                <div className="editor-pane">
+                  <div className="editor-toolbar"><code>{path || 'Select a file'}</code><button type="button" disabled={!path} onClick={() => void saveFile()}>Save</button></div>
+                  <textarea value={content} onChange={(event) => setContent(event.target.value)} disabled={!path} spellCheck={false} />
+                </div>
+              </div>
+            )}
+          </div>
+          <div className="workspace-bottom">
+            <div className="workspace-bottom-tabs" role="tablist" aria-label="Bottom panel">
+              <button type="button" role="tab" aria-selected={bottomPanel === 'terminal'} className={bottomPanel === 'terminal' ? 'workspace-tab selected' : 'workspace-tab'} onClick={() => setBottomPanel('terminal')}>Terminal</button>
+              <button type="button" role="tab" aria-selected={bottomPanel === 'changes'} className={bottomPanel === 'changes' ? 'workspace-tab selected' : 'workspace-tab'} onClick={() => setBottomPanel('changes')}>Changes{changes.filter((c) => c.state === 'pending').length > 0 ? ` (${changes.filter((c) => c.state === 'pending').length})` : ''}</button>
+            </div>
+            <div className="workspace-bottom-content">
+              {bottomPanel === 'terminal' && (
+                <div className="terminal-panel">
+                  <div className="tool-toolbar"><span className="eyebrow">Runtime</span><button type="button" className="secondary-button" onClick={() => void loadPreviewLog()}>Refresh</button></div>
+                  <pre>{previewLog || 'No preview log output.'}</pre>
+                </div>
+              )}
+              {bottomPanel === 'changes' && (
+                <div className="changes-panel">
+                  <div className="tool-toolbar"><span className="eyebrow">Agent changes</span><div><button type="button" onClick={() => void resolveChanges('accept')} disabled={!changes.some((c) => c.state === 'pending')}>Accept pending</button><button type="button" className="secondary-button" onClick={() => void resolveChanges('revert')} disabled={!changes.some((c) => c.state === 'pending' || c.state === 'accepted')}>Revert</button></div></div>
+                  {changes.length ? changes.map((change) => (
+                    <div className="change-row" key={change.id}>
+                      <span className={`change-operation operation-${change.operation}`}>{change.operation}</span>
+                      <code>{change.path}</code>
+                      <span className={`change-state state-${change.state}`}>{change.state}</span>
+                      {change.state === 'pending' && <><button type="button" onClick={() => void resolveChanges('accept', change.path)}>Accept</button><button type="button" className="secondary-button" onClick={() => void resolveChanges('revert', change.path)}>Revert</button></>}
+                    </div>
+                  )) : <div className="tool-empty"><p>No staged agent changes.</p></div>}
+                </div>
+              )}
+            </div>
+          </div>
+          {deployment?.status === 'deployed' && <p className="deployment-link">Deployed: <a href={deployment.url || '#'} target="_blank" rel="noreferrer">{deployment.url}</a></p>}
         </div>
-        {panel === 'source' && <div className="workspace-grid"><div className="file-list"><div className="file-actions"><button type="button" onClick={() => void createFile()}>+ File</button><button type="button" onClick={() => void createFolder()}>+ Folder</button><button type="button" onClick={importProject}>Import</button><button type="button" onClick={exportProject}>Export</button></div>{files.map((file) => <button type="button" className={file.path === path ? 'file-row selected' : 'file-row'} key={file.path} onClick={() => void openFile(file.path)}><span>{file.path}</span><small>{file.size.toLocaleString()} B</small></button>)}{!files.length && <span className="muted">No files yet.</span>}</div><div className="editor-pane"><div className="editor-toolbar"><code>{path || 'Select a file'}</code><button type="button" disabled={!path} onClick={() => void saveFile()}>Save</button></div><textarea value={content} onChange={(event) => setContent(event.target.value)} disabled={!path} spellCheck={false} /></div></div>}
-        {panel === 'preview' && <div className="tool-panel preview-panel"><div className="tool-toolbar"><span className={`preview-state state-${preview?.status || 'stopped'}`}>{preview?.status || 'stopped'}</span><div><button type="button" onClick={() => void previewAction(preview?.status === 'running' ? 'restart' : 'start')} disabled={previewBusy}>{preview?.status === 'running' ? 'Reload' : 'Start preview'}</button>{preview?.status === 'running' && <button type="button" className="secondary-button" onClick={() => void previewAction('stop')} disabled={previewBusy}>Stop</button>}<button type="button" className="secondary-button" onClick={() => void deployProject()} disabled={previewBusy || preview?.status !== 'running'}>{deployment?.status === 'deployed' ? 'Redeploy' : 'Deploy'}</button></div></div>{preview?.url ? <iframe className="preview-frame" title="Project preview" src={`${RUST_API}${preview.url}`} /> : <div className="tool-empty"><span className="eyebrow">Preview</span><p>Start the project preview to inspect the current application.</p></div>}{deployment?.status === 'deployed' && <p className="deployment-link">Deployed: <a href={deployment.url || '#'} target="_blank" rel="noreferrer">{deployment.url}</a>{deployment.backup_url && <> · Backup: <a href={deployment.backup_url} target="_blank" rel="noreferrer">{deployment.backup_url}</a></>}</p>}</div>}
-        {panel === 'terminal' && <div className="tool-panel terminal-panel"><div className="tool-toolbar"><span className="eyebrow">Runtime output</span><button type="button" className="secondary-button" onClick={() => void loadPreviewLog()}>Refresh</button></div><pre>{previewLog || 'No preview log output.'}</pre></div>}
-        {panel === 'changes' && <div className="tool-panel changes-panel"><div className="tool-toolbar"><span className="eyebrow">Agent changes</span><div><button type="button" onClick={() => void resolveChanges('accept')} disabled={!changes.some((change) => change.state === 'pending')}>Accept pending</button><button type="button" className="secondary-button" onClick={() => void resolveChanges('revert')} disabled={!changes.some((change) => change.state === 'pending' || change.state === 'accepted')}>Revert</button></div></div>{changes.length ? changes.map((change) => <div className="change-row" key={change.id}><span className={`change-operation operation-${change.operation}`}>{change.operation}</span><code>{change.path}</code><span className={`change-state state-${change.state}`}>{change.state}</span>{change.state === 'pending' && <><button type="button" onClick={() => void resolveChanges('accept', change.path)}>Accept</button><button type="button" className="secondary-button" onClick={() => void resolveChanges('revert', change.path)}>Revert</button></>}</div>) : <div className="tool-empty"><p>No staged agent changes for this project.</p></div>}</div>}
       </>}
     </section>
   );

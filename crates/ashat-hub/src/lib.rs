@@ -35,6 +35,7 @@ mod conversations;
 mod deployment;
 mod galileo_jobs;
 mod google_auth;
+mod icarus_auth;
 mod member;
 mod preview;
 mod projects;
@@ -252,6 +253,7 @@ pub fn app(state: AppState) -> Router {
         .merge(changes::routes())
         .merge(deployment::routes())
         .merge(google_auth::routes())
+        .merge(icarus_auth::routes())
         .merge(vesper::routes())
         .merge(member::routes())
         .merge(web::routes())

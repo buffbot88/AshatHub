@@ -362,7 +362,12 @@ pub fn state_from_env() -> Result<AppState, Box<dyn std::error::Error + Send + S
                 .unwrap_or_else(|_| "ashat_rust_csrf".to_owned()),
             secure_cookie: env::var("ASHAT_AUTH_SECURE_COOKIE")
                 .map(|value| value != "0" && value.to_lowercase() != "false")
-                .unwrap_or(true),
+                .unwrap_or_else(|_| {
+                    // Auto-detect: require Secure only when TLS is configured.
+                    env::var("ASHAT_TLS_CERT")
+                        .or_else(|_| env::var("ASHAT_TLS_KEY"))
+                        .is_ok()
+                }),
             session_lifetime_seconds,
             email_verification_enabled: env::var("ASHAT_EMAIL_VERIFICATION_ENABLED")
                 .map(|value| value == "1" || value.eq_ignore_ascii_case("true"))

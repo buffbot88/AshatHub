@@ -19,7 +19,7 @@ use std::{
 };
 
 use axum::{
-    extract::{Query, State},
+    extract::{Form, Query, State},
     http::{header, StatusCode},
     response::{IntoResponse, Redirect, Response},
     routing::{get, post},
@@ -36,6 +36,7 @@ use rsa::{
 };
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
+use sqlx::FromRow;
 
 use crate::{auth, response::error_response, AppState};
 
@@ -151,7 +152,7 @@ pub(crate) fn routes() -> Router<AppState> {
             "/api/oauth/.well-known/openid-configuration",
             get(discovery),
         )
-        .route("/api/oauth/authorize", get(authorize))
+        .route("/api/oauth/authorize", get(authorize).post(authorize_login))
         .route("/api/oauth/token", post(token))
         .route("/api/oauth/userinfo", get(userinfo))
         .route("/api/oauth/.well-known/jwks.json", get(jwks))
@@ -168,6 +169,25 @@ struct AuthorizeQuery {
     state: Option<String>,
     code_challenge: Option<String>,
     code_challenge_method: Option<String>,
+}
+
+#[derive(Debug, Deserialize)]
+struct AuthorizeLoginForm {
+    username: String,
+    password: String,
+    response_type: Option<String>,
+    client_id: Option<String>,
+    redirect_uri: Option<String>,
+    scope: Option<String>,
+    state: Option<String>,
+    code_challenge: Option<String>,
+    code_challenge_method: Option<String>,
+}
+
+#[derive(Debug, FromRow)]
+struct OidcUserWithPassword {
+    id: String,
+    password_hash: String,
 }
 
 #[derive(Debug, Deserialize)]
@@ -226,8 +246,8 @@ async fn jwks(State(state): State<AppState>) -> Response {
 
 /// GET /api/oauth/authorize — the browser lands here from Paws' login page.
 /// If the user already has a hub session, issue the code immediately.
-/// Otherwise render a login page whose Google button returns here with a
-/// session (via `/api/auth/google?next=...`), at which point we issue the code.
+/// Otherwise render a login page (username/password POST back to this same
+/// route), at which point we issue the code.
 async fn authorize(
     State(state): State<AppState>,
     Query(params): Query<AuthorizeQuery>,
@@ -297,21 +317,106 @@ async fn authorize(
         .into_response();
     }
 
-    // Not signed in — show a branded login page with a Google button that
-    // returns to this exact authorize URL once a session exists.
+    // Not signed in — show a branded login page with a username/password
+    // form that POSTs back here; on success we create a session and issue
+    // the code on the follow-up GET.
+    (StatusCode::OK, Html(authorize_login_html(&params))).into_response()
+}
+
+/// POST /api/oauth/authorize — username/password login for the authorize page.
+/// Validates credentials, creates a hub session (cookies), then redirects
+/// back to the same authorize URL so the code is issued on the follow-up GET.
+async fn authorize_login(
+    State(state): State<AppState>,
+    Form(form): Form<AuthorizeLoginForm>,
+) -> Response {
+    let Some(pool) = state.db.as_ref() else {
+        return authorize_error("service_unavailable");
+    };
+
+    let identifier = form.username.trim();
+    if identifier.is_empty() || form.password.is_empty() {
+        return authorize_error("invalid_credentials");
+    }
+
+    let user = match sqlx::query_as::<_, OidcUserWithPassword>(
+        "SELECT id, password_hash
+         FROM users
+         WHERE (username = ? OR email = ?) AND is_active = 1
+         LIMIT 1",
+    )
+    .bind(identifier)
+    .bind(identifier)
+    .fetch_optional(pool)
+    .await
+    {
+        Ok(user) => user,
+        Err(error) => {
+            tracing::error!(?error, "OIDC: user lookup failed");
+            return authorize_error("service_unavailable");
+        }
+    };
+
+    let Some(user) = user else {
+        return authorize_error("invalid_credentials");
+    };
+
+    // PHP password_hash(PASSWORD_BCRYPT) emits $2y$; Rust bcrypt uses $2b$.
+    let password_hash = user.password_hash.replace("$2y$", "$2b$");
+    let password = form.password.clone();
+    let valid = tokio::task::spawn_blocking(move || {
+        bcrypt::verify(password, &password_hash).unwrap_or(false)
+    })
+    .await
+    .unwrap_or(false);
+    if !valid {
+        return authorize_error("invalid_credentials");
+    }
+
+    // Create a hub session so the follow-up authorize GET issues the code.
+    let session_token = auth::new_token();
+    let csrf_token = auth::new_token();
+    let session_hash = auth::hash_token(&session_token);
+    let csrf_hash = auth::hash_token(&csrf_token);
+    let lifetime = state.auth.session_lifetime_seconds;
+
+    if let Err(error) = sqlx::query(
+        "INSERT INTO rust_sessions
+            (session_hash, user_id, csrf_hash, ip, user_agent, created_at, last_seen, expires_at)
+         VALUES (?, ?, ?, 'oidc-authorize', 'oidc-authorize',
+                 UTC_TIMESTAMP(), UTC_TIMESTAMP(),
+                 DATE_ADD(UTC_TIMESTAMP(), INTERVAL ? SECOND))",
+    )
+    .bind(&session_hash)
+    .bind(&user.id)
+    .bind(&csrf_hash)
+    .bind(lifetime)
+    .execute(pool)
+    .await
+    {
+        tracing::error!(?error, "OIDC: session creation failed");
+        return authorize_error("service_unavailable");
+    }
+
+    // Redirect to the same authorize URL with the session cookies set.
     let authorize_url = format!(
-        "/api/oauth/authorize?response_type=code&client_id={}&redirect_uri={}&scope={}&state={}&code_challenge={}&code_challenge_method=S256",
-        urlencoding::encode(client_id),
-        urlencoding::encode(redirect_uri),
-        urlencoding::encode(params.scope.as_deref().unwrap_or("openid profile")),
-        urlencoding::encode(state_param),
-        urlencoding::encode(code_challenge.unwrap_or("")),
+        "/api/oauth/authorize?response_type={}&client_id={}&redirect_uri={}&scope={}&state={}&code_challenge={}&code_challenge_method={}",
+        urlencoding::encode(form.response_type.as_deref().unwrap_or("code")),
+        urlencoding::encode(form.client_id.as_deref().unwrap_or("")),
+        urlencoding::encode(form.redirect_uri.as_deref().unwrap_or("")),
+        urlencoding::encode(form.scope.as_deref().unwrap_or("openid profile")),
+        urlencoding::encode(form.state.as_deref().unwrap_or("")),
+        urlencoding::encode(form.code_challenge.as_deref().unwrap_or("")),
+        urlencoding::encode(form.code_challenge_method.as_deref().unwrap_or("S256")),
     );
-    let google_url = format!(
-        "/api/auth/google?next={}",
-        urlencoding::encode(&authorize_url)
-    );
-    (StatusCode::OK, Html(authorize_login_html(&google_url))).into_response()
+    let response = Redirect::temporary(&authorize_url).into_response();
+    crate::auth::with_auth_cookies(
+        response,
+        &state,
+        &session_token,
+        &csrf_token,
+        lifetime,
+    )
 }
 
 /// POST /api/oauth/token — Paws' server exchanges the code for an id_token.
@@ -445,7 +550,15 @@ impl IntoResponse for Html {
     }
 }
 
-fn authorize_login_html(google_url: &str) -> String {
+fn authorize_login_html(params: &AuthorizeQuery) -> String {
+    let hidden = |name: &str, value: Option<&String>| match value {
+        Some(value) => format!(
+            r##"<input type="hidden" name="{}" value="{}" />"##,
+            name,
+            html_escape(value)
+        ),
+        None => String::new(),
+    };
     format!(
         r##"<!DOCTYPE html>
 <html lang="en">
@@ -466,33 +579,50 @@ fn authorize_login_html(google_url: &str) -> String {
                 text-transform: uppercase; }}
     h1 {{ font-size: 30px; margin-bottom: 8px; }}
     p {{ color: var(--muted); font-size: 14px; line-height: 1.6; margin: 12px 0 22px; }}
-    .google-btn {{ display: inline-flex; align-items: center; gap: 10px; padding: 12px 24px;
-                   color: var(--text); background: var(--surface); border: 1px solid var(--line);
-                   border-radius: 4px; font-size: 15px; font-weight: 600; text-decoration: none;
-                   transition: border-color .15s; }}
-    .google-btn:hover {{ border-color: var(--accent); }}
-    .google-btn svg {{ flex-shrink: 0; }}
+    form {{ text-align: left; margin-top: 8px; }}
+    label {{ display: block; color: var(--muted); font-size: 13px; margin: 14px 0 6px; }}
+    input {{ width: 100%; padding: 10px 12px; background: var(--bg); color: var(--text);
+             border: 1px solid var(--line); border-radius: 4px; font-size: 14px;
+             font-family: inherit; outline: none; }}
+    input:focus {{ border-color: var(--accent); }}
+    .submit {{ margin-top: 20px; width: 100%; padding: 11px 12px; background: var(--accent);
+               color: #0a0a0a; border: none; border-radius: 4px; font-size: 15px;
+               font-weight: 700; cursor: pointer; }}
   </style>
 </head>
 <body>
   <div class="card">
     <span class="eyebrow">AGP Studios</span>
     <h1>Authorize application</h1>
-    <p>An AGP Studios application is requesting access to your account. Sign in to continue.</p>
-    <a class="google-btn" href="{}">
-      <svg viewBox="0 0 24 24" width="20" height="20">
-        <path fill="#4285F4" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92a5.06 5.06 0 0 1-2.2 3.32v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.1z"/>
-        <path fill="#34A853" d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z"/>
-        <path fill="#FBBC05" d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.22.81-.62z"/>
-        <path fill="#EA4335" d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z"/>
-      </svg>
-      Sign in with Google
-    </a>
+    <p>An AGP Studios application is requesting access to your account. Sign in with your AGP Studios account to continue.</p>
+    <form method="post" action="/api/oauth/authorize">
+      {}{}{}{}{}{}{}
+      <label for="oidc-username">Username or email</label>
+      <input id="oidc-username" name="username" type="text" autocomplete="username" required />
+      <label for="oidc-password">Password</label>
+      <input id="oidc-password" name="password" type="password" autocomplete="current-password" required />
+      <button class="submit" type="submit">Sign in</button>
+    </form>
   </div>
 </body>
 </html>"##,
-        google_url
+        hidden("response_type", params.response_type.as_ref()),
+        hidden("client_id", params.client_id.as_ref()),
+        hidden("redirect_uri", params.redirect_uri.as_ref()),
+        hidden("scope", params.scope.as_ref()),
+        hidden("state", params.state.as_ref()),
+        hidden("code_challenge", params.code_challenge.as_ref()),
+        hidden("code_challenge_method", params.code_challenge_method.as_ref()),
     )
+}
+
+fn html_escape(value: &str) -> String {
+    value
+        .replace('&', "&amp;")
+        .replace('<', "&lt;")
+        .replace('>', "&gt;")
+        .replace('"', "&quot;")
+        .replace('\'', "&#39;")
 }
 
 fn error_html(message: &str) -> String {

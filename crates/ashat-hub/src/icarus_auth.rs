@@ -1,5 +1,5 @@
 use axum::{
-    extract::{Path, Query, State},
+    extract::{Form, Path, Query, State},
     http::{header, StatusCode},
     response::{IntoResponse, Response},
     routing::{get, post},
@@ -7,6 +7,7 @@ use axum::{
 };
 use rand::{distributions::Alphanumeric, Rng};
 use serde::{Deserialize, Serialize};
+use sqlx::FromRow;
 
 use uuid::Uuid;
 
@@ -39,6 +40,19 @@ struct ValidateRequest {
     session_token: String,
 }
 
+#[derive(Debug, Deserialize)]
+struct LoginForm {
+    username: String,
+    password: String,
+    code: String,
+}
+
+#[derive(Debug, FromRow)]
+struct UserWithPassword {
+    id: String,
+    password_hash: String,
+}
+
 #[derive(Debug, Serialize)]
 struct ValidateResponse {
     valid: bool,
@@ -54,11 +68,7 @@ pub(crate) fn routes() -> Router<AppState> {
             "/api/icarus/auth/device/{code}",
             get(poll_device_auth),
         )
-        .route("/api/icarus/auth/login", get(login_page))
-        .route(
-            "/api/icarus/auth/google/callback",
-            get(google_callback),
-        )
+        .route("/api/icarus/auth/login", get(login_page).post(login_submit))
         .route("/api/icarus/auth/validate", post(validate_session))
 }
 
@@ -198,6 +208,36 @@ async fn login_page(
     .fetch_optional(pool)
     .await;
 
+    let (_device_code, status) = match row {
+        Ok(Some(row)) => row,
+        Ok(None) => return html_response(error_page("Invalid or expired code")),
+        Err(_) => return html_response(error_page("Service unavailable")),
+    };
+
+    if status != "pending" {
+        return html_response(error_page("This code has already been used"));
+    }
+
+    html_response(login_html(&params.code))
+}
+
+// ── POST /api/icarus/auth/login ────────────────────────────────────
+
+async fn login_submit(State(state): State<AppState>, Form(form): Form<LoginForm>) -> Response {
+    let Some(pool) = state.db.as_ref() else {
+        return html_response(error_page("Service unavailable"));
+    };
+
+    // Validate the user_code exists and is still pending.
+    let row = sqlx::query_as::<_, (String, String)>(
+        "SELECT device_code, status
+         FROM icarus_devices
+         WHERE user_code = ? AND expires_at > UTC_TIMESTAMP()",
+    )
+    .bind(&form.code)
+    .fetch_optional(pool)
+    .await;
+
     let (device_code, status) = match row {
         Ok(Some(row)) => row,
         Ok(None) => return html_response(error_page("Invalid or expired code")),
@@ -208,99 +248,50 @@ async fn login_page(
         return html_response(error_page("This code has already been used"));
     }
 
-    let Some(oauth) = state.google_oauth.as_ref() else {
-        return html_response(error_page("Google sign-in is not configured"));
-    };
-    if !oauth.is_configured() {
-        return html_response(error_page("Google sign-in is not configured"));
+    let identifier = form.username.trim();
+    if identifier.is_empty() || form.password.is_empty() {
+        return html_response(login_error_page(&form.code, "Enter your username and password."));
     }
 
-    // Build the Google OAuth URL carrying the device_code in the state param.
-    let state_token = format!("icarus:{}", device_code);
-    let hub_url = state
-        .hub_public_url
-        .as_deref()
-        .unwrap_or("http://localhost:3101");
-    let redirect_uri = format!("{}/api/icarus/auth/google/callback", hub_url);
-
-    let auth_url = format!(
-        "https://accounts.google.com/o/oauth2/v2/auth?\
-         client_id={}&\
-         redirect_uri={}&\
-         response_type=code&\
-         scope=openid%20email%20profile&\
-         access_type=offline&\
-         prompt=consent&\
-         state={}",
-        urlencoding::encode(&oauth.client_id),
-        urlencoding::encode(&redirect_uri),
-        urlencoding::encode(&state_token),
-    );
-
-    html_response(login_html(&params.code, &auth_url))
-}
-
-// ── GET /api/icarus/auth/google/callback ───────────────────────────
-
-async fn google_callback(
-    State(state): State<AppState>,
-    Query(params): Query<crate::google_auth::GoogleCallbackParams>,
-) -> Response {
-    let Some(oauth) = &state.google_oauth else {
-        return html_response(error_page("Google auth not configured"));
-    };
-
-    if let Some(error) = &params.error {
-        return html_response(error_page(&format!(
-            "Google sign-in failed: {}",
-            error
-        )));
-    }
-
-    let Some(code) = &params.code else {
-        return html_response(error_page("Missing authorization code"));
-    };
-
-    let Some(state_param) = &params.state else {
-        return html_response(error_page("Missing state parameter"));
-    };
-
-    // Only accept Icarus state tokens.
-    let Some(device_code) = state_param.strip_prefix("icarus:") else {
-        return html_response(error_page("Invalid state parameter"));
-    };
-
-    // Exchange the authorization code for tokens.
-    let token_response = match crate::google_auth::exchange_code(oauth, code).await {
-        Ok(response) => response,
+    let user = match sqlx::query_as::<_, UserWithPassword>(
+        "SELECT id, password_hash
+         FROM users
+         WHERE (username = ? OR email = ?) AND is_active = 1
+         LIMIT 1",
+    )
+    .bind(identifier)
+    .bind(identifier)
+    .fetch_optional(pool)
+    .await
+    {
+        Ok(user) => user,
         Err(error) => {
-            tracing::error!(?error, "Icarus: Google token exchange failed");
-            return html_response(error_page("Failed to complete Google sign-in"));
+            tracing::error!(?error, "Icarus: user lookup failed");
+            return html_response(error_page("Service unavailable"));
         }
     };
 
-    // Fetch the user's Google profile.
-    let google_user =
-        match crate::google_auth::fetch_google_user(&token_response.access_token).await {
-            Ok(user) => user,
-            Err(error) => {
-                tracing::error!(?error, "Icarus: Google userinfo fetch failed");
-                return html_response(error_page("Failed to get user information"));
-            }
-        };
-
-    let Some(pool) = state.db.as_ref() else {
-        return html_response(error_page("Database unavailable"));
+    let Some(user) = user else {
+        return html_response(login_error_page(
+            &form.code,
+            "Invalid username or password.",
+        ));
     };
 
-    // Find or create the local user, then ensure the Google account is linked.
-    let user_id =
-        if let Some(id) = crate::google_auth::find_user_by_email(pool, &google_user.email).await {
-            id
-        } else {
-            crate::google_auth::create_user_from_google(pool, &google_user).await
-        };
-    crate::google_auth::link_google_to_user(pool, &user_id, &google_user).await;
+    // PHP password_hash(PASSWORD_BCRYPT) emits $2y$; Rust bcrypt uses $2b$.
+    let password_hash = user.password_hash.replace("$2y$", "$2b$");
+    let password = form.password.clone();
+    let valid = tokio::task::spawn_blocking(move || {
+        bcrypt::verify(password, &password_hash).unwrap_or(false)
+    })
+    .await
+    .unwrap_or(false);
+    if !valid {
+        return html_response(login_error_page(
+            &form.code,
+            "Invalid username or password.",
+        ));
+    }
 
     // Create a Rust session the CLI can reuse for authenticated API calls.
     let session_token = crate::auth::new_token();
@@ -317,7 +308,7 @@ async fn google_callback(
                  DATE_ADD(UTC_TIMESTAMP(), INTERVAL ? SECOND))",
     )
     .bind(&session_hash)
-    .bind(&user_id)
+    .bind(&user.id)
     .bind(&csrf_hash)
     .bind(lifetime)
     .execute(pool)
@@ -335,8 +326,8 @@ async fn google_callback(
     )
     .bind(&session_token)
     .bind(&csrf_token)
-    .bind(&user_id)
-    .bind(device_code)
+    .bind(&user.id)
+    .bind(&device_code)
     .execute(pool)
     .await;
 
@@ -386,7 +377,7 @@ async fn validate_session(
 
 // ── HTML pages ────────────────────────────────────────────────────
 
-fn login_html(code: &str, auth_url: &str) -> String {
+fn login_html(code: &str) -> String {
     format!(
         r##"<!DOCTYPE html>
 <html lang="en">
@@ -411,12 +402,15 @@ fn login_html(code: &str, auth_url: &str) -> String {
              font: 600 24px 'JetBrains Mono', monospace; letter-spacing: .08em;
              color: var(--accent); }}
     p {{ color: var(--muted); font-size: 14px; line-height: 1.6; margin-bottom: 20px; }}
-    .google-btn {{ display: inline-flex; align-items: center; gap: 10px; padding: 12px 24px;
-                   color: var(--text); background: var(--surface); border: 1px solid var(--line);
-                   border-radius: 4px; font-size: 15px; font-weight: 600; text-decoration: none;
-                   transition: border-color .15s; }}
-    .google-btn:hover {{ border-color: var(--accent); }}
-    .google-btn svg {{ flex-shrink: 0; }}
+    form {{ text-align: left; margin-top: 8px; }}
+    label {{ display: block; color: var(--muted); font-size: 13px; margin: 14px 0 6px; }}
+    input {{ width: 100%; padding: 10px 12px; background: var(--bg); color: var(--text);
+             border: 1px solid var(--line); border-radius: 4px; font-size: 14px;
+             font-family: inherit; outline: none; }}
+    input:focus {{ border-color: var(--accent); }}
+    .submit {{ margin-top: 20px; width: 100%; padding: 11px 12px; background: var(--accent);
+               color: #0a0a0a; border: none; border-radius: 4px; font-size: 15px;
+               font-weight: 700; cursor: pointer; }}
   </style>
 </head>
 <body>
@@ -425,20 +419,80 @@ fn login_html(code: &str, auth_url: &str) -> String {
     <h1>Sign in to AGP Studios</h1>
     <p>Enter this code in your terminal to authenticate Icarus:</p>
     <div class="code">{}</div>
-    <p>Then sign in with your Google account to complete authentication.</p>
-    <a class="google-btn" href="{}">
-      <svg viewBox="0 0 24 24" width="20" height="20">
-        <path fill="#4285F4" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92a5.06 5.06 0 0 1-2.2 3.32v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.1z"/>
-        <path fill="#34A853" d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z"/>
-        <path fill="#FBBC05" d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.22.81-.62z"/>
-        <path fill="#EA4335" d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z"/>
-      </svg>
-      Sign in with Google
-    </a>
+    <p>Then sign in with your AGP Studios account.</p>
+    <form method="post" action="/api/icarus/auth/login">
+      <input type="hidden" name="code" value="{}" />
+      <label for="icarus-username">Username or email</label>
+      <input id="icarus-username" name="username" type="text" autocomplete="username" required />
+      <label for="icarus-password">Password</label>
+      <input id="icarus-password" name="password" type="password" autocomplete="current-password" required />
+      <button class="submit" type="submit">Sign in</button>
+    </form>
   </div>
 </body>
 </html>"##,
-        code, auth_url
+        code, code
+    )
+}
+
+fn login_error_page(code: &str, message: &str) -> String {
+    format!(
+        r##"<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Icarus — Sign in to AGP Studios</title>
+  <style>
+    :root {{ --bg: #0a0a0a; --surface: #121212; --text: #f3f0e8; --muted: #beb7aa;
+             --accent: #c9a24a; --line: rgba(201,162,74,.22); }}
+    * {{ box-sizing: border-box; margin: 0; padding: 0; }}
+    body {{ min-height: 100vh; display: grid; place-items: center; background: var(--bg);
+            color: var(--text); font-family: 'Inter', system-ui, sans-serif; padding: 24px; }}
+    .card {{ width: min(100%, 420px); padding: 32px; background: var(--surface);
+             border: 1px solid var(--line); border-radius: 6px; text-align: center; }}
+    .eyebrow {{ display: block; margin-bottom: 10px; color: var(--accent);
+                font: 600 11px 'JetBrains Mono', monospace; letter-spacing: .12em;
+                text-transform: uppercase; }}
+    h1 {{ font-size: 32px; margin-bottom: 8px; }}
+    .code {{ display: inline-block; margin: 16px 0; padding: 10px 20px;
+             background: var(--bg); border: 1px solid var(--line); border-radius: 4px;
+             font: 600 24px 'JetBrains Mono', monospace; letter-spacing: .08em;
+             color: var(--accent); }}
+    .error {{ margin: 10px 0 0; padding: 10px 12px; background: rgba(248,113,113,.12);
+              border: 1px solid rgba(248,113,113,.35); border-radius: 4px;
+              color: #fca5a5; font-size: 13px; text-align: left; }}
+    form {{ text-align: left; margin-top: 8px; }}
+    label {{ display: block; color: var(--muted); font-size: 13px; margin: 14px 0 6px; }}
+    input {{ width: 100%; padding: 10px 12px; background: var(--bg); color: var(--text);
+             border: 1px solid var(--line); border-radius: 4px; font-size: 14px;
+             font-family: inherit; outline: none; }}
+    input:focus {{ border-color: var(--accent); }}
+    .submit {{ margin-top: 20px; width: 100%; padding: 11px 12px; background: var(--accent);
+               color: #0a0a0a; border: none; border-radius: 4px; font-size: 15px;
+               font-weight: 700; cursor: pointer; }}
+  </style>
+</head>
+<body>
+  <div class="card">
+    <span class="eyebrow">Icarus CLI</span>
+    <h1>Sign in to AGP Studios</h1>
+    <p>Enter this code in your terminal to authenticate Icarus:</p>
+    <div class="code">{}</div>
+    <p>Then sign in with your AGP Studios account.</p>
+    <div class="error">{}</div>
+    <form method="post" action="/api/icarus/auth/login">
+      <input type="hidden" name="code" value="{}" />
+      <label for="icarus-username">Username or email</label>
+      <input id="icarus-username" name="username" type="text" autocomplete="username" required />
+      <label for="icarus-password">Password</label>
+      <input id="icarus-password" name="password" type="password" autocomplete="current-password" required />
+      <button class="submit" type="submit">Sign in</button>
+    </form>
+  </div>
+</body>
+</html>"##,
+        code, message, code
     )
 }
 

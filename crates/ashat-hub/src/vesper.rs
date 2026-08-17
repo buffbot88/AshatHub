@@ -200,7 +200,7 @@ pub(crate) fn routes() -> Router<AppState> {
     Router::new()
         .route("/api/v1/auth/login", post(vesper_login))
         // Mint a Vesper bearer session from an existing cookie session, so
-        // Google-only accounts (no password) can authorize the desktop app.
+        // already signed-in users can authorize the desktop app.
         .route("/api/v1/auth/token-from-session", post(vesper_token_from_session))
         .route("/api/v1/auth/status", get(vesper_status))
         .route("/api/v1/auth/logout", post(vesper_logout))
@@ -329,8 +329,8 @@ async fn vesper_login(
 /// POST /api/v1/auth/token-from-session
 ///
 /// Returns a Vesper bearer session_token for the currently authenticated
-/// cookie session. Lets Google-linked accounts (which have no password)
-/// authorize the Vesper desktop app from the web authorization page.
+/// cookie session, so already signed-in users can authorize the Vesper
+/// desktop app from the web authorization page.
 async fn vesper_token_from_session(
     State(state): State<AppState>,
     headers: HeaderMap,

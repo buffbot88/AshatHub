@@ -292,9 +292,8 @@ function VesperAuthPage() {
     return cookie ? decodeURIComponent(cookie.slice('ashat_rust_csrf='.length)) : '';
   }
 
-  // After Google sign-in completes, the session cookie is set and this page
-  // reloads. Mint a Vesper bearer session from it and hand the token to the
-  // desktop app's localhost callback.
+  // If the user is already signed in (cookie session), mint a Vesper bearer
+  // session and hand the token to the desktop app's localhost callback.
   useEffect(() => {
     const callback = callbackUrl();
     if (!callback) return;
@@ -316,11 +315,6 @@ function VesperAuthPage() {
     return () => { cancelled = true; };
   }, []);
 
-  function googleLogin() {
-    const params = new URLSearchParams({ next: `/auth/vesper${redirect ? `?redirect=${encodeURIComponent(redirect)}` : ''}` });
-    window.location.href = `/api/auth/google?${params.toString()}`;
-  }
-
   async function submit(event: FormEvent) {
     event.preventDefault(); setError('');
     const callback = callbackUrl();
@@ -338,7 +332,7 @@ function VesperAuthPage() {
     } catch (reason) { setError(reason instanceof Error ? reason.message : 'Sign-in failed'); setBusy(false); }
   }
 
-  return <main className="vesper-auth-page"><section className="vesper-auth-card"><span className="eyebrow">Vesper Studios</span><h1>Sign in to Vesper</h1><p className="muted">Authorize the Vesper desktop app through AGP Studios.</p><div className="auth-divider"><span>or</span></div><button type="button" className="auth-btn-google" onClick={googleLogin} disabled={busy}><svg className="auth-google-icon" viewBox="0 0 24 24" width="18" height="18"><path fill="#4285F4" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92a5.06 5.06 0 0 1-2.2 3.32v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.1z"/><path fill="#34A853" d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z"/><path fill="#FBBC05" d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.22.81-.62z"/><path fill="#EA4335" d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z"/></svg>Sign in with Google</button><div className="auth-divider"><span>or</span></div><form onSubmit={(event) => void submit(event)}><input value={username} onChange={(event) => setUsername(event.target.value)} placeholder="Username or email" autoComplete="username" required /><input value={password} onChange={(event) => setPassword(event.target.value)} placeholder="Password" type="password" autoComplete="current-password" required /><button type="submit" className="primary-button" disabled={busy}>{busy ? 'Signing in…' : 'Continue to Vesper'}</button>{error && <small className="auth-error">{error}</small>}</form></section></main>;
+  return <main className="vesper-auth-page"><section className="vesper-auth-card"><span className="eyebrow">Vesper Studios</span><h1>Sign in to Vesper</h1><p className="muted">Authorize the Vesper desktop app through AGP Studios.</p><form onSubmit={(event) => void submit(event)}><input value={username} onChange={(event) => setUsername(event.target.value)} placeholder="Username or email" autoComplete="username" required /><input value={password} onChange={(event) => setPassword(event.target.value)} placeholder="Password" type="password" autoComplete="current-password" required /><button type="submit" className="primary-button" disabled={busy}>{busy ? 'Signing in…' : 'Continue to Vesper'}</button>{error && <small className="auth-error">{error}</small>}</form></section></main>;
 }
 
 function StudioFooter({ navigate }: { navigate: (path: string) => void }) {

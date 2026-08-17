@@ -34,7 +34,6 @@ mod compat;
 mod conversations;
 mod deployment;
 mod galileo_jobs;
-mod google_auth;
 mod icarus_auth;
 mod member;
 mod oidc;
@@ -171,12 +170,6 @@ pub struct AppState {
     pub(crate) job_upstream: Option<String>,
     pub(crate) auth_rate_limiter: AuthRateLimiter,
     pub(crate) operation_rate_limiter: AuthRateLimiter,
-    pub(crate) google_oauth: Option<google_auth::GoogleOAuthConfig>,
-    /// Server-side store of OAuth `state` tokens -> (expiry unix seconds,
-    /// optional same-origin `next` redirect). Used so Google OAuth state
-    /// validation does not depend on cookie Domain/port scoping (which
-    /// silently drops the cookie through proxies).
-    pub(crate) oauth_states: Arc<Mutex<HashMap<String, (i64, Option<String>)>>>,
     pub(crate) oidc: Arc<oidc::OidcIssuer>,
     pub(crate) metrics: Arc<GatewayMetrics>,
     migrations_ready: Arc<AtomicBool>,
@@ -259,7 +252,6 @@ pub fn app(state: AppState) -> Router {
         .merge(preview::routes())
         .merge(changes::routes())
         .merge(deployment::routes())
-        .merge(google_auth::routes())
         .merge(icarus_auth::routes())
         .merge(oidc::routes())
         .merge(vesper::routes())
@@ -358,8 +350,6 @@ pub fn state_from_env() -> Result<AppState, Box<dyn std::error::Error + Send + S
             .filter(|value| !value.trim().is_empty()),
         auth_rate_limiter: AuthRateLimiter::new(),
         operation_rate_limiter: AuthRateLimiter::new(),
-        google_oauth: google_auth::GoogleOAuthConfig::from_env(),
-        oauth_states: Arc::new(Mutex::new(HashMap::new())),
         oidc: Arc::new(oidc::OidcIssuer::load_or_create()),
         metrics: Arc::new(GatewayMetrics::default()),
         migrations_ready: Arc::new(AtomicBool::new(false)),

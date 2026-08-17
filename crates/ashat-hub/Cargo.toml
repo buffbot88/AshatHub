@@ -20,3 +20,5 @@ tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 uuid = { version = "1", features = ["v4"] }
 urlencoding = "2"
 zip = { version = "2", default-features = false, features = ["deflate"] }
+rsa = { version = "0.9", features = ["sha2"] }
+base64 = "0.22"

@@ -628,6 +628,11 @@ pub(crate) async fn enforce_csrf(
             "/api/auth/login" | "/api/auth/register" | "/api/sso/verify-session"
             | "/api/v1/auth/login" | "/api/v1/auth/status" | "/api/v1/auth/logout"
             | "/api/v1/models/announce"
+            // Icarus device flow: the CLI has no session cookie when it
+            // starts device auth or validates a token by body.
+            | "/api/icarus/auth/device" | "/api/icarus/auth/validate"
+            // OIDC token endpoint: called server-to-server by Paws & Parcels.
+            | "/api/oauth/token" | "/api/oauth/authorize"
         )
     {
         return Ok(());

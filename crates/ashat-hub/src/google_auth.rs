@@ -47,6 +47,13 @@ pub(crate) struct GoogleCallbackParams {
 }
 
 #[derive(Debug, Deserialize)]
+struct GoogleLoginQuery {
+    /// Optional same-origin path to redirect to after a successful login.
+    /// Used by OIDC authorize and the Vesper desktop authorization page.
+    next: Option<String>,
+}
+
+#[derive(Debug, Deserialize)]
 pub(crate) struct GoogleTokenResponse {
     pub(crate) access_token: String,
     #[allow(dead_code)]
@@ -85,6 +92,13 @@ struct GoogleAuthStatus {
     google_email: Option<String>,
 }
 
+fn now_unix() -> i64 {
+    std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_secs() as i64)
+        .unwrap_or(0)
+}
+
 pub(crate) fn routes() -> Router<AppState> {
     Router::new()
         .route("/api/auth/google", get(google_login))
@@ -95,7 +109,7 @@ pub(crate) fn routes() -> Router<AppState> {
 }
 
 /// Redirect the user to Google's OAuth consent screen.
-async fn google_login(State(state): State<AppState>, headers: axum::http::HeaderMap) -> Response {
+async fn google_login(State(state): State<AppState>, Query(query): Query<GoogleLoginQuery>) -> Response {
     let Some(oauth) = &state.google_oauth else {
         return error_response(
             StatusCode::SERVICE_UNAVAILABLE,
@@ -108,6 +122,16 @@ async fn google_login(State(state): State<AppState>, headers: axum::http::Header
             "google_auth_not_configured",
         );
     }
+
+    // Only accept same-origin relative redirect targets (no open redirect).
+    let next = query
+        .next
+        .filter(|value| {
+            value.starts_with('/')
+                && !value.starts_with("//")
+                && value.len() <= 2048
+                && !value.contains('\\')
+        });
 
     let state_token = crate::auth::new_token();
     let auth_url = format!(
@@ -125,17 +149,19 @@ async fn google_login(State(state): State<AppState>, headers: axum::http::Header
     );
 
     let mut response = Redirect::temporary(&auth_url).into_response();
-    // Store state token in a short-lived cookie for CSRF protection.
-    // Set Domain to just the hostname (no port) so the cookie is sent back
-    // regardless of which port the OAuth callback arrives on.
-    let domain = headers
-        .get(header::HOST)
-        .and_then(|h| h.to_str().ok())
-        .and_then(|h| h.split(':').next())
-        .unwrap_or("localhost");
+    // Store the state token server-side (TTL 10 min). Validation on the
+    // callback uses this store, so it works regardless of cookie Domain or
+    // port scoping (proxies and different callback ports were silently
+    // dropping the cookie and producing `invalid_state`).
+    state
+        .oauth_states
+        .lock()
+        .unwrap()
+        .insert(state_token.clone(), (now_unix() + 600, next));
+    // Also set the cookie for CSRF parity / fallback validation.
     let cookie = format!(
-        "ashat_google_state={}; Path=/; SameSite=Lax; Max-Age=600; HttpOnly; Domain={}",
-        state_token, domain
+        "ashat_google_state={}; Path=/; SameSite=Lax; Max-Age=600; HttpOnly",
+        state_token
     );
     if let Ok(header_value) = axum::http::HeaderValue::from_str(&cookie) {
         response
@@ -175,10 +201,19 @@ async fn google_callback(
     let Some(state_param) = &params.state else {
         return error_response(StatusCode::FORBIDDEN, "invalid_state");
     };
-    let Some(cookie_token) = crate::auth::cookie_value(&headers, "ashat_google_state") else {
-        return error_response(StatusCode::FORBIDDEN, "invalid_state");
+    // Validate against the server-side store first (robust across cookie
+    // Domain/port issues), falling back to cookie comparison for old flows.
+    let next_target = {
+        let mut guard = state.oauth_states.lock().unwrap();
+        match guard.remove(state_param) {
+            Some((expiry, next)) if expiry > now_unix() => next,
+            _ => None,
+        }
     };
-    if state_param != &cookie_token {
+    let cookie_valid = crate::auth::cookie_value(&headers, "ashat_google_state")
+        .map(|cookie_token| &cookie_token == state_param)
+        .unwrap_or(false);
+    if next_target.is_none() && !cookie_valid {
         return error_response(StatusCode::FORBIDDEN, "invalid_state");
     }
 
@@ -224,10 +259,11 @@ async fn google_callback(
     .fetch_optional(pool)
     .await;
 
+    let next_target = next_target.unwrap_or_else(|| "/".to_owned());
     match linked {
         Ok(Some(account)) => {
             // Already linked — log in as that user.
-            create_session_and_redirect(pool, &state, &account.user_id).await
+            create_session_and_redirect(pool, &state, &account.user_id, &next_target).await
         }
         Ok(None) => {
             // Not linked yet.
@@ -242,12 +278,12 @@ async fn google_callback(
                 {
                     // Auto-link and log in.
                     link_google_to_user(pool, &user_id, &google_user).await;
-                    create_session_and_redirect(pool, &state, &user_id).await
+                    create_session_and_redirect(pool, &state, &user_id, &next_target).await
                 } else {
                     // Create a new user account.
                     let user_id = create_user_from_google(pool, &google_user).await;
                     link_google_to_user(pool, &user_id, &google_user).await;
-                    create_session_and_redirect(pool, &state, &user_id).await
+                    create_session_and_redirect(pool, &state, &user_id, &next_target).await
                 }
             }
         }
@@ -316,14 +352,14 @@ async fn google_link(
     );
 
     let mut response = Redirect::temporary(&auth_url).into_response();
-    let link_domain = headers
-        .get(header::HOST)
-        .and_then(|h| h.to_str().ok())
-        .and_then(|h| h.split(':').next())
-        .unwrap_or("localhost");
+    state
+        .oauth_states
+        .lock()
+        .unwrap()
+        .insert(state_token.clone(), (now_unix() + 600, None));
     let cookie = format!(
-        "ashat_google_state={}; Path=/; SameSite=Lax; Max-Age=600; HttpOnly; Domain={}",
-        state_token, link_domain
+        "ashat_google_state={}; Path=/; SameSite=Lax; Max-Age=600; HttpOnly",
+        state_token
     );
     if let Ok(header_value) = axum::http::HeaderValue::from_str(&cookie) {
         response
@@ -507,6 +543,7 @@ async fn create_session_and_redirect(
     pool: &MySqlPool,
     state: &AppState,
     user_id: &str,
+    redirect_to: &str,
 ) -> Response {
     use crate::auth::{hash_token, new_token};
 
@@ -528,7 +565,7 @@ async fn create_session_and_redirect(
     .execute(pool)
     .await;
 
-    let mut response = Redirect::temporary("/").into_response();
+    let mut response = Redirect::temporary(redirect_to).into_response();
 
     let session_cookie = format!(
         "{}={}; Path=/; SameSite=Lax; Max-Age={}; HttpOnly{}",

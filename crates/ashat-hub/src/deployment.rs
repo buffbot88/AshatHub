@@ -7,7 +7,7 @@ use axum::{
     extract::{Query, State},
     http::StatusCode,
     response::{IntoResponse, Response},
-    routing::post,
+    routing::{get, post},
     Json, Router,
 };
 use serde::{Deserialize, Serialize};
@@ -43,6 +43,7 @@ pub(crate) fn routes() -> Router<AppState> {
         .route("/api/galileo/deploy/status", post(status).get(status_get))
         .route("/api/galileo/deploy/undeploy", post(undeploy))
         .route("/api/galileo/deploy/rollback", post(rollback))
+        .route("/api/galileo/deployments", get(history))
 }
 
 async fn deploy(
@@ -69,6 +70,66 @@ async fn status_get(
     deployment_status(&state, &user.id, &input.project_id).await
 }
 
+#[derive(Debug, Deserialize)]
+struct HistoryQuery {
+    project_id: Option<String>,
+}
+
+#[derive(Debug, Serialize, sqlx::FromRow)]
+struct DeploymentHistoryRow {
+    id: i64,
+    project_id: String,
+    deployment_id: String,
+    url: String,
+    subdomain: Option<String>,
+    status: String,
+    file_count: i64,
+    message: String,
+    created_at: i64,
+}
+
+async fn history(
+    State(state): State<AppState>,
+    auth::AuthenticatedUser(user): auth::AuthenticatedUser,
+    Query(input): Query<HistoryQuery>,
+) -> Response {
+    let Some(pool) = state.db.as_ref() else {
+        return error_response(StatusCode::SERVICE_UNAVAILABLE, "database_unavailable");
+    };
+    let result = match &input.project_id {
+        Some(project_id) if safe_segment(project_id) => {
+            sqlx::query_as::<_, DeploymentHistoryRow>(
+                "SELECT id,project_id,deployment_id,url,subdomain,status,file_count,message,created_at
+                 FROM galileo_deployment_history
+                 WHERE user_id=? AND project_id=?
+                 ORDER BY created_at DESC, id DESC LIMIT 50",
+            )
+            .bind(&user.id)
+            .bind(project_id)
+            .fetch_all(pool)
+            .await
+        }
+        _ => sqlx::query_as::<_, DeploymentHistoryRow>(
+            "SELECT id,project_id,deployment_id,url,subdomain,status,file_count,message,created_at
+             FROM galileo_deployment_history
+             WHERE user_id=?
+             ORDER BY created_at DESC, id DESC LIMIT 100",
+        )
+        .bind(&user.id)
+        .fetch_all(pool)
+        .await,
+    };
+    match result {
+        Ok(deployments) => {
+            Json(serde_json::json!({ "ok": true, "deployments": deployments })).into_response()
+        }
+        Err(error) => {
+            tracing::error!(?error, "deployment history query failed");
+            error_response(StatusCode::SERVICE_UNAVAILABLE, "deployments_unavailable")
+        }
+    }
+}
+
 async fn undeploy(
     State(state): State<AppState>,
     auth::AuthenticatedUser(user): auth::AuthenticatedUser,
@@ -85,7 +146,19 @@ async fn undeploy(
         }
     }
     if let Some(pool) = state.db.as_ref() {
-        let _ = sqlx::query("UPDATE galileo_deployments SET status='undeployed',deployed_at=? WHERE user_id=? AND project_id=?").bind(now()).bind(&user.id).bind(&input.project_id).execute(pool).await;
+        let timestamp = now();
+        let _ = sqlx::query("UPDATE galileo_deployments SET status='undeployed',deployed_at=? WHERE user_id=? AND project_id=?").bind(timestamp).bind(&user.id).bind(&input.project_id).execute(pool).await;
+        let _ = sqlx::query(
+            "INSERT INTO galileo_deployment_history (user_id,project_id,deployment_id,url,subdomain,status,file_count,message,created_at)
+             VALUES (?,?,?,?,NULL,'undeployed',0,'undeployed',?)",
+        )
+        .bind(&user.id)
+        .bind(&input.project_id)
+        .bind(format!("dep_undeploy_{timestamp}"))
+        .bind("")
+        .bind(timestamp)
+        .execute(pool)
+        .await;
     }
     tracing::info!(event = "galileo.deployment.undeployed", user_id = %user.id, project_id = %input.project_id);
     Json(DeploymentResponse {
@@ -137,7 +210,19 @@ async fn rollback(
     let url = deployment_url(&state, &user.id, &input.project_id, None);
     let backup_url = backup_deployment_url(&state, &input.project_id);
     if let Some(pool) = state.db.as_ref() {
-        let _ = sqlx::query("UPDATE galileo_deployments SET status='deployed',url=?,deployed_at=? WHERE user_id=? AND project_id=?").bind(&url).bind(now()).bind(&user.id).bind(&input.project_id).execute(pool).await;
+        let timestamp = now();
+        let _ = sqlx::query("UPDATE galileo_deployments SET status='deployed',url=?,deployed_at=? WHERE user_id=? AND project_id=?").bind(&url).bind(timestamp).bind(&user.id).bind(&input.project_id).execute(pool).await;
+        let _ = sqlx::query(
+            "INSERT INTO galileo_deployment_history (user_id,project_id,deployment_id,url,subdomain,status,file_count,message,created_at)
+             VALUES (?,?,?,?,NULL,'deployed',0,'rollback',?)",
+        )
+        .bind(&user.id)
+        .bind(&input.project_id)
+        .bind("rollback")
+        .bind(&url)
+        .bind(timestamp)
+        .execute(pool)
+        .await;
     }
     Json(DeploymentResponse {
         ok: true,
@@ -218,10 +303,25 @@ async fn publish(
     let url = deployment_url(state, user_id, project_id, subdomain.as_deref());
     let backup_url = backup_deployment_url(state, project_id);
     if let Some(pool) = state.db.as_ref() {
-        let result = sqlx::query("INSERT INTO galileo_deployments (user_id,project_id,deployment_id,url,subdomain,status,file_count,deployed_at) VALUES (?,?,?,?,?, 'deployed',?,?) ON DUPLICATE KEY UPDATE deployment_id=VALUES(deployment_id),url=VALUES(url),subdomain=VALUES(subdomain),status='deployed',file_count=VALUES(file_count),deployed_at=VALUES(deployed_at)").bind(user_id).bind(project_id).bind(&deployment_id).bind(&url).bind(&subdomain).bind(copied as i64).bind(now()).execute(pool).await;
+        let timestamp = now();
+        let result = sqlx::query("INSERT INTO galileo_deployments (user_id,project_id,deployment_id,url,subdomain,status,file_count,deployed_at) VALUES (?,?,?,?,?, 'deployed',?,?) ON DUPLICATE KEY UPDATE deployment_id=VALUES(deployment_id),url=VALUES(url),subdomain=VALUES(subdomain),status='deployed',file_count=VALUES(file_count),deployed_at=VALUES(deployed_at)").bind(user_id).bind(project_id).bind(&deployment_id).bind(&url).bind(&subdomain).bind(copied as i64).bind(timestamp).execute(pool).await;
         if let Err(error) = result {
             tracing::warn!(?error, "deployment record unavailable");
         }
+        let _ = sqlx::query(
+            "INSERT INTO galileo_deployment_history (user_id,project_id,deployment_id,url,subdomain,status,file_count,message,created_at)
+             VALUES (?,?,?,?,?, 'deployed',?,?,?)",
+        )
+        .bind(user_id)
+        .bind(project_id)
+        .bind(&deployment_id)
+        .bind(&url)
+        .bind(&subdomain)
+        .bind(copied as i64)
+        .bind("published")
+        .bind(timestamp)
+        .execute(pool)
+        .await;
     }
     tracing::info!(
         event = "galileo.deployment.published",

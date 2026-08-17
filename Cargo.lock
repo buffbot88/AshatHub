@@ -90,10 +90,12 @@ name = "ashat-hub"
 version = "0.1.0"
 dependencies = [
  "axum",
+ "base64",
  "bcrypt",
  "chrono",
  "rand",
  "reqwest",
+ "rsa",
  "serde",
  "serde_json",
  "sha2",
@@ -1568,6 +1570,7 @@ dependencies = [
  "pkcs1",
  "pkcs8",
  "rand_core",
+ "sha2",
  "signature",
  "spki",
  "subtle",

@@ -70,14 +70,6 @@ pub(crate) fn routes() -> Router<AppState> {
         .route("/api/skills", post(skill_write))
         .route("/api/skills/:name", delete(skill_delete))
         .route("/api/sso/verify-session", post(sso_verify_session))
-        .route("/api/oauth/authorize", get(oidc_retired).post(oidc_retired))
-        .route("/api/oauth/token", post(oidc_retired))
-        .route("/api/oauth/userinfo", get(oidc_retired))
-        .route("/api/oauth/.well-known/jwks.json", get(oidc_retired))
-        .route(
-            "/api/oauth/.well-known/openid-configuration",
-            get(oidc_retired),
-        )
 }
 
 async fn context(
@@ -391,10 +383,6 @@ async fn sso_verify_session(
         }
         Err(_) => error_response(StatusCode::SERVICE_UNAVAILABLE, "auth_unavailable"),
     }
-}
-
-async fn oidc_retired() -> Response {
-    error_response(StatusCode::GONE, "oidc_retired")
 }
 
 fn selected_project(state: &AppState, user_id: &str, project_id: Option<&str>) -> Option<PathBuf> {

@@ -199,6 +199,9 @@ impl FromRequestParts<AppState> for VesperUser {
 pub(crate) fn routes() -> Router<AppState> {
     Router::new()
         .route("/api/v1/auth/login", post(vesper_login))
+        // Mint a Vesper bearer session from an existing cookie session, so
+        // Google-only accounts (no password) can authorize the desktop app.
+        .route("/api/v1/auth/token-from-session", post(vesper_token_from_session))
         .route("/api/v1/auth/status", get(vesper_status))
         .route("/api/v1/auth/logout", post(vesper_logout))
         .route("/api/v1/updates/check", get(vesper_check_update))
@@ -304,6 +307,76 @@ async fn vesper_login(
     }
 
     // Compute quota.
+    let quota_used = get_quota_used(pool, &user.id).await;
+    let quota_total = user_quota_total(&user.role);
+
+    let expires_at = chrono::Utc::now()
+        .checked_add_signed(chrono::Duration::seconds(lifetime_secs))
+        .map(|dt| dt.format("%Y-%m-%dT%H:%M:%SZ").to_string())
+        .unwrap_or_default();
+
+    Json(VesperLoginResponse {
+        session_token,
+        user_id: user.id,
+        username: user.username,
+        role: user.role,
+        quota_bytes: quota_total - quota_used,
+        expires_at,
+    })
+    .into_response()
+}
+
+/// POST /api/v1/auth/token-from-session
+///
+/// Returns a Vesper bearer session_token for the currently authenticated
+/// cookie session. Lets Google-linked accounts (which have no password)
+/// authorize the Vesper desktop app from the web authorization page.
+async fn vesper_token_from_session(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+) -> Response {
+    let Some(pool) = state.db.as_ref() else {
+        return error_response(StatusCode::SERVICE_UNAVAILABLE, "auth_unavailable");
+    };
+
+    let Some(user) = crate::auth::authenticated_user(pool, &state, &headers)
+        .await
+        .ok()
+        .flatten()
+    else {
+        return error_response(StatusCode::UNAUTHORIZED, "unauthenticated");
+    };
+
+    let session_token = new_token();
+    let token_hash = hash_token(&session_token);
+    let session_id = Uuid::new_v4().to_string();
+    let lifetime_secs = state.auth.session_lifetime_seconds.max(30 * 24 * 3600);
+
+    let ip = client_ip(&headers, &state);
+    let ua = headers
+        .get(header::USER_AGENT)
+        .and_then(|v| v.to_str().ok())
+        .unwrap_or("")
+        .to_owned();
+
+    if let Err(error) = sqlx::query(
+        "INSERT INTO vesper_sessions
+            (id, user_id, token_hash, ip, user_agent, created_at, last_seen, expires_at)
+         VALUES (?, ?, ?, ?, ?, UTC_TIMESTAMP(), UTC_TIMESTAMP(), DATE_ADD(UTC_TIMESTAMP(), INTERVAL ? SECOND))",
+    )
+    .bind(&session_id)
+    .bind(&user.id)
+    .bind(&token_hash)
+    .bind(&ip)
+    .bind(&ua)
+    .bind(lifetime_secs)
+    .execute(pool)
+    .await
+    {
+        tracing::error!(?error, "Vesper session mint from cookie failed");
+        return error_response(StatusCode::SERVICE_UNAVAILABLE, "session_unavailable");
+    }
+
     let quota_used = get_quota_used(pool, &user.id).await;
     let quota_total = user_quota_total(&user.role);
 

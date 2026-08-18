@@ -35,6 +35,7 @@ mod conversations;
 mod deployment;
 mod galileo_jobs;
 mod icarus_auth;
+mod mail;
 mod member;
 mod oidc;
 mod preview;
@@ -156,6 +157,7 @@ pub struct AppState {
     targets: Arc<Vec<TelemetryTarget>>,
     pub(crate) db: Option<MySqlPool>,
     pub(crate) auth: AuthConfig,
+    pub(crate) mail: mail::MailConfig,
     pub(crate) projects_root: std::path::PathBuf,
     pub(crate) releases_dir: std::path::PathBuf,
     pub(crate) hub_public_url: Option<String>,
@@ -300,6 +302,10 @@ pub fn state_from_env() -> Result<AppState, Box<dyn std::error::Error + Send + S
         _ => None,
     };
 
+    let hub_public_url = env::var("ASHAT_HUB_PUBLIC_URL")
+        .ok()
+        .filter(|value| !value.trim().is_empty());
+
     let session_lifetime_seconds = env::var("ASHAT_SESSION_LIFETIME")
         .or_else(|_| env::var("SESSION_LIFETIME"))
         .ok()
@@ -317,9 +323,7 @@ pub fn state_from_env() -> Result<AppState, Box<dyn std::error::Error + Send + S
         releases_dir: env::var("ASHAT_RELEASES_DIR")
             .map(std::path::PathBuf::from)
             .unwrap_or_else(|_| std::path::PathBuf::from("storage/vesper-releases")),
-        hub_public_url: env::var("ASHAT_HUB_PUBLIC_URL")
-            .ok()
-            .filter(|v| !v.trim().is_empty()),
+        hub_public_url: hub_public_url.clone(),
         backup_public_url: env::var("ASHAT_BACKUP_PUBLIC_URL")
             .ok()
             .filter(|v| !v.trim().is_empty())
@@ -379,6 +383,7 @@ pub fn state_from_env() -> Result<AppState, Box<dyn std::error::Error + Send + S
                 .ok()
                 .filter(|value| !value.trim().is_empty()),
         },
+        mail: mail::MailConfig::from_env(hub_public_url.as_deref()),
     })
 }
 

@@ -1,7 +1,7 @@
 use std::{net::SocketAddr, time::Duration};
 
 use axum::{
-    extract::{ConnectInfo, FromRequestParts, State},
+    extract::{ConnectInfo, FromRequestParts, Query, State},
     http::{header, request::Parts, HeaderMap, HeaderValue, Method, StatusCode},
     response::{IntoResponse, Response},
     routing::{get, post},
@@ -37,6 +37,27 @@ struct RegisterRequest {
     email: String,
     password: String,
     display_name: Option<String>,
+}
+
+#[derive(Debug, Deserialize)]
+struct VerifyEmailQuery {
+    token: String,
+}
+
+#[derive(Debug, Deserialize)]
+struct ResendVerificationRequest {
+    identifier: String,
+}
+
+#[derive(Debug, Deserialize)]
+struct PasswordResetRequest {
+    identifier: String,
+}
+
+#[derive(Debug, Deserialize)]
+struct PasswordResetConfirm {
+    token: String,
+    password: String,
 }
 
 #[derive(Debug, Serialize)]
@@ -183,6 +204,7 @@ struct UserWithPassword {
     display_name: String,
     role: String,
     is_active: i8,
+    email_verified_at: Option<String>,
 }
 
 #[derive(Debug, FromRow)]
@@ -192,6 +214,7 @@ struct RustSessionUser {
     email: String,
     display_name: String,
     role: String,
+    email_verified_at: Option<String>,
     csrf_hash: String,
 }
 
@@ -202,6 +225,7 @@ struct LegacySessionUser {
     email: String,
     display_name: String,
     role: String,
+    email_verified_at: Option<String>,
 }
 
 #[derive(Debug)]
@@ -223,6 +247,10 @@ pub(crate) fn routes() -> Router<AppState> {
         .route("/api/me", get(me))
         .route("/api/auth/login", post(login))
         .route("/api/auth/register", post(register))
+        .route("/api/auth/verify-email", get(verify_email))
+        .route("/api/auth/verify-email/resend", post(resend_verification))
+        .route("/api/auth/password-reset/request", post(request_password_reset))
+        .route("/api/auth/password-reset/confirm", post(confirm_password_reset))
         .route("/api/auth/logout", post(logout))
         .route("/api/account", get(account).put(update_account))
 }
@@ -256,7 +284,8 @@ async fn login(
     }
 
     let user = match sqlx::query_as::<_, UserWithPassword>(
-        "SELECT id, username, email, password_hash, display_name, role, is_active
+        "SELECT id, username, email, password_hash, display_name, role, is_active,
+                CAST(email_verified_at AS CHAR) AS email_verified_at
          FROM users WHERE username = ? OR email = ? LIMIT 1",
     )
     .bind(identifier)
@@ -305,6 +334,10 @@ async fn login(
             reason = "invalid_credentials"
         );
         return error_response(StatusCode::UNAUTHORIZED, "invalid_credentials");
+    }
+
+    if state.auth.email_verification_enabled && user.email_verified_at.is_none() {
+        return error_response(StatusCode::FORBIDDEN, "email_verification_required");
     }
 
     tracing::info!(
@@ -356,65 +389,431 @@ async fn register(
         return error_response(StatusCode::SERVICE_UNAVAILABLE, "auth_unavailable");
     };
     let rate_key = format!("register:{}", client_key(&headers, &state.auth, peer));
-    if let Some(retry_after) =
-        state
-            .auth_rate_limiter
-            .check(&rate_key, 5, Duration::from_secs(3600))
+    if let Some(retry_after) = state
+        .auth_rate_limiter
+        .check(&rate_key, 5, Duration::from_secs(3600))
     {
         return rate_limit_response(retry_after);
     }
-    if state.auth.email_verification_enabled {
-        return error_response(
-            StatusCode::SERVICE_UNAVAILABLE,
-            "email_verification_not_configured",
-        );
-    }
-    let username = input.username.trim();
-    let email = input.email.trim();
-    let display_name = input.display_name.as_deref().unwrap_or(username).trim();
+
+    let username = input.username.trim().to_owned();
+    let email = input.email.trim().to_owned();
+    let display_name = input
+        .display_name
+        .as_deref()
+        .unwrap_or(username.as_str())
+        .trim()
+        .to_owned();
     if username.len() < 3
         || username.len() > 30
         || !username
             .bytes()
             .all(|byte| byte.is_ascii_alphanumeric() || byte == b'_')
-        || email.len() > 255
-        || !email.contains('@')
+        || !valid_email(&email)
         || input.password.len() < 8
         || display_name.is_empty()
         || display_name.chars().count() > 200
     {
         return error_response(StatusCode::BAD_REQUEST, "invalid_registration");
     }
-    let exists =
-        sqlx::query_scalar::<_, i64>("SELECT COUNT(*) FROM users WHERE username=? OR email=?")
-            .bind(username)
-            .bind(email)
-            .fetch_one(pool)
-            .await
-            .unwrap_or(1);
+
+    let exists = sqlx::query_scalar::<_, i64>(
+        "SELECT COUNT(*) FROM users WHERE username=? OR email=?",
+    )
+    .bind(&username)
+    .bind(&email)
+    .fetch_one(pool)
+    .await
+    .unwrap_or(1);
     if exists != 0 {
         return error_response(StatusCode::CONFLICT, "username_or_email_taken");
     }
-    let password_hash =
-        match tokio::task::spawn_blocking(move || hash(input.password, DEFAULT_COST)).await {
-            Ok(Ok(value)) => value,
-            _ => {
-                return error_response(StatusCode::SERVICE_UNAVAILABLE, "registration_unavailable")
-            }
-        };
+
+    let password_hash = match tokio::task::spawn_blocking(move || hash(input.password, DEFAULT_COST)).await {
+        Ok(Ok(value)) => value,
+        _ => return error_response(StatusCode::SERVICE_UNAVAILABLE, "registration_unavailable"),
+    };
     let id = Uuid::new_v4().to_string();
-    if let Err(error) = sqlx::query("INSERT INTO users (id,username,email,password_hash,display_name,role,is_active) VALUES (?,?,?,? ,?,'Member',1)")
-        .bind(&id).bind(username).bind(email).bind(password_hash).bind(display_name).execute(pool).await {
+
+    if !state.auth.email_verification_enabled {
+        if let Err(error) = sqlx::query(
+            "INSERT INTO users (id,username,email,password_hash,display_name,role,is_active)
+             VALUES (?,?,?,?,?,'Member',1)",
+        )
+        .bind(&id)
+        .bind(&username)
+        .bind(&email)
+        .bind(password_hash)
+        .bind(&display_name)
+        .execute(pool)
+        .await
+        {
+            tracing::error!(?error, "registration insert failed");
+            return error_response(StatusCode::CONFLICT, "username_or_email_taken");
+        }
+        tracing::info!(
+            event = "auth.register.success",
+            request_id = %request_id(&headers),
+            user_id = %id
+        );
+        return (StatusCode::CREATED, Json(serde_json::json!({
+            "registered": true,
+            "verification_required": false,
+            "user": {
+                "id": id,
+                "username": username,
+                "email": email,
+                "display_name": display_name,
+                "role": "Member"
+            }
+        })))
+        .into_response();
+    }
+
+    let token = new_token();
+    let mut transaction = match pool.begin().await {
+        Ok(transaction) => transaction,
+        Err(error) => {
+            tracing::error!(?error, "registration transaction failed");
+            return error_response(StatusCode::SERVICE_UNAVAILABLE, "registration_unavailable");
+        }
+    };
+    if let Err(error) = sqlx::query(
+        "INSERT INTO users (id,username,email,password_hash,display_name,role,is_active)
+         VALUES (?,?,?,?,?,'Member',1)",
+    )
+    .bind(&id)
+    .bind(&username)
+    .bind(&email)
+    .bind(password_hash)
+    .bind(&display_name)
+    .execute(&mut *transaction)
+    .await
+    {
         tracing::error!(?error, "registration insert failed");
         return error_response(StatusCode::CONFLICT, "username_or_email_taken");
     }
+    let _ = sqlx::query("DELETE FROM email_verifications WHERE user_id=? AND used=0")
+        .bind(&id)
+        .execute(&mut *transaction)
+        .await;
+    if let Err(error) = sqlx::query(
+        "INSERT INTO email_verifications (id,user_id,token_hash,expires_at,used)
+         VALUES (?,?,?,DATE_ADD(UTC_TIMESTAMP(), INTERVAL 24 HOUR),0)",
+    )
+    .bind(Uuid::new_v4().to_string())
+    .bind(&id)
+    .bind(hash_token(&token))
+    .execute(&mut *transaction)
+    .await
+    {
+        tracing::error!(?error, "verification token insert failed");
+        return error_response(StatusCode::SERVICE_UNAVAILABLE, "registration_unavailable");
+    }
+
+    if let Err(error) = send_verification_email(&state, &email, &display_name, &token).await {
+        tracing::error!(?error, user_id = %id, "verification email delivery failed");
+        return error_response(StatusCode::SERVICE_UNAVAILABLE, "email_delivery_unavailable");
+    }
+    if let Err(error) = transaction.commit().await {
+        tracing::error!(?error, "registration transaction commit failed");
+        return error_response(StatusCode::SERVICE_UNAVAILABLE, "registration_unavailable");
+    }
+
     tracing::info!(
-        event = "auth.register.success",
+        event = "auth.register.pending_verification",
         request_id = %request_id(&headers),
         user_id = %id
     );
-    (StatusCode::CREATED, Json(serde_json::json!({"registered": true, "verification_required": false, "user": {"id": id, "username": username, "email": email, "display_name": display_name, "role": "Member"}}))).into_response()
+    (StatusCode::ACCEPTED, Json(serde_json::json!({
+        "registered": true,
+        "verification_required": true,
+        "email": email
+    })))
+    .into_response()
 }
+
+async fn verify_email(
+    State(state): State<AppState>,
+    Query(query): Query<VerifyEmailQuery>,
+) -> Response {
+    let Some(pool) = state.db.as_ref() else {
+        return error_response(StatusCode::SERVICE_UNAVAILABLE, "auth_unavailable");
+    };
+    if query.token.len() < 32 || query.token.len() > 128 {
+        return error_response(StatusCode::BAD_REQUEST, "verification_invalid");
+    }
+
+    let mut transaction = match pool.begin().await {
+        Ok(transaction) => transaction,
+        Err(error) => {
+            tracing::error!(?error, "verification transaction failed");
+            return error_response(StatusCode::SERVICE_UNAVAILABLE, "auth_unavailable");
+        }
+    };
+    let row = sqlx::query_as::<_, (String,)>(
+        "SELECT user_id FROM email_verifications
+         WHERE token_hash=? AND used=0 AND expires_at > UTC_TIMESTAMP()
+         FOR UPDATE",
+    )
+    .bind(hash_token(&query.token))
+    .fetch_optional(&mut *transaction)
+    .await;
+    let Some((user_id,)) = (match row {
+        Ok(row) => row,
+        Err(error) => {
+            tracing::error!(?error, "verification lookup failed");
+            return error_response(StatusCode::SERVICE_UNAVAILABLE, "auth_unavailable");
+        }
+    }) else {
+        return error_response(StatusCode::BAD_REQUEST, "verification_invalid");
+    };
+
+    if let Err(error) = sqlx::query("UPDATE users SET email_verified_at=UTC_TIMESTAMP() WHERE id=?")
+        .bind(&user_id)
+        .execute(&mut *transaction)
+        .await
+    {
+        tracing::error!(?error, "email verification update failed");
+        return error_response(StatusCode::SERVICE_UNAVAILABLE, "auth_unavailable");
+    }
+    if let Err(error) = sqlx::query(
+        "UPDATE email_verifications SET used=1 WHERE token_hash=?",
+    )
+    .bind(hash_token(&query.token))
+    .execute(&mut *transaction)
+    .await
+    {
+        tracing::error!(?error, "email verification token update failed");
+        return error_response(StatusCode::SERVICE_UNAVAILABLE, "auth_unavailable");
+    }
+    if let Err(error) = transaction.commit().await {
+        tracing::error!(?error, "email verification commit failed");
+        return error_response(StatusCode::SERVICE_UNAVAILABLE, "auth_unavailable");
+    }
+    Json(serde_json::json!({"verified": true})).into_response()
+}
+
+async fn resend_verification(
+    State(state): State<AppState>,
+    ConnectInfo(peer): ConnectInfo<SocketAddr>,
+    headers: HeaderMap,
+    Json(input): Json<ResendVerificationRequest>,
+) -> Response {
+    let Some(pool) = state.db.as_ref() else {
+        return error_response(StatusCode::SERVICE_UNAVAILABLE, "auth_unavailable");
+    };
+    let identifier = input.identifier.trim();
+    if identifier.is_empty() || identifier.len() > 254 {
+        return error_response(StatusCode::BAD_REQUEST, "invalid_identifier");
+    }
+    let rate_key = format!(
+        "verification-resend:{}:{}",
+        client_key(&headers, &state.auth, peer),
+        identifier.to_ascii_lowercase()
+    );
+    if let Some(retry_after) = state
+        .auth_rate_limiter
+        .check(&rate_key, 3, Duration::from_secs(3600))
+    {
+        return rate_limit_response(retry_after);
+    }
+
+    let user = sqlx::query_as::<_, (String, String, String, Option<String>)>(
+        "SELECT id,email,display_name,CAST(email_verified_at AS CHAR) AS email_verified_at
+         FROM users WHERE (username=? OR email=?) AND is_active=1 LIMIT 1",
+    )
+    .bind(identifier)
+    .bind(identifier)
+    .fetch_optional(pool)
+    .await;
+    if let Ok(Some((user_id, email, display_name, verified_at))) = user {
+        if verified_at.is_none() {
+            let token = new_token();
+            let _ = sqlx::query("DELETE FROM email_verifications WHERE user_id=? AND used=0")
+                .bind(&user_id)
+                .execute(pool)
+                .await;
+            if let Err(error) = sqlx::query(
+                "INSERT INTO email_verifications (id,user_id,token_hash,expires_at,used)
+                 VALUES (?,?,?,DATE_ADD(UTC_TIMESTAMP(), INTERVAL 24 HOUR),0)",
+            )
+            .bind(Uuid::new_v4().to_string())
+            .bind(&user_id)
+            .bind(hash_token(&token))
+            .execute(pool)
+            .await
+            {
+                tracing::warn!(?error, user_id = %user_id, "unable to store resent verification token");
+            } else if let Err(error) =
+                send_verification_email(&state, &email, &display_name, &token).await
+            {
+                tracing::error!(?error, user_id = %user_id, "resent verification email delivery failed");
+            }
+        }
+    }
+    (StatusCode::ACCEPTED, Json(serde_json::json!({"sent": true}))).into_response()
+}
+
+async fn request_password_reset(
+    State(state): State<AppState>,
+    ConnectInfo(peer): ConnectInfo<SocketAddr>,
+    headers: HeaderMap,
+    Json(input): Json<PasswordResetRequest>,
+) -> Response {
+    let Some(pool) = state.db.as_ref() else {
+        return error_response(StatusCode::SERVICE_UNAVAILABLE, "auth_unavailable");
+    };
+    let identifier = input.identifier.trim();
+    if identifier.is_empty() || identifier.len() > 254 {
+        return error_response(StatusCode::BAD_REQUEST, "invalid_identifier");
+    }
+    let rate_key = format!(
+        "password-reset:{}:{}",
+        client_key(&headers, &state.auth, peer),
+        identifier.to_ascii_lowercase()
+    );
+    if let Some(retry_after) = state
+        .auth_rate_limiter
+        .check(&rate_key, 3, Duration::from_secs(3600))
+    {
+        return rate_limit_response(retry_after);
+    }
+
+    let user = sqlx::query_as::<_, (String, String, String, Option<String>)>(
+        "SELECT id,email,display_name,CAST(email_verified_at AS CHAR) AS email_verified_at
+         FROM users WHERE (username=? OR email=?) AND is_active=1 LIMIT 1",
+    )
+    .bind(identifier)
+    .bind(identifier)
+    .fetch_optional(pool)
+    .await;
+    if let Ok(Some((user_id, email, display_name, Some(_)))) = user {
+        let token = new_token();
+        let _ = sqlx::query("DELETE FROM password_resets WHERE user_id=? AND used=0")
+            .bind(&user_id)
+            .execute(pool)
+            .await;
+        if let Err(error) = sqlx::query(
+            "INSERT INTO password_resets (id,user_id,token_hash,expires_at,used)
+             VALUES (?,?,?,DATE_ADD(UTC_TIMESTAMP(), INTERVAL 1 HOUR),0)",
+        )
+        .bind(Uuid::new_v4().to_string())
+        .bind(&user_id)
+        .bind(hash_token(&token))
+        .execute(pool)
+        .await
+        {
+            tracing::warn!(?error, user_id = %user_id, "unable to store password reset token");
+        } else if let Err(error) = send_password_reset_email(&state, &email, &display_name, &token).await {
+            tracing::error!(?error, user_id = %user_id, "password reset email delivery failed");
+        }
+    }
+    (StatusCode::ACCEPTED, Json(serde_json::json!({"sent": true}))).into_response()
+}
+
+async fn confirm_password_reset(
+    State(state): State<AppState>,
+    Json(input): Json<PasswordResetConfirm>,
+) -> Response {
+    let Some(pool) = state.db.as_ref() else {
+        return error_response(StatusCode::SERVICE_UNAVAILABLE, "auth_unavailable");
+    };
+    if input.token.len() < 32 || input.token.len() > 128 || input.password.len() < 8 {
+        return error_response(StatusCode::BAD_REQUEST, "invalid_password_reset");
+    }
+    let mut transaction = match pool.begin().await {
+        Ok(transaction) => transaction,
+        Err(error) => {
+            tracing::error!(?error, "password reset transaction failed");
+            return error_response(StatusCode::SERVICE_UNAVAILABLE, "auth_unavailable");
+        }
+    };
+    let row = sqlx::query_as::<_, (String, String)>(
+        "SELECT id,user_id FROM password_resets
+         WHERE token_hash=? AND used=0 AND expires_at > UTC_TIMESTAMP()
+         FOR UPDATE",
+    )
+    .bind(hash_token(&input.token))
+    .fetch_optional(&mut *transaction)
+    .await;
+    let Some((reset_id, user_id)) = (match row {
+        Ok(row) => row,
+        Err(error) => {
+            tracing::error!(?error, "password reset lookup failed");
+            return error_response(StatusCode::SERVICE_UNAVAILABLE, "auth_unavailable");
+        }
+    }) else {
+        return error_response(StatusCode::BAD_REQUEST, "invalid_password_reset");
+    };
+    let password_hash = match tokio::task::spawn_blocking(move || hash(input.password, DEFAULT_COST)).await {
+        Ok(Ok(value)) => value,
+        _ => return error_response(StatusCode::SERVICE_UNAVAILABLE, "password_reset_unavailable"),
+    };
+    if let Err(error) = sqlx::query("UPDATE users SET password_hash=?,email_verified_at=COALESCE(email_verified_at,UTC_TIMESTAMP()) WHERE id=?")
+        .bind(password_hash)
+        .bind(&user_id)
+        .execute(&mut *transaction)
+        .await
+    {
+        tracing::error!(?error, "password reset update failed");
+        return error_response(StatusCode::SERVICE_UNAVAILABLE, "password_reset_unavailable");
+    }
+    let _ = sqlx::query("UPDATE password_resets SET used=1 WHERE id=?")
+        .bind(&reset_id)
+        .execute(&mut *transaction)
+        .await;
+    let _ = sqlx::query("DELETE FROM rust_sessions WHERE user_id=?")
+        .bind(&user_id)
+        .execute(&mut *transaction)
+        .await;
+    let _ = sqlx::query("DELETE FROM vesper_sessions WHERE user_id=?")
+        .bind(&user_id)
+        .execute(&mut *transaction)
+        .await;
+    let _ = sqlx::query("DELETE FROM sessions WHERE user_id=?")
+        .bind(&user_id)
+        .execute(&mut *transaction)
+        .await;
+    if let Err(error) = transaction.commit().await {
+        tracing::error!(?error, "password reset commit failed");
+        return error_response(StatusCode::SERVICE_UNAVAILABLE, "password_reset_unavailable");
+    }
+    Json(serde_json::json!({"reset": true})).into_response()
+}
+
+async fn send_verification_email(
+    state: &AppState,
+    email: &str,
+    display_name: &str,
+    token: &str,
+) -> Result<(), String> {
+    let url = state
+        .mail
+        .verification_url(token)
+        .ok_or_else(|| "ASHAT_HUB_PUBLIC_URL is not configured".to_owned())?;
+    let body = format!(
+        "Hello {display_name},\n\nVerify your AGP Studios account by opening this link:\n{url}\n\nThis link expires in 24 hours. If you did not create this account, you can ignore this message.\n"
+    );
+    crate::mail::send_text(&state.mail, email, "Verify your AGP Studios account", &body).await
+}
+
+async fn send_password_reset_email(
+    state: &AppState,
+    email: &str,
+    display_name: &str,
+    token: &str,
+) -> Result<(), String> {
+    let url = state
+        .mail
+        .password_reset_url(token)
+        .ok_or_else(|| "ASHAT_HUB_PUBLIC_URL is not configured".to_owned())?;
+    let body = format!(
+        "Hello {display_name},\n\nReset your AGP Studios password by opening this link:\n{url}\n\nThis link expires in 1 hour. If you did not request a reset, you can ignore this message.\n"
+    );
+    crate::mail::send_text(&state.mail, email, "Reset your AGP Studios password", &body).await
+}
+
 
 async fn session(State(state): State<AppState>, headers: HeaderMap) -> Response {
     let Some(pool) = state.db.as_ref() else {
@@ -545,7 +944,9 @@ async fn update_account(
         return error_response(StatusCode::SERVICE_UNAVAILABLE, "profile_unavailable");
     }
     match sqlx::query_as::<_, UserWithPassword>(
-        "SELECT id,username,email,password_hash,display_name,role,is_active FROM users WHERE id=?",
+        "SELECT id,username,email,password_hash,display_name,role,is_active,
+                CAST(email_verified_at AS CHAR) AS email_verified_at
+         FROM users WHERE id=?",
     )
     .bind(&current.user.id)
     .fetch_optional(pool)
@@ -625,7 +1026,12 @@ pub(crate) async fn enforce_csrf(
     if !matches!(method, &Method::POST | &Method::PUT | &Method::DELETE)
         || matches!(
             path,
-            "/api/auth/login" | "/api/auth/register" | "/api/sso/verify-session"
+            "/api/auth/login"
+                | "/api/auth/register"
+                | "/api/auth/verify-email/resend"
+                | "/api/auth/password-reset/request"
+                | "/api/auth/password-reset/confirm"
+                | "/api/sso/verify-session"
             | "/api/v1/auth/login" | "/api/v1/auth/status" | "/api/v1/auth/logout"
             | "/api/v1/models/announce"
             // Icarus device flow: the CLI has no session cookie when it
@@ -682,7 +1088,8 @@ async fn current_auth(
 ) -> Result<Option<CurrentAuth>, sqlx::Error> {
     if let Some(token) = cookie_value(headers, &state.auth.cookie_name) {
         let row = sqlx::query_as::<_, RustSessionUser>(
-            "SELECT u.id, u.username, u.email, u.display_name, u.role, s.csrf_hash
+            "SELECT u.id, u.username, u.email, u.display_name, u.role,
+                    CAST(u.email_verified_at AS CHAR) AS email_verified_at, s.csrf_hash
              FROM rust_sessions s
              INNER JOIN users u ON u.id = s.user_id
              WHERE s.session_hash = ? AND s.expires_at > UTC_TIMESTAMP() AND u.is_active = 1
@@ -692,6 +1099,9 @@ async fn current_auth(
         .fetch_optional(pool)
         .await?;
         if let Some(row) = row {
+            if state.auth.email_verification_enabled && row.email_verified_at.is_none() {
+                return Ok(None);
+            }
             let _ = sqlx::query(
                 "UPDATE rust_sessions SET last_seen = UTC_TIMESTAMP() WHERE session_hash = ?",
             )
@@ -718,7 +1128,8 @@ async fn current_auth(
     // the same browser without reading PHP's serialized session files.
     if let Some(token) = cookie_value(headers, &state.auth.legacy_cookie_name) {
         let row = sqlx::query_as::<_, LegacySessionUser>(
-            "SELECT u.id, u.username, u.email, u.display_name, u.role
+            "SELECT u.id, u.username, u.email, u.display_name, u.role,
+                    CAST(u.email_verified_at AS CHAR) AS email_verified_at
              FROM sessions s
              INNER JOIN users u ON u.id = s.user_id
              WHERE s.id = ? AND s.expires_at > UTC_TIMESTAMP() AND u.is_active = 1
@@ -728,6 +1139,9 @@ async fn current_auth(
         .fetch_optional(pool)
         .await?;
         if let Some(row) = row {
+            if state.auth.email_verification_enabled && row.email_verified_at.is_none() {
+                return Ok(None);
+            }
             return Ok(Some(CurrentAuth {
                 user: PublicUser {
                     id: row.id,
@@ -807,6 +1221,14 @@ pub(crate) fn hash_token(token: &str) -> String {
     let mut hasher = Sha256::new();
     hasher.update(token.as_bytes());
     format!("{:x}", hasher.finalize())
+}
+
+fn valid_email(value: &str) -> bool {
+    value.len() <= 255
+        && value.contains('@')
+        && !value.chars().any(|character| matches!(character, ' ' | '\r' | '\n'))
+        && value.split('@').count() == 2
+        && value.split('@').all(|part| !part.is_empty())
 }
 
 fn constant_time_equal(left: &str, right: &str) -> bool {

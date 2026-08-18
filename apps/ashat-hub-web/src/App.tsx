@@ -17,7 +17,7 @@ interface ServerSnapshot { id: string; label: string; online: boolean; active_us
 interface TelemetryResponse { servers: ServerSnapshot[]; slowest_tokens_per_second: number; fastest_tokens_per_second: number; total_tokens_generated: number; updated_at: number }
 interface ShowcaseProject { id: string; name: string; description: string; category: string; status: string; updated: string }
 interface ShowcaseResponse { projects: ShowcaseProject[] }
-type View = 'home' | 'projects' | 'games' | 'galileo' | 'community' | 'docs' | 'support' | 'account' | 'activity' | 'telemetry' | 'admin' | 'terms' | 'privacy' | 'vesper-auth' | 'error';
+type View = 'home' | 'projects' | 'games' | 'galileo' | 'community' | 'docs' | 'support' | 'account' | 'activity' | 'telemetry' | 'admin' | 'terms' | 'privacy' | 'vesper-auth' | 'verify-email' | 'reset-password' | 'error';
 
 function viewForPath(path: string): View {
   if (path === '/projects') return 'projects';
@@ -33,6 +33,8 @@ function viewForPath(path: string): View {
   if (path.startsWith('/terms')) return 'terms';
   if (path.startsWith('/privacy')) return 'privacy';
   if (path.startsWith('/auth/vesper')) return 'vesper-auth';
+  if (path.startsWith('/auth/verify-email')) return 'verify-email';
+  if (path.startsWith('/auth/reset-password')) return 'reset-password';
   if (path.startsWith('/error')) return 'error';
   return 'home';
 }
@@ -164,6 +166,8 @@ export default function App() {
       .catch(() => {});
   }, [showPalette, user]);
   if (view === 'vesper-auth') return <VesperAuthPage />;
+  if (view === 'verify-email') return <EmailVerificationPage />;
+  if (view === 'reset-password') return <PasswordResetPage />;
   const memberTab: MemberTab | undefined = ['community', 'docs', 'support', 'account', 'activity'].includes(view) ? view as MemberTab : undefined;
   const showMemberSurface = ['community', 'docs', 'support', 'account', 'activity'].includes(view);
 
@@ -279,6 +283,70 @@ export default function App() {
       {!showWorkspace && !showPalette && <StudioFooter navigate={navigate} />}
     </main>
   );
+}
+
+function EmailVerificationPage() {
+  const token = new URLSearchParams(window.location.search).get('token') || '';
+  const [status, setStatus] = useState<'loading' | 'success' | 'error'>('loading');
+  const [message, setMessage] = useState('Verifying your email address…');
+
+  useEffect(() => {
+    if (!token) {
+      setStatus('error');
+      setMessage('This verification link is missing its token.');
+      return;
+    }
+    fetch(`/api/auth/verify-email?token=${encodeURIComponent(token)}`, { credentials: 'same-origin' })
+      .then(async (response) => {
+        const data = await response.json() as { error?: { message?: string; code?: string } };
+        if (!response.ok) throw new Error(data.error?.message || data.error?.code || 'This verification link is invalid or expired.');
+        setStatus('success');
+        setMessage('Your email is verified. You can now sign in to AGP Studios.');
+      })
+      .catch((reason) => {
+        setStatus('error');
+        setMessage(reason instanceof Error ? reason.message : 'This verification link is invalid or expired.');
+      });
+  }, [token]);
+
+  return <main className="vesper-auth-page auth-action-page"><section className="vesper-auth-card"><span className="eyebrow">AGP Studios</span><h1>{status === 'loading' ? 'Verifying email' : status === 'success' ? 'Email verified' : 'Verification failed'}</h1><p className={status === 'error' ? 'auth-error' : 'muted'}>{message}</p><a className="primary-button auth-action-link" href="/">Return to AGP Studios</a></section></main>;
+}
+
+function PasswordResetPage() {
+  const token = new URLSearchParams(window.location.search).get('token') || '';
+  const [password, setPassword] = useState('');
+  const [confirmation, setConfirmation] = useState('');
+  const [message, setMessage] = useState('');
+  const [error, setError] = useState('');
+  const [busy, setBusy] = useState(false);
+  const [complete, setComplete] = useState(false);
+
+  async function submit(event: FormEvent) {
+    event.preventDefault();
+    setError('');
+    setMessage('');
+    if (!token) { setError('This password reset link is missing its token.'); return; }
+    if (password.length < 8) { setError('Password must be at least 8 characters.'); return; }
+    if (password !== confirmation) { setError('Passwords do not match.'); return; }
+    setBusy(true);
+    try {
+      const response = await fetch('/api/auth/password-reset/confirm', {
+        method: 'POST', credentials: 'same-origin',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ token, password }),
+      });
+      const data = await response.json() as { error?: { message?: string; code?: string } };
+      if (!response.ok) throw new Error(data.error?.message || data.error?.code || 'This reset link is invalid or expired.');
+      setComplete(true);
+      setMessage('Your password has been changed. You can now sign in.');
+    } catch (reason) {
+      setError(reason instanceof Error ? reason.message : 'Password reset failed.');
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return <main className="vesper-auth-page auth-action-page"><section className="vesper-auth-card"><span className="eyebrow">AGP Studios</span><h1>Reset your password</h1>{complete ? <><p className="auth-success">{message}</p><a className="primary-button auth-action-link" href="/">Return to sign in</a></> : <form onSubmit={(event) => void submit(event)}><input value={password} onChange={(event) => setPassword(event.target.value)} placeholder="New password" type="password" autoComplete="new-password" required /><input value={confirmation} onChange={(event) => setConfirmation(event.target.value)} placeholder="Confirm password" type="password" autoComplete="new-password" required /><button type="submit" className="primary-button" disabled={busy}>{busy ? 'Saving…' : 'Set new password'}</button>{error && <small className="auth-error">{error}</small>}</form>}</section></main>;
 }
 
 function VesperAuthPage() {

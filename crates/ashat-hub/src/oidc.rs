@@ -188,6 +188,7 @@ struct AuthorizeLoginForm {
 struct OidcUserWithPassword {
     id: String,
     password_hash: String,
+    email_verified_at: Option<String>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -340,7 +341,7 @@ async fn authorize_login(
     }
 
     let user = match sqlx::query_as::<_, OidcUserWithPassword>(
-        "SELECT id, password_hash
+        "SELECT id, password_hash, CAST(email_verified_at AS CHAR) AS email_verified_at
          FROM users
          WHERE (username = ? OR email = ?) AND is_active = 1
          LIMIT 1",
@@ -371,6 +372,9 @@ async fn authorize_login(
     .unwrap_or(false);
     if !valid {
         return authorize_error("invalid_credentials");
+    }
+    if state.auth.email_verification_enabled && user.email_verified_at.is_none() {
+        return authorize_error("email_verification_required");
     }
 
     // Create a hub session so the follow-up authorize GET issues the code.

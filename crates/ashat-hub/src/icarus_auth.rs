@@ -51,6 +51,7 @@ struct LoginForm {
 struct UserWithPassword {
     id: String,
     password_hash: String,
+    email_verified_at: Option<String>,
 }
 
 #[derive(Debug, Serialize)]
@@ -254,7 +255,7 @@ async fn login_submit(State(state): State<AppState>, Form(form): Form<LoginForm>
     }
 
     let user = match sqlx::query_as::<_, UserWithPassword>(
-        "SELECT id, password_hash
+        "SELECT id, password_hash, CAST(email_verified_at AS CHAR) AS email_verified_at
          FROM users
          WHERE (username = ? OR email = ?) AND is_active = 1
          LIMIT 1",
@@ -290,6 +291,12 @@ async fn login_submit(State(state): State<AppState>, Form(form): Form<LoginForm>
         return html_response(login_error_page(
             &form.code,
             "Invalid username or password.",
+        ));
+    }
+    if state.auth.email_verification_enabled && user.email_verified_at.is_none() {
+        return html_response(login_error_page(
+            &form.code,
+            "Verify your email address before signing in.",
         ));
     }
 

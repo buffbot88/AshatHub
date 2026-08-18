@@ -132,7 +132,7 @@ Current DNS state:
 - DMARC is present with `p=none`.
 - `mail.agpstudios.org` and DKIM records are not yet configured.
 
-The initial mailbox scope is intentionally one account: `admin@agpstudios.org`. The mail stack will be Postfix (SMTP), Dovecot (IMAP), and Rspamd (filtering), with DKIM signing, SPF, DMARC, backups, queue monitoring, and rate limits. Ashat AI may classify, search, summarize, and draft mail; it must not have unrestricted autonomous send or DNS authority.
+The initial mailbox scope is intentionally one account: `admin@agpstudios.org`. The mail stack will be Postfix (SMTP), Dovecot (IMAP), and Rspamd (filtering), with DKIM signing, SPF, DMARC, backups, queue monitoring, and rate limits. Ashat AI may classify, search, summarize, and draft mail; it must not have unrestricted autonomous send or DNS authority. The staged application integration and the destructive-member-reset controls are documented in `docs/mail-and-member-reset-runbook.md`.
 
 Mail migration is staged and must not begin with an MX cutover:
 
@@ -143,6 +143,8 @@ Mail migration is staged and must not begin with an MX cutover:
 5. Test delivery and reputation from the Oracle VM.
 6. Change MX from IONOS only after the mailbox and rollback path are verified.
 7. Keep IONOS mail settings documented until the cutover is proven.
+
+The Rust/Vite application now contains the mail integration behind explicit environment configuration: it submits bounded authentication messages to the local `/usr/sbin/sendmail` interface, stores only hashed verification/reset tokens, enforces verified email across Hub/Vesper/Icarus/OIDC login paths, and exposes verification/resend/password-reset routes. Production must not set `ASHAT_EMAIL_VERIFICATION_ENABLED=true` until the mail host and DNS gates in `docs/mail-and-member-reset-runbook.md` pass.
 
 The VM had 30 GB mounted for `/` and was at 93% usage before cleanup. Build artifacts, package caches, and an old model core dump were removed with approval; it is now approximately 76% used with 7.4 GB free. Storage expansion/layout must be audited before accepting additional mail or tenant data.
 

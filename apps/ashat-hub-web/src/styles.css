@@ -79,6 +79,8 @@ button:disabled { cursor: not-allowed; opacity: .5; }
 .auth-btn-unlink:hover { color: var(--err); border-color: var(--err); }
 .auth-logout { padding: 5px 8px; border-radius: 5px; font-size: 11px; }
 .auth-error { display: block; margin-top: 4px; color: var(--err); font-size: 12px; }
+.auth-success { display: block; margin-top: 4px; color: var(--ok); font-size: 12px; }
+.auth-action-link { display: inline-block; margin-top: 12px; color: #17130b; text-decoration: none; text-align: center; }
 
 /* ── Hero ── */
 

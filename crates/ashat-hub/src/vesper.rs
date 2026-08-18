@@ -85,6 +85,7 @@ struct VesperUserRow {
     password_hash: String,
     role: String,
     is_active: i8,
+    email_verified_at: Option<String>,
 }
 
 #[derive(Debug, FromRow)]
@@ -169,7 +170,8 @@ impl FromRequestParts<AppState> for VesperUser {
 
         // Look up user.
         let user = sqlx::query_as::<_, VesperUserRow>(
-            "SELECT id, username, password_hash, role, is_active
+            "SELECT id, username, password_hash, role, is_active,
+                    CAST(email_verified_at AS CHAR) AS email_verified_at
              FROM users WHERE id = ? AND is_active = 1 LIMIT 1",
         )
         .bind(&session.user_id)
@@ -240,7 +242,8 @@ async fn vesper_login(
 
     // Look up user.
     let user = sqlx::query_as::<_, VesperUserRow>(
-        "SELECT id, username, password_hash, role, is_active
+        "SELECT id, username, password_hash, role, is_active,
+                CAST(email_verified_at AS CHAR) AS email_verified_at
          FROM users WHERE username = ? OR email = ? LIMIT 1",
     )
     .bind(identifier)
@@ -271,6 +274,9 @@ async fn vesper_login(
     if !valid {
         state.metrics.record_auth_failure();
         return error_response(StatusCode::UNAUTHORIZED, "invalid_credentials");
+    }
+    if state.auth.email_verification_enabled && user.email_verified_at.is_none() {
+        return error_response(StatusCode::FORBIDDEN, "email_verification_required");
     }
 
     state.auth_rate_limiter.clear(&rate_key);
@@ -446,7 +452,8 @@ async fn vesper_status(
     };
 
     let user = sqlx::query_as::<_, VesperUserRow>(
-        "SELECT id, username, password_hash, role, is_active
+        "SELECT id, username, password_hash, role, is_active,
+                CAST(email_verified_at AS CHAR) AS email_verified_at
          FROM users WHERE id = ? AND is_active = 1 LIMIT 1",
     )
     .bind(&session.user_id)

@@ -66,15 +66,18 @@ PHP source: `src/Core/routes/auth.php`, `AuthController`.
 - [x] `GET /api/account` — Rust owner-scoped profile read.
 - [x] `PUT /api/account` — Rust CSRF-protected profile update.
 - [x] `POST /api/auth/login` — Rust login against shared users and bcrypt hashes.
-- [x] `POST /api/auth/register` — Rust account creation with duplicate checks and password policy when verification is disabled.
+- [x] `POST /api/auth/register` — Rust account creation with duplicate checks, password policy, and optional email verification.
+- [x] `GET /api/auth/verify-email` and `POST /api/auth/verify-email/resend` — hashed, expiring verification flow with throttled resend.
+- [x] `POST /api/auth/password-reset/request` and `/confirm` — hashed, expiring password-reset flow with session revocation.
 - [x] `POST /api/auth/logout` — Rust revocation and cookie clearing.
 - [ ] `GET /login` — migrate login page to the TypeScript app or Rust server-rendered fallback.
 - [ ] `POST /login` — cut over only after throttling, CSRF, session bridge, verification policy, and rollback are tested.
 - [ ] `GET /register` — migrate registration form and validation.
 - [ ] `POST /register` — replace with the Rust registration API after email verification delivery is ported; Rust currently rejects registration when verification is enabled but mail delivery is not configured.
 - [ ] `GET /register/verify` — migrate verification landing page.
-- [ ] `GET /auth/verify-email` — migrate signed/tokenized verification and replay protection.
-- [ ] `POST /auth/verify-email/resend` — migrate authenticated/unauthenticated resend rules and throttling.
+- [x] `GET /auth/verify-email` — Vite verification landing page backed by the Rust token endpoint.
+- [x] `POST /auth/verify-email/resend` — Rust unauthenticated resend rules and throttling.
+- [x] `POST /auth/password-reset/request` and `/confirm` — Rust password recovery and session revocation.
 - [ ] `POST /logout` — preserve browser form/logout compatibility or replace all callers with the Rust API.
 
 ### Account routes
@@ -100,7 +103,7 @@ This is an infrastructure dependency for Rust registration, verification, suppor
 - [ ] Add `mail` A, SPF, DKIM, and DMARC records at IONOS.
 - [ ] Validate delivery, bounce handling, spam controls, backups, and monitoring.
 - [ ] Change MX from IONOS only after local validation and rollback verification.
-- [ ] Add Rust mail/token service for registration and email verification.
+- `[x]` Add Rust mail/token service for registration, verification, and password recovery behind explicit environment configuration; production rollout remains pending.
 - [ ] Keep AI mail access limited to classification, search, summaries, and drafts; require explicit user action to send.
 
 **Mail cutover gate:** no MX change, PHP auth cutover, or public registration verification flow until the mailbox, DNS authentication, PTR, backup, and rollback checks pass.

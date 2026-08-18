@@ -1,7 +1,6 @@
 import { useCallback, useEffect, useState } from 'react';
 import type { FormEvent } from 'react';
 import { AuthPanel } from './components/AuthPanel';
-import { ProjectWorkspace } from './components/ProjectWorkspace';
 import { MemberSurfaces } from './components/MemberSurfaces';
 import type { MemberTab } from './components/MemberSurfaces';
 import { AdminSurface } from './components/AdminSurface';
@@ -173,17 +172,19 @@ export default function App() {
 
   return (
     <main className={showWorkspace ? 'hub-shell app-shell' : 'hub-shell'}>
-      <header className="hub-header">
+      {/* The marketing header only belongs on the public site. Inside the
+          Galileo app the shell provides its own thin top bar. */}
+      {!showWorkspace && <header className="hub-header">
         <button type="button" className="brand-mark brand-button" onClick={() => navigate('/')}><img className="brand-logo" src="/agp-logo.png" alt="" width="32" height="32" /><span>AGP<span className="brand-accent">Studios</span></span></button>
         <nav className="site-nav" aria-label="Primary navigation">
           <button type="button" className={view === 'projects' ? 'site-nav-link selected' : 'site-nav-link'} onClick={() => navigate('/projects')}>Projects</button>
           <button type="button" className={view === 'games' ? 'site-nav-link selected' : 'site-nav-link'} onClick={() => navigate('/games')}>Games</button>
-          <button type="button" className={view === 'galileo' ? 'site-nav-link selected' : 'site-nav-link'} onClick={() => navigate('/galileo')}>Galileo</button>
+          <button type="button" className="site-nav-link" onClick={() => navigate('/galileo')}>Galileo</button>
           <button type="button" className={view === 'community' ? 'site-nav-link selected' : 'site-nav-link'} onClick={() => navigate('/community')}>Community</button>
           {user?.role.toLowerCase() === 'admin' && <button type="button" className={view === 'admin' ? 'site-nav-link selected' : 'site-nav-link'} onClick={() => navigate('/admin')}>Admin</button>}
         </nav>
         <div className="header-actions"><AuthPanel onChange={handleAuthChange} /><button type="button" className="header-cta" onClick={() => navigate('/galileo')}>Launch Galileo</button></div>
-      </header>
+      </header>}
 
       {showHome && <>
         <section className="home-hero"><div className="hero-copy"><span className="eyebrow">Independent software studio</span><h1>Software, games, and tools built with purpose.</h1><p>AGP Studios builds practical software, games, and tools—including Galileo, our browser-based development studio powered by the Ashat coding agent.</p><div className="hero-actions"><button type="button" className="primary-button" onClick={() => navigate('/projects')}>Explore Projects</button><button type="button" className="secondary-button" onClick={() => navigate('/galileo')}>Launch Galileo</button></div></div><div className="hero-ornament" aria-hidden="true"><span>AGP</span><i /><i /><i /></div></section>
@@ -213,6 +214,14 @@ export default function App() {
         </div>
       </>}
 
+      {showWorkspace && !user && (
+        <section className="member-panel legal-panel g-login-required">
+          <span className="eyebrow">Galileo</span>
+          <h2>Sign in to open Galileo</h2>
+          <p className="muted">Galileo needs an AGP Studios account to manage your projects.</p>
+          <AuthPanel onChange={handleAuthChange} />
+        </section>
+      )}
       {showWorkspace && user && <>
         <GalileoShell user={user} initialView={galileoView} onSignOut={() => setUser(null)}>
           {(shellView) => {

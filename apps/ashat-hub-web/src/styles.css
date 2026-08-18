@@ -224,7 +224,7 @@ p { line-height: 1.6; }
 .vesper-auth-page { display: grid; place-items: center; min-height: 100vh; padding: 24px; background: var(--bg); }.vesper-auth-card { width: min(100%, 420px); padding: 32px; background: var(--surface); border: 1px solid var(--line); border-radius: 8px; }.vesper-auth-card h1 { margin: 8px 0; font-size: 42px; }.vesper-auth-card p { margin: 0 0 22px; }.vesper-auth-card form { display: grid; gap: 10px; }.vesper-auth-card input { width: 100%; padding: 11px 12px; color: var(--text); background: var(--bg-soft); border: 1px solid var(--line); border-radius: 4px; }
 
 /* Galileo is the application surface, not a marketing page. */
-.app-shell { min-height: 100vh; padding-bottom: 0; }.app-shell .hub-header { position: sticky; top: 0; z-index: 20; background: rgba(10,10,10,.96); }.app-shell .galileo-studio { min-height: calc(100vh - 74px); margin-top: 0; border-top: 0; border-radius: 0; }
+.app-shell { min-height: 100vh; padding-bottom: 0; }.app-shell .galileo-studio { min-height: calc(100vh - 74px); margin-top: 0; border-top: 0; border-radius: 0; }
 .app-shell .galileo-studio { grid-template-columns: minmax(300px, .7fr) minmax(0, 1fr); gap: 0; }.app-shell .galileo-studio .chat-panel { display: flex; flex-direction: column; border-right: 1px solid var(--line); background: var(--surface); min-height: 0; }
 .app-shell .galileo-studio .chat-header { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 14px 16px; border-bottom: 1px solid var(--line-soft); }
 .app-shell .galileo-studio .chat-header h2 { margin: 2px 0 0; font-size: 18px; }
@@ -565,6 +565,7 @@ p { line-height: 1.6; }
   color: var(--dim);
   font: 11px 'JetBrains Mono', monospace;
 }
+.g-login-required { display: grid; gap: 12px; max-width: 560px; margin: 8vh auto 0; }.g-login-required .auth-sign-in { width: 100%; padding: 11px 14px; font-size: 14px; }
 .g-empty-state {
   display: grid;
   place-items: center;

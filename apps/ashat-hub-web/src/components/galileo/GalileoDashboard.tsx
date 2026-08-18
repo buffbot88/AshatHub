@@ -13,6 +13,21 @@ function csrfToken(): string {
   return cookie ? decodeURIComponent(cookie.slice('ashat_rust_csrf='.length)) : '';
 }
 
+/** Parse a created_at value that may be RFC 3339/ISO ("2026-08-15T03:05:51+00:00")
+ *  or unix epoch seconds ("1787005526") — legacy metadata used both. */
+function parseDate(value: string | undefined): Date | null {
+  if (!value) return null;
+  const trimmed = value.trim();
+  if (!trimmed) return null;
+  // Numeric → epoch seconds (legacy chrono_like_now output)
+  if (/^\d{9,}$/.test(trimmed)) {
+    const date = new Date(Number(trimmed) * 1000);
+    return Number.isNaN(date.getTime()) ? null : date;
+  }
+  const date = new Date(trimmed);
+  return Number.isNaN(date.getTime()) ? null : date;
+}
+
 async function request<T>(url: string, init?: RequestInit): Promise<T> {
   const response = await fetch(url, {
     credentials: 'same-origin',
@@ -134,7 +149,7 @@ export function GalileoDashboard({
             {project.description && <p className="g-project-card-desc">{project.description}</p>}
             <div className="g-project-card-meta">
               <span>{project.file_count} files</span>
-              {project.created_at && <span>Created {new Date(project.created_at).toLocaleDateString()}</span>}
+              {(() => { const created = parseDate(project.created_at); return created ? <span>Created {created.toLocaleDateString()}</span> : null; })()}
             </div>
           </button>
         ))}

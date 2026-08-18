@@ -919,13 +919,36 @@ fn is_safe_project_id(value: &str) -> bool {
             .all(|byte| byte.is_ascii_alphanumeric() || byte == b'_' || byte == b'-')
 }
 
+/// Format the current time as RFC 3339 / PHP `date('c')`, e.g.
+/// `2026-08-15T03:05:51+00:00`. This keeps `.meta.json` compatible with the
+/// legacy PHP-created projects (and parseable by `new Date(...)` in the web
+/// UI) without adding a date-time dependency.
 fn chrono_like_now() -> String {
-    // Keep the filesystem metadata format compatible with PHP date('c')
-    // without adding a date-time dependency to this first slice.
     use std::time::{SystemTime, UNIX_EPOCH};
     let seconds = SystemTime::now()
         .duration_since(UNIX_EPOCH)
         .map(|value| value.as_secs())
         .unwrap_or_default();
-    format!("{}", seconds)
+    // Howard Hinnant's civil-from-days algorithm (proleptic Gregorian).
+    let days = (seconds / 86_400) as i64;
+    let secs_of_day = (seconds % 86_400) as i64;
+    let (hour, minute, second) = (
+        secs_of_day / 3_600,
+        (secs_of_day % 3_600) / 60,
+        secs_of_day % 60,
+    );
+    let z = days + 719_468;
+    let era = if z >= 0 { z } else { z - 146_096 } / 146_097;
+    let doe = z - era * 146_097;
+    let yoe = (doe - doe / 1_460 + doe / 36_524 - doe / 146_096) / 365;
+    let year = yoe + era * 400;
+    let doy = doe - (365 * yoe + yoe / 4 - yoe / 100);
+    let mp = (5 * doy + 2) / 153;
+    let day = doy - (153 * mp + 2) / 5 + 1;
+    let month = if mp < 10 { mp + 3 } else { mp - 9 };
+    let year = if month <= 2 { year + 1 } else { year };
+    format!(
+        "{:04}-{:02}-{:02}T{:02}:{:02}:{:02}+00:00",
+        year, month, day, hour, minute, second
+    )
 }

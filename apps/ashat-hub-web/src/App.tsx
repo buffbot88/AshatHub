@@ -142,6 +142,7 @@ export default function App() {
   const [showPalette, setShowPalette] = useState(false);
   const [studioCommand, setStudioCommand] = useState<StudioCommand | null>(null);
   const [studioProjectId, setStudioProjectId] = useState<string | null>(null);
+  const [studioInitialPrompt, setStudioInitialPrompt] = useState<string | null>(null);
   const [dashboardAutoNew, setDashboardAutoNew] = useState(false);
   const [paletteProjects, setPaletteProjects] = useState<{ id: string; name: string }[]>([]);
   useEffect(() => {
@@ -224,29 +225,39 @@ export default function App() {
         </section>
       )}
       {showWorkspace && user && <>
-        <GalileoShell user={user} initialView={galileoView} onSignOut={() => setUser(null)}>
+        <GalileoShell
+          user={user}
+          initialView={galileoView}
+          view={galileoView}
+          onViewChange={setGalileoView}
+        >
           {(shellView) => {
-            if (shellView !== galileoView) setGalileoView(shellView);
-            if (galileoView === 'dashboard') return (
+            if (shellView === 'dashboard') return (
               <GalileoDashboard
                 user={user}
-                onNavigate={(v, pid) => { if (pid) setStudioProjectId(pid); setGalileoView(v); }}
+                onNavigate={(nextView, pid, prompt) => {
+                  if (pid) setStudioProjectId(pid);
+                  setStudioInitialPrompt(prompt || null);
+                  setGalileoView(nextView);
+                }}
                 autoNew={dashboardAutoNew}
                 onAutoNewConsumed={() => setDashboardAutoNew(false)}
               />
             );
-            if (galileoView === 'studio') return (
+            if (shellView === 'studio') return (
               <GalileoStudio
                 user={user}
                 projectId={studioProjectId ?? undefined}
+                initialPrompt={studioInitialPrompt}
+                onInitialPromptConsumed={() => setStudioInitialPrompt(null)}
                 command={studioCommand}
                 onCommandHandled={() => setStudioCommand(null)}
               />
             );
-            if (galileoView === 'deployments') return (
+            if (shellView === 'deployments') return (
               <GalileoDeployments
                 user={user}
-                onOpenProject={(pid) => { setStudioProjectId(pid); setGalileoView('studio'); }}
+                onOpenProject={(pid) => { setStudioProjectId(pid); setStudioInitialPrompt(null); setGalileoView('studio'); }}
               />
             );
             return <section className="member-panel legal-panel"><span className="eyebrow">Galileo</span><h2>Settings</h2><p className="muted">Settings coming soon.</p></section>;
@@ -254,13 +265,13 @@ export default function App() {
         </GalileoShell>
         {showPalette && user && <CommandPalette commands={[
           { id: 'new-project', category: 'Projects', label: 'New Project', action: () => { setGalileoView('dashboard'); setDashboardAutoNew(true); } },
-          { id: 'open-studio', category: 'Projects', label: 'Open Studio', action: () => setGalileoView('studio') },
+          { id: 'open-studio', category: 'Projects', label: 'Open Studio', action: () => { setStudioInitialPrompt(null); setGalileoView('studio'); } },
           { id: 'open-deployments', category: 'Projects', label: 'View Deployments', action: () => setGalileoView('deployments') },
           ...paletteProjects.map((p) => ({
             id: `open-${p.id}`,
             category: 'Projects',
             label: `Open ${p.name}`,
-            action: () => { setStudioProjectId(p.id); setGalileoView('studio'); },
+            action: () => { setStudioProjectId(p.id); setStudioInitialPrompt(null); setGalileoView('studio'); },
           })),
           { id: 'deploy', category: 'Actions', label: 'Deploy Current Project', action: () => { setGalileoView('studio'); setStudioCommand('deploy'); } },
           { id: 'open-terminal', category: 'Actions', label: 'Open Terminal', action: () => { setGalileoView('studio'); setStudioCommand('open-terminal'); } },

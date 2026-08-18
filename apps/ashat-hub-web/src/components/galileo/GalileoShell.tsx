@@ -17,22 +17,30 @@ const NAV_ITEMS: { id: GalileoView; icon: string; label: string }[] = [
 export function GalileoShell({
   user,
   initialView = 'dashboard',
+  view: controlledView,
+  onViewChange,
   children,
-  onSignOut,
 }: {
   user: User;
   initialView?: GalileoView;
+  view?: GalileoView;
+  onViewChange?: (view: GalileoView) => void;
   children: (view: GalileoView) => ReactNode;
-  onSignOut?: () => void;
 }) {
-  const [view, setView] = useState<GalileoView>(initialView);
+  const [localView, setLocalView] = useState<GalileoView>(initialView);
+  const view = controlledView ?? localView;
+
+  function navigate(nextView: GalileoView) {
+    if (controlledView === undefined) setLocalView(nextView);
+    onViewChange?.(nextView);
+  }
 
   return (
     <div className="g-shell">
-      {/* Thin top bar — 48px */}
       <header className="g-topbar">
         <div className="g-topbar-left">
           <span className="g-logo">◇ GALILEO</span>
+          <span className="g-topbar-context">Development studio</span>
         </div>
         <div className="g-topbar-right">
           <button type="button" className="g-topbar-btn" title="Command Palette" onClick={() => {
@@ -46,7 +54,6 @@ export function GalileoShell({
       </header>
 
       <div className="g-body">
-        {/* Icon rail */}
         <nav className="g-rail" aria-label="Galileo navigation">
           {NAV_ITEMS.map((item) => (
             <button
@@ -54,7 +61,7 @@ export function GalileoShell({
               type="button"
               className={`g-rail-btn ${view === item.id ? 'active' : ''}`}
               title={item.label}
-              onClick={() => setView(item.id)}
+              onClick={() => navigate(item.id)}
             >
               <span className="g-rail-icon">{item.icon}</span>
               <span className="g-rail-label">{item.label}</span>
@@ -62,7 +69,6 @@ export function GalileoShell({
           ))}
         </nav>
 
-        {/* Active view */}
         <main className="g-main">
           {children(view)}
         </main>

@@ -1,4 +1,4 @@
-import { FormEvent, useEffect, useState } from 'react';
+import { FormEvent, useEffect, useRef, useState } from 'react';
 
 type User = { id: string; username: string; email: string; display_name: string; role: string };
 type ApiError = string | { message?: string; code?: string };
@@ -15,7 +15,7 @@ function errorMessage(error: ApiError | undefined, fallback: string): string {
   return error?.message || error?.code || fallback;
 }
 
-export function AuthPanel({ onChange }: { onChange: (user: User | null) => void }) {
+export function AuthPanel({ onChange, onNavigate }: { onChange: (user: User | null) => void; onNavigate?: (path: string) => void }) {
   const [user, setUser] = useState<User | null>(null);
   const [identifier, setIdentifier] = useState('');
   const [password, setPassword] = useState('');
@@ -26,6 +26,7 @@ export function AuthPanel({ onChange }: { onChange: (user: User | null) => void 
   const [message, setMessage] = useState('');
   const [busy, setBusy] = useState(false);
   const [isOpen, setIsOpen] = useState(false);
+  const menuRef = useRef<HTMLDetailsElement>(null);
 
   useEffect(() => {
     fetch(`${API}/auth/session`, { credentials: 'same-origin' })
@@ -148,6 +149,11 @@ export function AuthPanel({ onChange }: { onChange: (user: User | null) => void 
     }
   }
 
+  function navigateFromMenu(path: string) {
+    onNavigate?.(path);
+    menuRef.current?.removeAttribute('open');
+  }
+
   async function logout() {
     setBusy(true); setError('');
     try {
@@ -160,10 +166,14 @@ export function AuthPanel({ onChange }: { onChange: (user: User | null) => void 
 
   if (user) {
     return (
-      <details className="auth-menu">
+      <details ref={menuRef} className="auth-menu">
         <summary className="auth-menu-trigger"><span>{user.display_name || user.username}</span>{user.role === 'admin' && <span className="auth-role-badge">Admin</span>}<span className="auth-menu-chevron">⌄</span></summary>
         <div className="auth-menu-panel">
           <span className="auth-menu-email">{user.email}</span>
+          {onNavigate && <nav className="auth-menu-links" aria-label="Account navigation">
+            <button type="button" className="auth-menu-link" onClick={() => navigateFromMenu('/community')}>Community</button>
+            {user.role.toLowerCase() === 'admin' && <button type="button" className="auth-menu-link" onClick={() => navigateFromMenu('/admin')}>Admin</button>}
+          </nav>}
           <button type="button" className="auth-logout" onClick={() => void logout()} disabled={busy}>Sign out</button>
         </div>
       </details>

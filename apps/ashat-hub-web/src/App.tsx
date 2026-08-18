@@ -183,11 +183,8 @@ export default function App() {
         <nav className="site-nav" aria-label="Primary navigation">
           <button type="button" className={view === 'projects' ? 'site-nav-link selected' : 'site-nav-link'} onClick={() => navigate('/projects')}>Projects</button>
           <button type="button" className={view === 'games' ? 'site-nav-link selected' : 'site-nav-link'} onClick={() => navigate('/games')}>Games</button>
-          <button type="button" className="site-nav-link" onClick={() => navigate('/galileo')}>Galileo</button>
-          <button type="button" className={view === 'community' ? 'site-nav-link selected' : 'site-nav-link'} onClick={() => navigate('/community')}>Community</button>
-          {user?.role.toLowerCase() === 'admin' && <button type="button" className={view === 'admin' ? 'site-nav-link selected' : 'site-nav-link'} onClick={() => navigate('/admin')}>Admin</button>}
         </nav>
-        <div className="header-actions"><AuthPanel onChange={handleAuthChange} /><button type="button" className="header-cta" onClick={() => navigate('/galileo')}>Launch Galileo</button></div>
+        <div className="header-actions"><AuthPanel onChange={handleAuthChange} onNavigate={navigate} /></div>
       </header>}
 
       {showHome && <>
@@ -223,7 +220,7 @@ export default function App() {
           <span className="eyebrow">Galileo</span>
           <h2>Sign in to open Galileo</h2>
           <p className="muted">Galileo needs an AGP Studios account to manage your projects.</p>
-          <AuthPanel onChange={handleAuthChange} />
+          <AuthPanel onChange={handleAuthChange} onNavigate={navigate} />
         </section>
       )}
       {showWorkspace && user && <>

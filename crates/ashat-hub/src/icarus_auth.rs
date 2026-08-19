@@ -66,7 +66,7 @@ pub(crate) fn routes() -> Router<AppState> {
     Router::new()
         .route("/api/icarus/auth/device", post(start_device_auth))
         .route(
-            "/api/icarus/auth/device/{code}",
+            "/api/icarus/auth/device/:code",
             get(poll_device_auth),
         )
         .route("/api/icarus/auth/login", get(login_page).post(login_submit))

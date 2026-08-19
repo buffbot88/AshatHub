@@ -217,11 +217,23 @@ export default function App() {
       </>}
 
       {showWorkspace && !user && (
-        <section className="member-panel legal-panel g-login-required">
-          <span className="eyebrow">Galileo</span>
-          <h2>Sign in to open Galileo</h2>
-          <p className="muted">Galileo needs an AGP Studios account to manage your projects.</p>
-          <AuthPanel onChange={handleAuthChange} onNavigate={navigate} />
+        <section className="auth-gate" aria-label="Sign in to Galileo">
+          <aside className="auth-gate-aside">
+            <div className="auth-gate-mark"><span className="dot" /> Galileo Studio</div>
+            <div className="auth-gate-hero">
+              <h1>Your ideas, <span className="gold">built</span> in the browser.</h1>
+              <p>Galileo is a development studio powered by Ashat — plan projects, scaffold code, and ship to your own subdomain without leaving the tab.</p>
+              <div className="auth-gate-feats">
+                <div className="auth-gate-feat"><span className="tick">◇</span><span>Plan and scaffold full-stack projects from a single prompt.</span></div>
+                <div className="auth-gate-feat"><span className="tick">▲</span><span>Preview and deploy to instant, per-project subdomains.</span></div>
+                <div className="auth-gate-feat"><span className="tick">⌘</span><span>Command palette, terminal, and change tracking built in.</span></div>
+              </div>
+            </div>
+            <div className="auth-gate-foot">AGP Studios — software, games, and tools built with purpose.</div>
+          </aside>
+          <div className="auth-gate-form">
+            <AuthPanel onChange={handleAuthChange} onNavigate={navigate} embedded />
+          </div>
         </section>
       )}
       {showWorkspace && user && <>

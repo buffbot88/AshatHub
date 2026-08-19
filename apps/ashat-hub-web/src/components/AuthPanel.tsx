@@ -15,7 +15,7 @@ function errorMessage(error: ApiError | undefined, fallback: string): string {
   return error?.message || error?.code || fallback;
 }
 
-export function AuthPanel({ onChange, onNavigate }: { onChange: (user: User | null) => void; onNavigate?: (path: string) => void }) {
+export function AuthPanel({ onChange, onNavigate, embedded = false }: { onChange: (user: User | null) => void; onNavigate?: (path: string) => void; embedded?: boolean }) {
   const [user, setUser] = useState<User | null>(null);
   const [identifier, setIdentifier] = useState('');
   const [password, setPassword] = useState('');
@@ -180,28 +180,65 @@ export function AuthPanel({ onChange, onNavigate }: { onChange: (user: User | nu
     );
   }
 
+  const title = mode === 'login' ? 'Welcome back' : mode === 'register' ? 'Create your account' : 'Reset your password';
+  const sub = mode === 'login'
+    ? 'Sign in to open Galileo and your AGP Studios projects.'
+    : mode === 'register'
+      ? 'A few details and you can start building in Galileo.'
+      : 'Enter your username or email and we will send a reset link if the account exists.';
+
+  const form = (
+    <>
+      <div className="auth-tabs" role="tablist" aria-label="Authentication mode">
+        <button type="button" role="tab" aria-selected={mode === 'login'} className={`auth-tab ${mode === 'login' ? 'active' : ''}`} onClick={() => openMode('login')}>Sign in</button>
+        <button type="button" role="tab" aria-selected={mode === 'register'} className={`auth-tab ${mode === 'register' ? 'active' : ''}`} onClick={() => openMode('register')}>Register</button>
+      </div>
+      <form className="auth-modal-form" onSubmit={(event) => void submit(event)} aria-label="Authentication">
+        <div className="auth-field">
+          <span className="field-icon" aria-hidden>◍</span>
+          <input value={identifier} onChange={(event) => setIdentifier(event.target.value)} placeholder={mode === 'register' ? 'Username' : 'Username or email'} autoComplete="username" required />
+        </div>
+        {mode === 'register' && <div className="auth-field">
+          <span className="field-icon" aria-hidden>✉</span>
+          <input value={email} onChange={(event) => setEmail(event.target.value)} placeholder="Email" type="email" autoComplete="email" required />
+        </div>}
+        {mode !== 'reset-request' && <div className="auth-field">
+          <span className="field-icon" aria-hidden>⚿</span>
+          <input value={password} onChange={(event) => setPassword(event.target.value)} placeholder="Password" type="password" autoComplete={mode === 'login' ? 'current-password' : 'new-password'} required />
+        </div>}
+        <button type="submit" className="auth-submit" disabled={busy}>{mode === 'login' ? 'Sign in' : mode === 'register' ? 'Create account' : 'Send reset link'}</button>
+        <div className="auth-links">
+          {mode === 'login' && <button type="button" className="auth-switch" onClick={() => openMode('reset-request')}>Forgot password?</button>}
+          {mode === 'login' && verificationEmail && <button type="button" className="auth-switch" onClick={() => void resendVerification()} disabled={busy}>Resend verification email</button>}
+          {mode !== 'reset-request' && <button type="button" className="auth-switch primary" onClick={() => openMode(mode === 'login' ? 'register' : 'login')}>{mode === 'login' ? 'New here? Create an account' : 'Already have an account? Sign in'}</button>}
+          {mode === 'reset-request' && <button type="button" className="auth-switch" onClick={() => openMode('login')}>Back to sign in</button>}
+        </div>
+        {message && <small className="auth-success">{message}</small>}
+        {error && <small className="auth-error">{error}</small>}
+      </form>
+    </>
+  );
+
+  if (embedded) {
+    return (
+      <div className="auth-card">
+        <span className="eyebrow">AGP Studios · Galileo</span>
+        <h2>{title}</h2>
+        <p className="auth-card-sub">{sub}</p>
+        {form}
+      </div>
+    );
+  }
+
   return (
     <>
       <button type="button" className="auth-sign-in" onClick={() => { openMode('login'); setIsOpen(true); }}>Sign in</button>
       {isOpen && <div className="auth-modal-backdrop" role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget) setIsOpen(false); }}>
         <section className="auth-modal" role="dialog" aria-modal="true" aria-labelledby="auth-modal-title" onMouseDown={(event) => event.stopPropagation()}>
           <div className="auth-modal-header"><span className="eyebrow">AGP Studios</span><button type="button" className="auth-modal-close" aria-label="Close sign in dialog" onClick={() => setIsOpen(false)}>×</button></div>
-          <h2 id="auth-modal-title">{mode === 'login' ? 'Sign in' : mode === 'register' ? 'Create your account' : 'Reset your password'}</h2>
-          <p className="auth-modal-intro">
-            {mode === 'login' ? 'Continue to Galileo and your AGP Studios projects.' : mode === 'register' ? 'Create an account to save and build projects in Galileo.' : 'Enter your username or email and we will send a reset link if the account exists.'}
-          </p>
-          <form className="auth-modal-form" onSubmit={(event) => void submit(event)} aria-label="Authentication">
-            <input value={identifier} onChange={(event) => setIdentifier(event.target.value)} placeholder={mode === 'register' ? 'Username' : 'Username or email'} autoComplete="username" required />
-            {mode === 'register' && <input value={email} onChange={(event) => setEmail(event.target.value)} placeholder="Email" type="email" autoComplete="email" required />}
-            {mode !== 'reset-request' && <input value={password} onChange={(event) => setPassword(event.target.value)} placeholder="Password" type="password" autoComplete={mode === 'login' ? 'current-password' : 'new-password'} required />}
-            <button type="submit" className="primary-button" disabled={busy}>{mode === 'login' ? 'Sign in' : mode === 'register' ? 'Register' : 'Send reset link'}</button>
-            {mode === 'login' && <button type="button" className="auth-switch" onClick={() => openMode('reset-request')}>Forgot password?</button>}
-            {mode === 'login' && verificationEmail && <button type="button" className="auth-switch" onClick={() => void resendVerification()} disabled={busy}>Resend verification email</button>}
-            {mode !== 'reset-request' && <button type="button" className="auth-switch" onClick={() => openMode(mode === 'login' ? 'register' : 'login')}>{mode === 'login' ? 'Create an account' : 'Already have an account? Sign in'}</button>}
-            {mode === 'reset-request' && <button type="button" className="auth-switch" onClick={() => openMode('login')}>Back to sign in</button>}
-            {message && <small className="auth-success">{message}</small>}
-            {error && <small className="auth-error">{error}</small>}
-          </form>
+          <h2 id="auth-modal-title">{title}</h2>
+          <p className="auth-card-sub">{sub}</p>
+          {form}
         </section>
       </div>}
     </>

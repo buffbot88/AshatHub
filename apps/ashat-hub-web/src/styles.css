@@ -1567,6 +1567,9 @@ p { line-height: 1.6; }
 .adm-btn-danger:hover { background: rgba(248,113,113,.08); border-color: var(--err); }
 .adm-btn-ok { padding: 7px 12px; color: var(--ok); background: transparent; border: 1px solid rgba(74,222,128,.25); border-radius: 6px; font-size: 12px; }
 .adm-btn-ok:hover { background: rgba(74,222,128,.08); }
+.adm-danger-zone { margin-top: 10px; padding-top: 10px; border-top: 1px solid var(--line-soft); }
+.adm-btn-delete { padding: 7px 12px; color: var(--err); background: rgba(248,113,113,.06); border: 1px solid rgba(248,113,113,.4); border-radius: 6px; font-size: 12px; font-weight: 600; }
+.adm-btn-delete:hover { background: rgba(248,113,113,.12); border-color: var(--err); }
 
 /* System tab */
 .adm-system-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }

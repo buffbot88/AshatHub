@@ -2,7 +2,7 @@ use axum::{
     extract::{Path, Query, State},
     http::StatusCode,
     response::{IntoResponse, Response},
-    routing::{get, post},
+    routing::{delete, get, post},
     Json, Router,
 };
 use serde::{Deserialize, Serialize};
@@ -24,6 +24,7 @@ struct AdminUserRow {
     display_name: String,
     role: String,
     is_active: i8,
+    banned_at: Option<i64>,
     email_verified_at: Option<String>,
 }
 
@@ -45,6 +46,8 @@ pub(crate) fn routes() -> Router<AppState> {
         .route("/api/admin/users", get(users))
         .route("/api/admin/users/role", post(update_role))
         .route("/api/admin/users/status", post(update_status))
+        .route("/api/admin/users/ban", post(ban_user))
+        .route("/api/admin/users/:user_id", delete(delete_user))
         .route("/api/admin/deployments", get(all_deployments))
         .route("/api/admin/deployments/:deployment_id", get(deployment_detail))
         .route("/api/admin/deployment/undeploy", post(admin_undeploy))
@@ -113,7 +116,7 @@ async fn users(
     let offset = (page - 1) * 50;
     let search = query.q.unwrap_or_default();
     let result = sqlx::query_as::<_, AdminUserRow>(
-        "SELECT id,username,email,display_name,role,is_active,CAST(email_verified_at AS CHAR) AS email_verified_at
+        "SELECT id,username,email,display_name,role,is_active,CAST(banned_at AS SIGNED) AS banned_at,CAST(email_verified_at AS CHAR) AS email_verified_at
          FROM users
          WHERE (?='' OR username LIKE CONCAT('%',?,'%') OR email LIKE CONCAT('%',?,'%') OR display_name LIKE CONCAT('%',?,'%'))
          ORDER BY username LIMIT 50 OFFSET ?",
@@ -237,6 +240,141 @@ async fn update_status(
         Ok(_) => error_response(StatusCode::NOT_FOUND, "user_not_found"),
         Err(error) => {
             tracing::error!(?error, "admin status update failed");
+            error_response(StatusCode::SERVICE_UNAVAILABLE, "users_unavailable")
+        }
+    }
+}
+
+// ── Ban user ──
+
+#[derive(Debug, Deserialize)]
+struct BanUserRequest {
+    user_id: String,
+    banned: bool,
+}
+
+async fn ban_user(
+    State(state): State<AppState>,
+    auth::AdminUser(admin): auth::AdminUser,
+    Json(input): Json<BanUserRequest>,
+) -> Response {
+    let Some(pool) = state.db.as_ref() else {
+        return error_response(StatusCode::SERVICE_UNAVAILABLE, "database_unavailable");
+    };
+    if !safe_id(&input.user_id) {
+        return error_response(StatusCode::BAD_REQUEST, "invalid_user");
+    }
+    if input.user_id == admin.id {
+        return error_response(StatusCode::CONFLICT, "cannot_ban_self");
+    }
+    let banned_at: Option<i64> = if input.banned {
+        Some(std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map(|d| d.as_secs() as i64).unwrap_or(0))
+    } else {
+        None
+    };
+    match sqlx::query("UPDATE users SET is_active=?, banned_at=?, updated_at=UTC_TIMESTAMP() WHERE id=?")
+        .bind(!input.banned)
+        .bind(banned_at)
+        .bind(&input.user_id)
+        .execute(pool)
+        .await
+    {
+        Ok(result) if result.rows_affected() == 1 => {
+            if input.banned {
+                let _ = sqlx::query("DELETE FROM rust_sessions WHERE user_id=?")
+                    .bind(&input.user_id)
+                    .execute(pool)
+                    .await;
+            }
+            let timestamp = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map(|d| d.as_secs() as i64).unwrap_or(0);
+            let _ = sqlx::query(
+                "INSERT INTO admin_audit_events (actor_id,actor_name,action,target_type,target_id,detail,created_at)
+                 VALUES (?,?,?,?,?,?,?)",
+            )
+            .bind(&admin.id)
+            .bind(&admin.display_name)
+            .bind(if input.banned { "admin.user.banned" } else { "admin.user.unbanned" })
+            .bind("user")
+            .bind(&input.user_id)
+            .bind(if input.banned { "banned" } else { "unbanned" })
+            .bind(timestamp)
+            .execute(pool)
+            .await;
+            tracing::warn!(event="admin.user.banned", admin_id=%admin.id, user_id=%input.user_id, banned=input.banned);
+            Json(serde_json::json!({"ok":true,"user_id":input.user_id,"banned":input.banned})).into_response()
+        }
+        Ok(_) => error_response(StatusCode::NOT_FOUND, "user_not_found"),
+        Err(error) => {
+            tracing::error!(?error, "admin ban update failed");
+            error_response(StatusCode::SERVICE_UNAVAILABLE, "users_unavailable")
+        }
+    }
+}
+
+// ── Delete user (hard) ──
+
+async fn delete_user(
+    State(state): State<AppState>,
+    auth::AdminUser(admin): auth::AdminUser,
+    Path(user_id): Path<String>,
+) -> Response {
+    let Some(pool) = state.db.as_ref() else {
+        return error_response(StatusCode::SERVICE_UNAVAILABLE, "database_unavailable");
+    };
+    if !safe_id(&user_id) {
+        return error_response(StatusCode::BAD_REQUEST, "invalid_user");
+    }
+    if user_id == admin.id {
+        return error_response(StatusCode::CONFLICT, "cannot_delete_self");
+    }
+    // Verify the user exists first
+    let exists = sqlx::query_scalar::<_, i64>("SELECT COUNT(*) FROM users WHERE id=?")
+        .bind(&user_id)
+        .fetch_one(pool)
+        .await
+        .unwrap_or(0);
+    if exists == 0 {
+        return error_response(StatusCode::NOT_FOUND, "user_not_found");
+    }
+    // Collect username before deletion for the audit record
+    let username = sqlx::query_scalar::<_, String>("SELECT username FROM users WHERE id=?")
+        .bind(&user_id)
+        .fetch_optional(pool)
+        .await
+        .ok()
+        .flatten()
+        .unwrap_or_default();
+    // Cascade-delete related data
+    let _ = sqlx::query("DELETE FROM rust_sessions WHERE user_id=?").bind(&user_id).execute(pool).await;
+    let _ = sqlx::query("DELETE FROM email_verifications WHERE user_id=?").bind(&user_id).execute(pool).await;
+    let _ = sqlx::query("DELETE FROM conversations WHERE user_id=?").bind(&user_id).execute(pool).await;
+    let _ = sqlx::query("DELETE FROM galileo_plans WHERE user_id=?").bind(&user_id).execute(pool).await;
+    let _ = sqlx::query("DELETE FROM galileo_jobs WHERE user_id=?").bind(&user_id).execute(pool).await;
+    let _ = sqlx::query("DELETE FROM galileo_deployment_history WHERE user_id=?").bind(&user_id).execute(pool).await;
+    let _ = sqlx::query("DELETE FROM galileo_deployments WHERE user_id=?").bind(&user_id).execute(pool).await;
+    // Delete the user row itself
+    match sqlx::query("DELETE FROM users WHERE id=?").bind(&user_id).execute(pool).await {
+        Ok(result) if result.rows_affected() >= 1 => {
+            let timestamp = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map(|d| d.as_secs() as i64).unwrap_or(0);
+            let _ = sqlx::query(
+                "INSERT INTO admin_audit_events (actor_id,actor_name,action,target_type,target_id,detail,created_at)
+                 VALUES (?,?,?,?,?,?,?)",
+            )
+            .bind(&admin.id)
+            .bind(&admin.display_name)
+            .bind("admin.user.deleted")
+            .bind("user")
+            .bind(&user_id)
+            .bind(format!("deleted @{username}"))
+            .bind(timestamp)
+            .execute(pool)
+            .await;
+            tracing::warn!(event="admin.user.deleted", admin_id=%admin.id, user_id=%user_id, username=%username);
+            Json(serde_json::json!({"ok":true,"user_id":user_id})).into_response()
+        }
+        Ok(_) => error_response(StatusCode::NOT_FOUND, "user_not_found"),
+        Err(error) => {
+            tracing::error!(?error, "admin user delete failed");
             error_response(StatusCode::SERVICE_UNAVAILABLE, "users_unavailable")
         }
     }

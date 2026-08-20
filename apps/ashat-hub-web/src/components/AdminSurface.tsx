@@ -3,7 +3,7 @@ import { useCallback, useEffect, useState } from 'react';
 // ── Types ──
 
 type User = { id: string; username: string; email: string; display_name: string; role: string };
-type AdminUser = { id: string; username: string; email: string; display_name: string; role: string; is_active: number; email_verified_at?: string | null };
+type AdminUser = { id: string; username: string; email: string; display_name: string; role: string; is_active: number; banned_at?: number | null; email_verified_at?: string | null };
 type AdminSummary = {
   users: number; active_users: number; disabled_users: number;
   open_tickets: number; active_deploys: number; active_projects: number;
@@ -148,6 +148,33 @@ export function AdminSurface({ user }: { user: User | null }) {
     finally { setBusy(false); }
   }
 
+  async function banUser(userId: string, banned: boolean) {
+    const action = banned ? 'Ban' : 'Unban';
+    if (!window.confirm(`${action} this user? ${banned ? 'They will be logged out immediately.' : ''}`)) return;
+    setBusy(true); setError(null);
+    try {
+      await request(`${API}/admin/users/ban`, { method: 'POST', body: JSON.stringify({ user_id: userId, banned }) });
+      await load();
+      if (selectedUser && selectedUser.id === userId) {
+        const updated = await request<{ users: AdminUser[] }>(`${API}/admin/users?q=${encodeURIComponent(userId)}`);
+        const fresh = updated.users.find(u => u.id === userId);
+        if (fresh) setSelectedUser(fresh);
+      }
+    } catch (reason) { setError(reason instanceof Error ? reason.message : `${action} failed`); }
+    finally { setBusy(false); }
+  }
+
+  async function deleteUser(userId: string) {
+    if (!window.confirm('PERMANENTLY DELETE this user? This cannot be undone. All their projects, deployments, and data will be removed.')) return;
+    setBusy(true); setError(null);
+    try {
+      await request(`${API}/admin/users/${userId}`, { method: 'DELETE' });
+      setSelectedUser(null);
+      await load();
+    } catch (reason) { setError(reason instanceof Error ? reason.message : 'Delete failed'); }
+    finally { setBusy(false); }
+  }
+
   async function adminUndeploy(userId: string, projectId: string) {
     if (!window.confirm(`Remove the deployment for ${projectId}? This will stop serving traffic but does not delete the project.`)) return;
     setBusy(true); setError(null);
@@ -184,7 +211,7 @@ export function AdminSurface({ user }: { user: User | null }) {
       </nav>
 
       {tab === 'overview' && <OverviewTab summary={summary} onNavigate={setTab} />}
-      {tab === 'users' && <UsersTab users={users} query={query} onQueryChange={setQuery} onSearch={load} onSelectUser={setSelectedUser} selectedUser={selectedUser} busy={busy} currentUser={user} onUpdateUser={updateUser} />}
+      {tab === 'users' && <UsersTab users={users} query={query} onQueryChange={setQuery} onSearch={load} onSelectUser={setSelectedUser} selectedUser={selectedUser} busy={busy} currentUser={user} onUpdateUser={updateUser} onBanUser={banUser} onDeleteUser={deleteUser} />}
       {tab === 'deployments' && <DeploymentsTab deployments={deployments} filter={deployFilter} onFilterChange={setDeployFilter} onRefresh={loadDeployments} onSelectDeploy={setSelectedDeploy} selectedDeploy={selectedDeploy} busy={busy} onUndeploy={adminUndeploy} />}
       {tab === 'system' && <SystemTab database={database} settings={settings} />}
       {tab === 'audit' && <AuditTab events={auditEvents} />}
@@ -236,10 +263,11 @@ function OverviewTab({ summary, onNavigate }: { summary: AdminSummary | null; on
 
 // ── Users Tab ──
 
-function UsersTab({ users, query, onQueryChange, onSearch, onSelectUser, selectedUser, busy, currentUser, onUpdateUser }: {
+function UsersTab({ users, query, onQueryChange, onSearch, onSelectUser, selectedUser, busy, currentUser, onUpdateUser, onBanUser, onDeleteUser }: {
   users: AdminUser[]; query: string; onQueryChange: (q: string) => void; onSearch: () => void;
   onSelectUser: (u: AdminUser | null) => void; selectedUser: AdminUser | null;
   busy: boolean; currentUser: User; onUpdateUser: (id: string, body: { role?: string; is_active?: boolean }) => void;
+  onBanUser: (id: string, banned: boolean) => void; onDeleteUser: (id: string) => void;
 }) {
   return (
     <div className="adm-panel-layout">
@@ -262,14 +290,16 @@ function UsersTab({ users, query, onQueryChange, onSearch, onSelectUser, selecte
           {users.length === 0 && <div className="adm-empty">No users found.</div>}
         </div>
       </div>
-      {selectedUser && <UserDetailPanel user={selectedUser} busy={busy} currentUser={currentUser} onUpdate={onUpdateUser} onClose={() => onSelectUser(null)} />}
+      {selectedUser && <UserDetailPanel user={selectedUser} busy={busy} currentUser={currentUser} onUpdate={onUpdateUser} onBan={onBanUser} onDelete={onDeleteUser} onClose={() => onSelectUser(null)} />}
     </div>
   );
 }
 
-function UserDetailPanel({ user: u, busy, currentUser, onUpdate, onClose }: {
-  user: AdminUser; busy: boolean; currentUser: User; onUpdate: (id: string, body: { role?: string; is_active?: boolean }) => void; onClose: () => void;
+function UserDetailPanel({ user: u, busy, currentUser, onUpdate, onBan, onDelete, onClose }: {
+  user: AdminUser; busy: boolean; currentUser: User; onUpdate: (id: string, body: { role?: string; is_active?: boolean }) => void;
+  onBan: (id: string, banned: boolean) => void; onDelete: (id: string) => void; onClose: () => void;
 }) {
+  const isBanned = Boolean(u.banned_at);
   return (
     <div className="adm-detail-panel">
       <div className="adm-detail-header">
@@ -278,7 +308,7 @@ function UserDetailPanel({ user: u, busy, currentUser, onUpdate, onClose }: {
       </div>
       <p className="adm-detail-email">{u.email}</p>
       <div className="adm-detail-fields">
-        <div className="adm-field"><span className="adm-field-label">Status</span><span className={u.is_active ? 'adm-badge ok' : 'adm-badge dim'}>{u.is_active ? '● Active' : '○ Disabled'}</span></div>
+        <div className="adm-field"><span className="adm-field-label">Status</span><span className={!u.is_active || isBanned ? 'adm-badge err' : 'adm-badge ok'}>{isBanned ? '⊘ Banned' : u.is_active ? '● Active' : '○ Disabled'}</span></div>
         <div className="adm-field"><span className="adm-field-label">Role</span>
           <select value={u.role} disabled={busy || u.id === currentUser.id} onChange={(e) => void onUpdate(u.id, { role: e.target.value })}>
             <option>Member</option><option>Pro</option><option>Admin</option>
@@ -291,6 +321,14 @@ function UserDetailPanel({ user: u, busy, currentUser, onUpdate, onClose }: {
       <div className="adm-detail-actions">
         <button type="button" className={u.is_active ? 'adm-btn-danger' : 'adm-btn-ok'} disabled={busy || u.id === currentUser.id} onClick={() => void onUpdate(u.id, { is_active: !Boolean(u.is_active) })}>
           {u.is_active ? 'Disable User' : 'Enable User'}
+        </button>
+        <button type="button" className={isBanned ? 'adm-btn-ok' : 'adm-btn-danger'} disabled={busy || u.id === currentUser.id} onClick={() => void onBan(u.id, !isBanned)}>
+          {isBanned ? 'Unban User' : 'Ban User'}
+        </button>
+      </div>
+      <div className="adm-detail-actions adm-danger-zone">
+        <button type="button" className="adm-btn-delete" disabled={busy || u.id === currentUser.id} onClick={() => void onDelete(u.id)}>
+          Delete User Permanently
         </button>
       </div>
     </div>

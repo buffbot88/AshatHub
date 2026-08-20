@@ -1,5 +1,5 @@
 use axum::{
-    extract::{Query, State},
+    extract::{Path, Query, State},
     http::StatusCode,
     response::{IntoResponse, Response},
     routing::{get, post},
@@ -45,6 +45,10 @@ pub(crate) fn routes() -> Router<AppState> {
         .route("/api/admin/users", get(users))
         .route("/api/admin/users/role", post(update_role))
         .route("/api/admin/users/status", post(update_status))
+        .route("/api/admin/deployments", get(all_deployments))
+        .route("/api/admin/deployments/:deployment_id", get(deployment_detail))
+        .route("/api/admin/deployment/undeploy", post(admin_undeploy))
+        .route("/api/admin/audit", get(audit_log))
         .route("/api/admin/database/status", get(database_status))
         .route("/api/admin/settings", get(settings))
         .route("/api/admin/support", get(support))
@@ -65,8 +69,21 @@ async fn summary(
         .fetch_one(pool)
         .await
         .unwrap_or(0);
+    let disabled_users = users - active_users;
     let open_tickets = sqlx::query_scalar::<_, i64>(
         "SELECT COUNT(*) FROM support_tickets WHERE status IN ('open','in_progress')",
+    )
+    .fetch_one(pool)
+    .await
+    .unwrap_or(0);
+    let active_deploys = sqlx::query_scalar::<_, i64>(
+        "SELECT COUNT(*) FROM galileo_deployments WHERE status='deployed'",
+    )
+    .fetch_one(pool)
+    .await
+    .unwrap_or(0);
+    let active_projects = sqlx::query_scalar::<_, i64>(
+        "SELECT COUNT(DISTINCT project_id) FROM galileo_deployments WHERE status='deployed'",
     )
     .fetch_one(pool)
     .await
@@ -74,7 +91,10 @@ async fn summary(
     Json(serde_json::json!({
         "users": users,
         "active_users": active_users,
+        "disabled_users": disabled_users,
         "open_tickets": open_tickets,
+        "active_deploys": active_deploys,
+        "active_projects": active_projects,
         "gateway_metrics": state.metrics.snapshot(),
         "database_manager": "retired",
     }))
@@ -137,6 +157,23 @@ async fn update_role(
         .await
     {
         Ok(result) if result.rows_affected() == 1 => {
+            let timestamp = std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .map(|d| d.as_secs() as i64)
+                .unwrap_or(0);
+            let _ = sqlx::query(
+                "INSERT INTO admin_audit_events (actor_id,actor_name,action,target_type,target_id,detail,created_at)
+                 VALUES (?,?,?,?,?,CONCAT('changed role to ',?),?)",
+            )
+            .bind(&admin.id)
+            .bind(&admin.display_name)
+            .bind("admin.role_change")
+            .bind("user")
+            .bind(&input.user_id)
+            .bind(&input.role)
+            .bind(timestamp)
+            .execute(pool)
+            .await;
             tracing::warn!(event="admin.user.role_changed", admin_id=%admin.id, user_id=%input.user_id, role=%input.role);
             Json(serde_json::json!({"ok":true,"user_id":input.user_id,"role":input.role}))
                 .into_response()
@@ -176,6 +213,23 @@ async fn update_status(
                     .execute(pool)
                     .await;
             }
+            let timestamp = std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .map(|d| d.as_secs() as i64)
+                .unwrap_or(0);
+            let _ = sqlx::query(
+                "INSERT INTO admin_audit_events (actor_id,actor_name,action,target_type,target_id,detail,created_at)
+                 VALUES (?,?,?,?,?,?,?)",
+            )
+            .bind(&admin.id)
+            .bind(&admin.display_name)
+            .bind("admin.status_change")
+            .bind("user")
+            .bind(&input.user_id)
+            .bind(if input.is_active { "enabled" } else { "disabled" })
+            .bind(timestamp)
+            .execute(pool)
+            .await;
             tracing::warn!(event="admin.user.status_changed", admin_id=%admin.id, user_id=%input.user_id, is_active=input.is_active);
             Json(serde_json::json!({"ok":true,"user_id":input.user_id,"is_active":input.is_active}))
                 .into_response()
@@ -264,4 +318,212 @@ fn safe_id(value: &str) -> bool {
         && value
             .bytes()
             .all(|byte| byte.is_ascii_alphanumeric() || matches!(byte, b'-' | b'_'))
+}
+
+// ── Admin deployments ──
+
+#[derive(Debug, Serialize, FromRow)]
+struct AdminDeploymentRow {
+    id: i64,
+    user_id: String,
+    project_id: String,
+    deployment_id: String,
+    url: String,
+    subdomain: Option<String>,
+    status: String,
+    file_count: i64,
+    message: String,
+    created_at: i64,
+    username: String,
+    display_name: String,
+}
+
+#[derive(Debug, Deserialize)]
+struct DeploymentQuery {
+    status: Option<String>,
+    user: Option<String>,
+    project: Option<String>,
+    page: Option<u32>,
+}
+
+async fn all_deployments(
+    State(state): State<AppState>,
+    auth::AdminUser(_admin): auth::AdminUser,
+    Query(query): Query<DeploymentQuery>,
+) -> Response {
+    let Some(pool) = state.db.as_ref() else {
+        return error_response(StatusCode::SERVICE_UNAVAILABLE, "database_unavailable");
+    };
+    let page = query.page.unwrap_or(1).clamp(1, 1000);
+    let offset = (page - 1) * 50;
+    let status_filter = query.status.unwrap_or_default();
+    let user_filter = query.user.unwrap_or_default();
+    let project_filter = query.project.unwrap_or_default();
+    let result = sqlx::query_as::<_, AdminDeploymentRow>(
+        "SELECT h.id,h.user_id,h.project_id,h.deployment_id,h.url,h.subdomain,h.status,h.file_count,h.message,h.created_at,
+                u.username,u.display_name
+         FROM galileo_deployment_history h
+         JOIN users u ON u.id = h.user_id
+         WHERE (?='' OR h.status=?)
+           AND (?='' OR h.user_id LIKE CONCAT('%',?,'%') OR u.username LIKE CONCAT('%',?,'%'))
+           AND (?='' OR h.project_id LIKE CONCAT('%',?,'%'))
+         ORDER BY h.created_at DESC, h.id DESC
+         LIMIT 50 OFFSET ?",
+    )
+    .bind(&status_filter)
+    .bind(&status_filter)
+    .bind(&user_filter)
+    .bind(&user_filter)
+    .bind(&user_filter)
+    .bind(&project_filter)
+    .bind(&project_filter)
+    .bind(offset)
+    .fetch_all(pool)
+    .await;
+    match result {
+        Ok(rows) => {
+            Json(serde_json::json!({"deployments": rows, "page": page, "page_size": 50})).into_response()
+        }
+        Err(error) => {
+            tracing::error!(?error, "admin deployment listing failed");
+            error_response(StatusCode::SERVICE_UNAVAILABLE, "deployments_unavailable")
+        }
+    }
+}
+
+async fn deployment_detail(
+    State(state): State<AppState>,
+    auth::AdminUser(_admin): auth::AdminUser,
+    Path(deployment_id): Path<String>,
+) -> Response {
+    let Some(pool) = state.db.as_ref() else {
+        return error_response(StatusCode::SERVICE_UNAVAILABLE, "database_unavailable");
+    };
+    let result = sqlx::query_as::<_, AdminDeploymentRow>(
+        "SELECT h.id,h.user_id,h.project_id,h.deployment_id,h.url,h.subdomain,h.status,h.file_count,h.message,h.created_at,
+                u.username,u.display_name
+         FROM galileo_deployment_history h
+         JOIN users u ON u.id = h.user_id
+         WHERE h.deployment_id=?
+         ORDER BY h.created_at DESC
+         LIMIT 50",
+    )
+    .bind(&deployment_id)
+    .fetch_all(pool)
+    .await;
+    match result {
+        Ok(rows) => {
+            Json(serde_json::json!({"entries": rows})).into_response()
+        }
+        Err(error) => {
+            tracing::error!(?error, "admin deployment detail failed");
+            error_response(StatusCode::SERVICE_UNAVAILABLE, "deployment_unavailable")
+        }
+    }
+}
+
+#[derive(Debug, Deserialize)]
+struct AdminUndeployRequest {
+    user_id: String,
+    project_id: String,
+}
+
+async fn admin_undeploy(
+    State(state): State<AppState>,
+    auth::AdminUser(admin): auth::AdminUser,
+    Json(input): Json<AdminUndeployRequest>,
+) -> Response {
+    let Some(pool) = state.db.as_ref() else {
+        return error_response(StatusCode::SERVICE_UNAVAILABLE, "database_unavailable");
+    };
+    if !safe_id(&input.user_id) || !safe_id(&input.project_id) {
+        return error_response(StatusCode::BAD_REQUEST, "invalid_input");
+    }
+    let timestamp = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_secs() as i64)
+        .unwrap_or_default();
+    let _ = sqlx::query(
+        "UPDATE galileo_deployments SET status='undeployed',deployed_at=? WHERE user_id=? AND project_id=?",
+    )
+    .bind(timestamp)
+    .bind(&input.user_id)
+    .bind(&input.project_id)
+    .execute(pool)
+    .await;
+    let _ = sqlx::query(
+        "INSERT INTO galileo_deployment_history (user_id,project_id,deployment_id,url,subdomain,status,file_count,message,created_at)
+         VALUES (?,?,?,?,NULL,'undeployed',0,'admin undeploy',?)",
+    )
+    .bind(&input.user_id)
+    .bind(&input.project_id)
+    .bind(format!("dep_admin_undeploy_{timestamp}"))
+    .bind("")
+    .bind(timestamp)
+    .execute(pool)
+    .await;
+    let _ = sqlx::query(
+        "INSERT INTO admin_audit_events (actor_id,actor_name,action,target_type,target_id,detail,created_at)
+         VALUES (?,?,?,?,?,?,?)",
+    )
+    .bind(&admin.id)
+    .bind(&admin.display_name)
+    .bind("admin.undeploy")
+    .bind("deployment")
+    .bind(&input.project_id)
+    .bind(format!("admin undeployed project {}", &input.project_id))
+    .bind(timestamp)
+    .execute(pool)
+    .await;
+    tracing::warn!(event="admin.deployment.undeployed", admin_id=%admin.id, user_id=%input.user_id, project_id=%input.project_id);
+    Json(serde_json::json!({"ok": true})).into_response()
+}
+
+// ── Audit log ──
+
+#[derive(Debug, Serialize, FromRow)]
+struct AuditEventRow {
+    id: i64,
+    actor_id: String,
+    actor_name: String,
+    action: String,
+    target_type: String,
+    target_id: String,
+    detail: Option<String>,
+    created_at: i64,
+}
+
+#[derive(Debug, Deserialize)]
+struct AuditQuery {
+    page: Option<u32>,
+}
+
+async fn audit_log(
+    State(state): State<AppState>,
+    auth::AdminUser(_admin): auth::AdminUser,
+    Query(query): Query<AuditQuery>,
+) -> Response {
+    let Some(pool) = state.db.as_ref() else {
+        return error_response(StatusCode::SERVICE_UNAVAILABLE, "database_unavailable");
+    };
+    let page = query.page.unwrap_or(1).clamp(1, 1000);
+    let offset = (page - 1) * 50;
+    let result = sqlx::query_as::<_, AuditEventRow>(
+        "SELECT id,actor_id,actor_name,action,target_type,target_id,detail,created_at
+         FROM admin_audit_events
+         ORDER BY created_at DESC, id DESC
+         LIMIT 50 OFFSET ?",
+    )
+    .bind(offset)
+    .fetch_all(pool)
+    .await;
+    match result {
+        Ok(rows) => {
+            Json(serde_json::json!({"events": rows, "page": page, "page_size": 50})).into_response()
+        }
+        Err(error) => {
+            tracing::error!(?error, "admin audit log failed");
+            error_response(StatusCode::SERVICE_UNAVAILABLE, "audit_unavailable")
+        }
+    }
 }

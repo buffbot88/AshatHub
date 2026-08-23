@@ -437,9 +437,10 @@ p { line-height: 1.6; }
 /* ── Main area ── */
 .g-main {
   flex: 1;
-  width: min(80vw, 1600px);
+  width: 80%;
   max-width: 1600px;
   margin: 0 auto;
+  align-self: center;
   min-width: 0;
   display: flex;
   flex-direction: column;
@@ -1083,6 +1084,55 @@ p { line-height: 1.6; }
   font-size: 12px;
 }
 
+/* ── Toast notifications ── */
+.g-toast-container {
+  position: fixed;
+  bottom: 20px;
+  right: 20px;
+  display: flex;
+  flex-direction: column-reverse;
+  gap: 8px;
+  z-index: 100;
+  pointer-events: none;
+}
+.g-toast {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  max-width: 380px;
+  padding: 10px 14px;
+  color: var(--text);
+  background: var(--surface);
+  border: 1px solid rgba(248,113,113,.25);
+  border-radius: 8px;
+  box-shadow: 0 8px 24px rgba(0,0,0,.45);
+  font-size: 12px;
+  line-height: 1.45;
+  pointer-events: auto;
+  cursor: pointer;
+  animation: toast-in .25s ease-out;
+}
+.g-toast-icon { flex-shrink: 0; color: var(--warn); font-size: 14px; }
+.g-toast-msg { flex: 1; min-width: 0; color: var(--muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.g-toast-close {
+  flex-shrink: 0;
+  width: 20px;
+  height: 20px;
+  display: grid;
+  place-items: center;
+  color: var(--dim);
+  background: transparent;
+  border: 0;
+  border-radius: 4px;
+  font-size: 14px;
+  cursor: pointer;
+}
+.g-toast-close:hover { color: var(--text); background: var(--surface-2); }
+@keyframes toast-in {
+  from { opacity: 0; transform: translateY(10px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
 /* ── Command Palette ── */
 .g-palette-backdrop {
   position: fixed;
@@ -1251,6 +1301,56 @@ p { line-height: 1.6; }
   text-transform: uppercase;
 }
 .g-message p, .g-plan-card p, .g-activity-card p { margin: 0; color: var(--muted); font-size: 13px; line-height: 1.55; white-space: pre-wrap; }
+
+/* ── Markdown content ── */
+.g-md-paragraph { margin: 0 0 6px; color: var(--muted); font-size: 13px; line-height: 1.6; white-space: pre-wrap; }
+.g-md-bold { font-weight: 600; color: var(--text); }
+.g-md-italic { font-style: italic; }
+.g-md-code-inline {
+  padding: 1px 5px;
+  background: var(--surface-2);
+  border: 1px solid var(--line-soft);
+  border-radius: 3px;
+  font: 12px 'JetBrains Mono', monospace;
+  color: var(--accent-bright);
+}
+.g-md-code-block {
+  margin: 8px 0;
+  padding: 12px 14px;
+  background: var(--bg-soft);
+  border: 1px solid var(--line-soft);
+  border-radius: 6px;
+  overflow-x: auto;
+}
+.g-md-code-block code {
+  display: block;
+  margin: 0;
+  padding: 0;
+  color: var(--muted);
+  background: transparent;
+  border: 0;
+  font: 12px/1.65 'JetBrains Mono', monospace;
+  white-space: pre-wrap;
+}
+.g-md-list {
+  margin: 6px 0;
+  padding-left: 22px;
+  color: var(--muted);
+  font-size: 13px;
+  line-height: 1.6;
+}
+.g-md-list li { margin: 2px 0; }
+.g-md-blockquote {
+  margin: 8px 0;
+  padding: 6px 12px;
+  border-left: 3px solid var(--accent-dim);
+  color: var(--dim);
+  font-size: 13px;
+  line-height: 1.55;
+}
+.g-md-blockquote span { white-space: pre-wrap; }
+.g-md-link { color: var(--accent); text-decoration: none; }
+.g-md-link:hover { color: var(--accent-bright); text-decoration: underline; }
 .g-plan-card, .g-activity-card {
   margin: 16px 0;
   padding: 14px;
@@ -1297,8 +1397,31 @@ p { line-height: 1.6; }
 .g-sidebar-change { display: flex; gap: 7px; padding: 4px 0; color: var(--muted); font: 11px 'JetBrains Mono', monospace; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .g-sidebar-change span { color: var(--accent); }
 .g-studio-workspace { display: flex; flex-direction: column; min-width: 0; min-height: 0; overflow: hidden; background: var(--bg); }
-.g-studio-workspace.collapsed { min-width: 42px; }
+.g-studio-workspace.collapsed { min-width: 42px; position: relative; }
 .g-studio-workspace-grid.workspace-collapsed { grid-template-columns: minmax(0, 1fr) 42px; }
+.g-expand-handle {
+  position: absolute;
+  left: 0;
+  top: 0;
+  bottom: 0;
+  width: 14px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: transparent;
+  border: 0;
+  border-right: 1px solid var(--line-soft);
+  cursor: pointer;
+  z-index: 5;
+  color: var(--faint);
+  transition: color .15s, background .15s;
+}
+.g-expand-handle:hover { color: var(--accent); background: rgba(201,162,74,.06); }
+.g-expand-chevron {
+  font-size: 16px;
+  line-height: 1;
+  pointer-events: none;
+}
 .g-studio-workspace.collapsed .g-studio-content,
 .g-studio-workspace.collapsed .g-studio-bottom,
 .g-studio-workspace.collapsed .g-studio-topbar-left,

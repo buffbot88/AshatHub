@@ -16,6 +16,10 @@ type Panel = 'files' | 'agent' | 'git' | 'logs';
 type WorkspaceTab = 'preview' | 'editor' | 'terminal';
 type ApiError = string | { message?: string; code?: string };
 
+class TransientError extends Error {
+  constructor(message: string) { super(message); this.name = 'TransientError'; }
+}
+
 const API = '/api';
 
 function csrfToken(): string {
@@ -23,7 +27,7 @@ function csrfToken(): string {
   return cookie ? decodeURIComponent(cookie.slice('ashat_rust_csrf='.length)) : '';
 }
 
-async function request<T>(url: string, init?: RequestInit, retried = false): Promise<T> {
+async function request<T>(url: string, init?: RequestInit, retried = false, retried503 = false): Promise<T> {
   const { headers: initHeaders, ...rest } = init || {};
   const response = await fetch(url, {
     ...rest,
@@ -44,10 +48,15 @@ async function request<T>(url: string, init?: RequestInit, retried = false): Pro
     await fetch(`${API}/auth/session`, { credentials: 'same-origin' });
     return request<T>(url, init, true);
   }
+  if (response.status === 503 && !retried503) {
+    await new Promise((resolve) => setTimeout(resolve, 1200));
+    return request<T>(url, init, retried, true);
+  }
   if (!response.ok) {
     const code = typeof error === 'string' ? error : error?.code || `http_${response.status}`;
     const requestId = typeof error === 'object' && error !== null ? (error as Record<string, unknown>).request_id : undefined;
     console.error(`[Galileo] ${response.status} ${code}: ${url}${requestId ? ` (${requestId})` : ''}`);
+    if (response.status === 503) throw new TransientError(message || 'Service temporarily unavailable');
     throw new Error(message || `Request failed (${response.status})`);
   }
   return (body || {}) as T;
@@ -107,6 +116,143 @@ function FileTreeNodes({
       {node.name}
     </button>
   ));
+}
+
+function normalizeContent(text: string): string {
+  return text.replace(/\\n/g, '\n');
+}
+
+/* ── Lightweight markdown renderer ── */
+
+const INLINE_MD = /(`(.+?)`|\*\*(.+?)\*\*|\*(.+?)\*|\[(.+?)\]\((.+?)\))/g;
+
+function parseInline(text: string): ReactNode[] {
+  const parts: ReactNode[] = [];
+  let last = 0;
+  let m: RegExpExecArray | null;
+  INLINE_MD.lastIndex = 0;
+  while ((m = INLINE_MD.exec(text)) !== null) {
+    if (m.index > last) parts.push(text.slice(last, m.index));
+    if (m[2] !== undefined) {
+      parts.push(<code key={parts.length} className="g-md-code-inline">{m[2]}</code>);
+    } else if (m[3] !== undefined) {
+      parts.push(<strong key={parts.length} className="g-md-bold">{m[3]}</strong>);
+    } else if (m[4] !== undefined) {
+      parts.push(<em key={parts.length} className="g-md-italic">{m[4]}</em>);
+    } else if (m[5] !== undefined && m[6] !== undefined) {
+      parts.push(<a key={parts.length} className="g-md-link" href={m[6]} target="_blank" rel="noopener noreferrer">{m[5]}</a>);
+    }
+    last = m.index + m[0].length;
+  }
+  if (last < text.length) parts.push(text.slice(last));
+  return parts.length > 0 ? parts : [text];
+}
+
+function renderHeading(level: number, content: ReactNode[], key: number): ReactNode {
+  const cls = 'g-md-heading';
+  switch (level) {
+    case 1: return <h1 key={key} className={cls}>{content}</h1>;
+    case 2: return <h2 key={key} className={cls}>{content}</h2>;
+    case 3: return <h3 key={key} className={cls}>{content}</h3>;
+    case 4: return <h4 key={key} className={cls}>{content}</h4>;
+    case 5: return <h5 key={key} className={cls}>{content}</h5>;
+    default: return <h6 key={key} className={cls}>{content}</h6>;
+  }
+}
+
+function MarkdownContent({ text }: { text: string }): ReactNode {
+  const lines = normalizeContent(text).split('\n');
+  const elements: ReactNode[] = [];
+  let i = 0;
+
+  while (i < lines.length) {
+    const line = lines[i];
+
+    if (line.trim() === '') { i++; continue; }
+
+    /* Fenced code block */
+    if (line.trim().startsWith('```')) {
+      const codeLines: string[] = [];
+      i++;
+      while (i < lines.length && !lines[i].trim().startsWith('```')) {
+        codeLines.push(lines[i]);
+        i++;
+      }
+      if (i < lines.length) i++;
+      elements.push(
+        <pre key={elements.length} className="g-md-code-block"><code>{codeLines.join('\n')}</code></pre>,
+      );
+      continue;
+    }
+
+    /* Heading */
+    const hMatch = line.match(/^(#{1,6})\s+(.+)$/);
+    if (hMatch) {
+      elements.push(renderHeading(hMatch[1].length, parseInline(hMatch[2]), elements.length));
+      i++;
+      continue;
+    }
+
+    /* Unordered list */
+    if (/^[-*]\s/.test(line)) {
+      const items: ReactNode[] = [];
+      while (i < lines.length && /^[-*]\s/.test(lines[i])) {
+        items.push(<li key={items.length}>{...parseInline(lines[i].replace(/^[-*]\s/, ''))}</li>);
+        i++;
+      }
+      elements.push(<ul key={elements.length} className="g-md-list">{items}</ul>);
+      continue;
+    }
+
+    /* Ordered list */
+    if (/^\d+\.\s/.test(line)) {
+      const items: ReactNode[] = [];
+      while (i < lines.length && /^\d+\.\s/.test(lines[i])) {
+        items.push(<li key={items.length}>{...parseInline(lines[i].replace(/^\d+\.\s/, ''))}</li>);
+        i++;
+      }
+      elements.push(<ol key={elements.length} className="g-md-list">{items}</ol>);
+      continue;
+    }
+
+    /* Blockquote */
+    if (line.startsWith('> ')) {
+      const qLines: string[] = [];
+      while (i < lines.length && lines[i].startsWith('> ')) {
+        qLines.push(lines[i].slice(2));
+        i++;
+      }
+      elements.push(
+        <blockquote key={elements.length} className="g-md-blockquote">
+          {qLines.map((ql, qi) => <span key={qi}>{...parseInline(ql)}{qi < qLines.length - 1 && <br />}</span>)}
+        </blockquote>,
+      );
+      continue;
+    }
+
+    /* Paragraph — collect consecutive non-special lines */
+    const paraLines: string[] = [];
+    while (
+      i < lines.length && lines[i].trim() !== ''
+      && !lines[i].trim().startsWith('```')
+      && !/^#{1,6}\s/.test(lines[i])
+      && !/^[-*]\s/.test(lines[i])
+      && !/^\d+\.\s/.test(lines[i])
+      && !lines[i].startsWith('> ')
+    ) {
+      paraLines.push(lines[i]);
+      i++;
+    }
+    if (paraLines.length > 0) {
+      elements.push(
+        <p key={elements.length} className="g-md-paragraph">
+          {paraLines.map((pl, pi) => <span key={pi}>{...parseInline(pl)}{pi < paraLines.length - 1 && <br />}</span>)}
+        </p>,
+      );
+    }
+  }
+
+  return <>{elements}</>;
 }
 
 function eventMessage(event: JobEvent): string {
@@ -177,12 +323,24 @@ export function GalileoStudio({
   const [plan, setPlan] = useState<Plan | null>(null);
   const [planId, setPlanId] = useState('');
   const [sending, setSending] = useState(false);
-  const [approving, setApproving] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  const [approving, setApproving] = useState(false);  const [error, setError] = useState<string | null>(null);
+  const [toasts, setToasts] = useState<{ id: number; message: string }[]>([]);
+  const toastIdRef = useRef(0);
+
+  function showToast(message: string) {
+    const id = ++toastIdRef.current;
+    setToasts((prev) => [...prev, { id, message }]);
+    setTimeout(() => setToasts((prev) => prev.filter((t) => t.id !== id)), 5000);
+  }
+
+  function handleError(reason: unknown, fallback: string) {
+    const msg = reason instanceof Error ? reason.message : fallback;
+    if (reason instanceof TransientError) { showToast(msg); } else { setError(msg); }
+  }
 
   const [sidebarPanel, setSidebarPanel] = useState<Panel>('files');
   const [workspaceTab, setWorkspaceTab] = useState<WorkspaceTab>('preview');
-  const [workspaceCollapsed, setWorkspaceCollapsed] = useState(false);
+  const [workspaceCollapsed, setWorkspaceCollapsed] = useState(true);
   const [preview, setPreview] = useState<PreviewStatus | null>(null);
   const [previewLog, setPreviewLog] = useState('');
   const [changes, setChanges] = useState<Change[]>([]);
@@ -309,7 +467,7 @@ export function GalileoStudio({
         return data.projects[0]?.id || '';
       });
     } catch (reason) {
-      setError(reason instanceof Error ? reason.message : 'Projects unavailable');
+      handleError(reason, 'Projects unavailable');
     }
   }
 
@@ -325,7 +483,7 @@ export function GalileoStudio({
       setConversations(data.conversations);
       setConversationId((current) => data.conversations.some((conversation) => conversation.id === current) ? current : data.conversations[0]?.id || '');
     } catch (reason) {
-      setError(reason instanceof Error ? reason.message : 'Conversations unavailable');
+      handleError(reason, 'Conversations unavailable');
     }
   }
 
@@ -338,7 +496,7 @@ export function GalileoStudio({
       const data = await request<{ messages: Message[] }>(`${API}/galileo/conversations/${encodeURIComponent(conversationId)}/messages`);
       setMessages(data.messages);
     } catch (reason) {
-      setError(reason instanceof Error ? reason.message : 'Messages unavailable');
+      handleError(reason, 'Messages unavailable');
     }
   }
 
@@ -351,7 +509,7 @@ export function GalileoStudio({
       const data = await request<{ files: FileEntry[] }>(`${API}/galileo/projects/${encodeURIComponent(projectId)}/files`);
       setFiles(data.files);
     } catch (reason) {
-      setError(reason instanceof Error ? reason.message : 'Files unavailable');
+      handleError(reason, 'Files unavailable');
     }
   }
 
@@ -364,7 +522,7 @@ export function GalileoStudio({
       const data = await request<PreviewStatus>(`${API}/galileo/preview/status?project_id=${encodeURIComponent(projectId)}`);
       setPreview(data);
     } catch (reason) {
-      setError(reason instanceof Error ? reason.message : 'Preview status unavailable');
+      handleError(reason, 'Preview status unavailable');
     }
   }
 
@@ -386,7 +544,7 @@ export function GalileoStudio({
       setChanges(data.changes);
       return data.changes;
     } catch (reason) {
-      setError(reason instanceof Error ? reason.message : 'Changes unavailable');
+      handleError(reason, 'Changes unavailable');
       return [];
     }
   }
@@ -469,9 +627,10 @@ export function GalileoStudio({
           await loadFiles();
           await loadChanges(statusData.job.id);
           if (statusData.job.status === 'complete') setSidebarPanel('git');
+          setTimeout(() => { if (!stopped) void loadMessages(); }, 2500);
         }
       } catch (reason) {
-        if (!stopped) setError(reason instanceof Error ? reason.message : 'Job status unavailable');
+        if (!stopped) handleError(reason, 'Job status unavailable');
       }
     };
     void refresh();
@@ -560,7 +719,7 @@ export function GalileoStudio({
       setPlanId(data.plan_id || '');
     } catch (reason) {
       setDiscovery(null);
-      setError(reason instanceof Error ? reason.message : 'Galileo could not prepare the request');
+      handleError(reason, 'Galileo could not prepare the request');
     } finally {
       setSending(false);
     }
@@ -584,7 +743,7 @@ export function GalileoStudio({
       setDiscovery('Build queued. Galileo will show the agent activity and staged file changes here.');
       setWorkspaceTab('terminal');
     } catch (reason) {
-      setError(reason instanceof Error ? reason.message : 'Plan approval failed');
+      handleError(reason, 'Plan approval failed');
     } finally {
       setApproving(false);
     }
@@ -595,7 +754,7 @@ export function GalileoStudio({
     try {
       await request(`${API}/galileo/agents/jobs/${encodeURIComponent(job.id)}/cancel`, { method: 'POST' });
     } catch (reason) {
-      setError(reason instanceof Error ? reason.message : 'Cancellation failed');
+      handleError(reason, 'Cancellation failed');
     }
   }
 
@@ -611,7 +770,7 @@ export function GalileoStudio({
       setWorkspaceTab('preview');
       await loadPreviewLog();
     } catch (reason) {
-      setError(reason instanceof Error ? reason.message : 'Preview could not start');
+      handleError(reason, 'Preview could not start');
     }
   }
 
@@ -622,7 +781,7 @@ export function GalileoStudio({
       setPreview({ project_id: projectId, status: 'stopped' });
       setPreviewLog('');
     } catch (reason) {
-      setError(reason instanceof Error ? reason.message : 'Preview could not stop');
+      handleError(reason, 'Preview could not stop');
     }
   }
 
@@ -635,7 +794,7 @@ export function GalileoStudio({
       setWorkspaceTab('terminal');
       setPreviewLog((current) => `${current}${current ? '\n' : ''}[deploy] Deployment started for ${projectId}`);
     } catch (reason) {
-      setError(reason instanceof Error ? reason.message : 'Deployment failed');
+      handleError(reason, 'Deployment failed');
     } finally {
       setDeploying(false);
     }
@@ -655,7 +814,7 @@ export function GalileoStudio({
         await startPreview();
       }
     } catch (reason) {
-      setError(reason instanceof Error ? reason.message : `Unable to ${action} changes`);
+      handleError(reason, `Unable to ${action} changes`);
     }
   }
 
@@ -669,7 +828,7 @@ export function GalileoStudio({
       await loadFiles();
       setError(null);
     } catch (reason) {
-      setError(reason instanceof Error ? reason.message : 'File save failed');
+      handleError(reason, 'File save failed');
     }
   }
 
@@ -772,15 +931,15 @@ export function GalileoStudio({
               {messages.map((message, index) => (
                 <article className={`g-message g-message-${message.role}`} key={`${message.created_at}-${index}`}>
                   <span className="g-message-role">{message.role === 'user' ? 'You' : message.role === 'assistant' ? 'Galileo' : message.role}</span>
-                  <p>{message.content}</p>
+                  {message.role === 'assistant' ? <MarkdownContent text={message.content} /> : <p>{normalizeContent(message.content)}</p>}
                 </article>
               ))}
 
               {discovery && plan && (
                 <article className="g-plan-card">
                   <div className="g-plan-card-heading"><span className="g-plan-icon">◇</span><strong>Build plan ready</strong></div>
-                  {plan.summary && <p>{plan.summary}</p>}
-                  {plan.architecture && <p className="g-plan-architecture">{plan.architecture}</p>}
+                  {plan.summary && <MarkdownContent text={plan.summary} />}
+                  {plan.architecture && <div className="g-plan-architecture"><MarkdownContent text={plan.architecture} /></div>}
                   <div className="g-plan-files">
                     {plan.files.map((file) => <div key={file.path}><code>{file.path}</code><span>{file.purpose}</span></div>)}
                   </div>
@@ -816,6 +975,11 @@ export function GalileoStudio({
           </section>
 
           <section className={`g-studio-workspace ${workspaceCollapsed ? 'collapsed' : ''}`} aria-label="Project workspace">
+            {workspaceCollapsed && (
+              <button type="button" className="g-expand-handle" title="Expand panel" onClick={() => setWorkspaceCollapsed(false)} aria-expanded={false}>
+                <span className="g-expand-chevron">‹</span>
+              </button>
+            )}
             <div className="g-studio-topbar">
               <div className="g-studio-topbar-left">
                 <button type="button" className={`g-tab ${workspaceTab === 'preview' ? 'active' : ''}`} onClick={() => setWorkspaceTab('preview')}>Preview</button>
@@ -938,6 +1102,18 @@ export function GalileoStudio({
       </div>
 
       {error && <div className="g-error-bar" role="alert">{error}</div>}
+
+      {toasts.length > 0 && (
+        <div className="g-toast-container" aria-live="polite">
+          {toasts.map((t) => (
+            <div key={t.id} className="g-toast" onClick={() => setToasts((prev) => prev.filter((toast) => toast.id !== t.id))} role="status">
+              <span className="g-toast-icon">⚠</span>
+              <span className="g-toast-msg">{t.message}</span>
+              <button type="button" className="g-toast-close" aria-label="Dismiss" onClick={() => setToasts((prev) => prev.filter((toast) => toast.id !== t.id))}>×</button>
+            </div>
+          ))}
+        </div>
+      )}
     </div>
   );
 }

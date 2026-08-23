@@ -13,8 +13,7 @@ type PreviewStatus = { project_id: string; status: string; url?: string | null; 
 type Change = { id: number; job_id: string; project_id: string; path: string; operation: string; state: string; diff?: string; created_at: number; updated_at: number };
 
 type Panel = 'files' | 'agent' | 'git' | 'logs';
-type MainTab = 'preview' | 'code';
-type BottomTab = 'terminal' | 'changes';
+type WorkspaceTab = 'preview' | 'editor' | 'terminal';
 type ApiError = string | { message?: string; code?: string };
 
 const API = '/api';
@@ -182,8 +181,8 @@ export function GalileoStudio({
   const [error, setError] = useState<string | null>(null);
 
   const [sidebarPanel, setSidebarPanel] = useState<Panel>('files');
-  const [mainTab, setMainTab] = useState<MainTab>('preview');
-  const [bottomTab, setBottomTab] = useState<BottomTab>('terminal');
+  const [workspaceTab, setWorkspaceTab] = useState<WorkspaceTab>('preview');
+  const [workspaceCollapsed, setWorkspaceCollapsed] = useState(false);
   const [preview, setPreview] = useState<PreviewStatus | null>(null);
   const [previewLog, setPreviewLog] = useState('');
   const [changes, setChanges] = useState<Change[]>([]);
@@ -441,11 +440,11 @@ export function GalileoStudio({
   }, [projectId]);
 
   useEffect(() => {
-    if (!projectId || bottomTab !== 'terminal' || preview?.status !== 'running') return undefined;
+    if (!projectId || workspaceTab !== 'terminal' || preview?.status !== 'running') return undefined;
     void loadPreviewLog();
     const timer = window.setInterval(() => void loadPreviewLog(), 2000);
     return () => window.clearInterval(timer);
-  }, [bottomTab, preview?.status, projectId]);
+  }, [preview?.status, projectId, workspaceTab]);
 
   useEffect(() => {
     if (!job) return undefined;
@@ -469,7 +468,7 @@ export function GalileoStudio({
           finished = true;
           await loadFiles();
           await loadChanges(statusData.job.id);
-          if (statusData.job.status === 'complete') setBottomTab('changes');
+          if (statusData.job.status === 'complete') setSidebarPanel('git');
         }
       } catch (reason) {
         if (!stopped) setError(reason instanceof Error ? reason.message : 'Job status unavailable');
@@ -496,8 +495,8 @@ export function GalileoStudio({
   useEffect(() => {
     if (!command) return;
     switch (command) {
-      case 'open-terminal': setBottomTab('terminal'); break;
-      case 'open-changes': setBottomTab('changes'); break;
+      case 'open-terminal': setWorkspaceTab('terminal'); setWorkspaceCollapsed(false); break;
+      case 'open-changes': setSidebarPanel('git'); break;
       case 'start-preview': void startPreview(); break;
       case 'stop-preview': void stopPreview(); break;
       case 'deploy': void runDeploy(); break;
@@ -583,7 +582,7 @@ export function GalileoStudio({
       setPlan(null);
       setPlanId('');
       setDiscovery('Build queued. Galileo will show the agent activity and staged file changes here.');
-      setBottomTab('terminal');
+      setWorkspaceTab('terminal');
     } catch (reason) {
       setError(reason instanceof Error ? reason.message : 'Plan approval failed');
     } finally {
@@ -609,8 +608,7 @@ export function GalileoStudio({
         body: JSON.stringify({ project_id: projectId }),
       });
       setPreview(status);
-      setMainTab('preview');
-      setBottomTab('terminal');
+      setWorkspaceTab('preview');
       await loadPreviewLog();
     } catch (reason) {
       setError(reason instanceof Error ? reason.message : 'Preview could not start');
@@ -634,7 +632,7 @@ export function GalileoStudio({
     setError(null);
     try {
       await request(`${API}/galileo/deploy`, { method: 'POST', body: JSON.stringify({ project_id: projectId }) });
-      setBottomTab('terminal');
+      setWorkspaceTab('terminal');
       setPreviewLog((current) => `${current}${current ? '\n' : ''}[deploy] Deployment started for ${projectId}`);
     } catch (reason) {
       setError(reason instanceof Error ? reason.message : 'Deployment failed');
@@ -715,7 +713,7 @@ export function GalileoStudio({
         {sidebarPanel === 'files' && (
           <div className="g-file-tree">
             {activeProject && <div className="g-file-tree-root">{activeProject.name}</div>}
-            {files.length > 0 ? <FileTreeNodes nodes={fileTree} activeFile={activeFile} onSelect={(path) => { setActiveFile(path); setMainTab('code'); }} /> : <p className="g-muted-sm g-sidebar-empty">No files yet. Ask Galileo to build the project.</p>}
+            {files.length > 0 ? <FileTreeNodes nodes={fileTree} activeFile={activeFile} onSelect={(path) => { setActiveFile(path); setWorkspaceTab('editor'); setWorkspaceCollapsed(false); }} /> : <p className="g-muted-sm g-sidebar-empty">No files yet. Ask Galileo to build the project.</p>}
           </div>
         )}
 
@@ -758,7 +756,7 @@ export function GalileoStudio({
       </aside>
 
       <div className="g-studio-main">
-        <div className="g-studio-workspace-grid">
+        <div className={`g-studio-workspace-grid ${workspaceCollapsed ? 'workspace-collapsed' : ''}`}>
           <section className="g-conversation-panel" aria-label="Galileo conversation">
             <header className="g-conversation-header">
               <div>
@@ -817,11 +815,12 @@ export function GalileoStudio({
             </div>
           </section>
 
-          <section className="g-studio-workspace" aria-label="Project workspace">
+          <section className={`g-studio-workspace ${workspaceCollapsed ? 'collapsed' : ''}`} aria-label="Project workspace">
             <div className="g-studio-topbar">
               <div className="g-studio-topbar-left">
-                <button type="button" className={`g-tab ${mainTab === 'preview' ? 'active' : ''}`} onClick={() => setMainTab('preview')}>Preview</button>
-                <button type="button" className={`g-tab ${mainTab === 'code' ? 'active' : ''}`} onClick={() => setMainTab('code')}>Source</button>
+                <button type="button" className={`g-tab ${workspaceTab === 'preview' ? 'active' : ''}`} onClick={() => setWorkspaceTab('preview')}>Preview</button>
+                <button type="button" className={`g-tab ${workspaceTab === 'editor' ? 'active' : ''}`} onClick={() => setWorkspaceTab('editor')}>Editor</button>
+                <button type="button" className={`g-tab ${workspaceTab === 'terminal' ? 'active' : ''}`} onClick={() => setWorkspaceTab('terminal')}>Terminal</button>
               </div>
               <div className="g-studio-topbar-right">
                 {preview?.status === 'running' ? (
@@ -835,11 +834,14 @@ export function GalileoStudio({
                 <button type="button" className="g-btn-sm g-btn-gold" disabled={deploying || !projectId} onClick={() => void runDeploy()}>
                   {deploying ? 'Deploying…' : 'Deploy'}
                 </button>
+                <button type="button" className="g-btn-sm" onClick={() => setWorkspaceCollapsed((collapsed) => !collapsed)} aria-expanded={!workspaceCollapsed}>
+                  {workspaceCollapsed ? '›' : 'Collapse'}
+                </button>
               </div>
             </div>
 
             <div className="g-studio-content">
-              {mainTab === 'preview' && (
+              {workspaceTab === 'preview' && (
                 <div className="g-preview-area">
                   {preview?.url ? <iframe className="g-preview-frame" src={preview.url} title="Live project preview" /> : (
                     <div className="g-empty-preview">
@@ -851,7 +853,7 @@ export function GalileoStudio({
                 </div>
               )}
 
-              {mainTab === 'code' && (
+              {workspaceTab === 'editor' && (
                 <div className="g-code-area">
                   {activeFile ? (
                     <div className="g-editor">
@@ -863,17 +865,16 @@ export function GalileoStudio({
                   )}
                 </div>
               )}
+
+              {workspaceTab === 'terminal' && <pre className="g-terminal g-terminal-panel">{previewLog || 'Runtime is waiting for the application to start.'}</pre>}
             </div>
 
             <div className="g-studio-bottom">
               <div className="g-studio-bottom-tabs">
-                <button type="button" className={`g-tab-sm ${bottomTab === 'terminal' ? 'active' : ''}`} onClick={() => setBottomTab('terminal')}>Runtime</button>
-                <button type="button" className={`g-tab-sm ${bottomTab === 'changes' ? 'active' : ''}`} onClick={() => setBottomTab('changes')}>Changes {pendingChanges.length > 0 && <span className="g-badge">{pendingChanges.length}</span>}</button>
+                <span className="g-tab-sm active">Changes {pendingChanges.length > 0 && <span className="g-badge">{pendingChanges.length}</span>}</span>
               </div>
               <div className="g-studio-bottom-content">
-                {bottomTab === 'terminal' && <pre className="g-terminal">{previewLog || 'Runtime is waiting for the application to start.'}</pre>}
-                {bottomTab === 'changes' && (
-                  <div className="g-changes-list">
+                <div className="g-changes-list">
                     {changes.length > 0 && <div className="g-changes-actions"><span>{pendingChanges.length ? `${pendingChanges.length} pending change${pendingChanges.length === 1 ? '' : 's'}` : 'All changes resolved'}</span><div><button type="button" className="g-btn-sm g-btn-gold" onClick={() => void resolveChanges('accept')} disabled={!pendingChanges.length}>Accept all</button><button type="button" className="g-btn-sm" onClick={() => void resolveChanges('revert')} disabled={!changes.some((change) => change.state === 'pending' || change.state === 'accepted')}>Revert</button></div></div>}
                     {changes.length === 0 && <p className="g-muted-sm g-changes-empty">No staged agent changes yet.</p>}
                     {changes.map((change) => (
@@ -885,7 +886,6 @@ export function GalileoStudio({
                       </div>
                     ))}
                   </div>
-                )}
               </div>
             </div>
           </section>

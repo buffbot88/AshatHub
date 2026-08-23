@@ -2,7 +2,7 @@ use axum::{
     extract::{Path, Query, State},
     http::{HeaderMap, StatusCode},
     response::{IntoResponse, Response},
-    routing::{delete, get, post},
+    routing::{get, post},
     Json, Router,
 };
 use serde::{Deserialize, Serialize};
@@ -86,17 +86,16 @@ pub(crate) fn routes() -> Router<AppState> {
     Router::new()
         .route("/api/galileo/conversations", post(create))
         .route("/api/galileo/conversations/sync", post(sync))
-        .route("/api/galileo/conversations/{project_id}", get(list))
         .route(
-            "/api/galileo/conversations/{id}/messages",
+            "/api/galileo/conversations/:project_id",
+            get(list).delete(delete_conversation),
+        )
+        .route(
+            "/api/galileo/conversations/:id/messages",
             get(messages).post(add_messages),
         )
-        .route(
-            "/api/galileo/conversations/{id}",
-            delete(delete_conversation),
-        )
-        .route("/api/galileo/conversations/{id}/rename", post(rename))
-        .route("/api/galileo/conversations/{id}/archive", post(archive))
+        .route("/api/galileo/conversations/:id/rename", post(rename))
+        .route("/api/galileo/conversations/:id/archive", post(archive))
 }
 
 async fn list(

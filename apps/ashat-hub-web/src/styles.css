@@ -437,6 +437,9 @@ p { line-height: 1.6; }
 /* ── Main area ── */
 .g-main {
   flex: 1;
+  width: min(80vw, 1600px);
+  max-width: 1600px;
+  margin: 0 auto;
   min-width: 0;
   display: flex;
   flex-direction: column;
@@ -1294,6 +1297,18 @@ p { line-height: 1.6; }
 .g-sidebar-change { display: flex; gap: 7px; padding: 4px 0; color: var(--muted); font: 11px 'JetBrains Mono', monospace; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .g-sidebar-change span { color: var(--accent); }
 .g-studio-workspace { display: flex; flex-direction: column; min-width: 0; min-height: 0; overflow: hidden; background: var(--bg); }
+.g-studio-workspace.collapsed { min-width: 42px; }
+.g-studio-workspace-grid.workspace-collapsed { grid-template-columns: minmax(0, 1fr) 42px; }
+.g-studio-workspace.collapsed .g-studio-content,
+.g-studio-workspace.collapsed .g-studio-bottom,
+.g-studio-workspace.collapsed .g-studio-topbar-left,
+.g-studio-workspace.collapsed .g-studio-topbar-right > :not(:last-child) { display: none; }
+.g-studio-workspace.collapsed .g-studio-topbar { height: 100%; padding: 0 6px; align-items: flex-start; }
+.g-studio-workspace.collapsed .g-studio-topbar-right { margin: 0 auto; }
+.g-studio-workspace.collapsed .g-btn-sm { padding: 8px; font-size: 18px; }
+.g-terminal-panel { flex: 1; min-height: 0; overflow: auto; }
+.g-agent-composer { width: 42%; margin-right: auto; }
+.g-studio-workspace-grid.workspace-collapsed + .g-agent-composer { width: 100%; }
 .g-editor-tab { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
 .g-editor-tab span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .g-changes-actions { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 8px 14px; color: var(--muted); font-size: 11px; border-bottom: 1px solid var(--line-soft); }
@@ -1473,6 +1488,7 @@ p { line-height: 1.6; }
 }
 
 @media (max-width: 800px) {
+  .g-main { width: 100%; }
   .g-studio { grid-template-columns: 48px minmax(0, 1fr); }
   .g-studio-sidebar { display: none; }
   .g-studio-workspace-grid { grid-template-columns: 1fr; grid-template-rows: minmax(300px, 1fr) minmax(300px, 1fr); overflow-y: auto; }

@@ -29,7 +29,10 @@ async function request<T>(url: string, init?: RequestInit): Promise<T> {
   try { body = text ? JSON.parse(text) as T & { error?: ApiError } : null; } catch { /* handled below */ }
   if (!response.ok) {
     const error = body?.error;
-    throw new Error(typeof error === 'string' ? error : error?.message || error?.code || `Request failed (${response.status})`);
+    const message = typeof error === 'string' ? error : error?.message || error?.code || `Request failed (${response.status})`;
+    const code = typeof error === 'string' ? error : error?.code || `http_${response.status}`;
+    console.error(`[Galileo Dashboard] ${response.status} ${code}: ${url}`);
+    throw new Error(message);
   }
   return (body || {}) as T;
 }

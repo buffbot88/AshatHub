@@ -86,9 +86,21 @@ fn public_message(code: &str) -> &'static str {
         "upstream_error" | "chat_engine_unavailable" | "planner_unavailable" => {
             "The upstream service is currently unavailable."
         }
-        _ if code.ends_with("_not_found") || code == "not_found" => {
-            "The requested resource was not found."
-        }
+        "project_not_found" => "The project was not found. It may have been deleted.",
+        "conversation_not_found" | "not_found" => "The requested resource was not found.",
+        "job_not_found" => "The build job was not found.",
+        "plan_not_found" => "The build plan was not found.",
+        "file_not_found" => "The file was not found.",
+        "folder_not_found" => "The folder was not found.",
+        "deployment_not_found" => "The deployment was not found.",
+        "deployment_backup_not_found" => "The deployment backup was not found.",
+        "preview_file_not_found" => "The preview file was not found.",
+        "skill_not_found" => "The requested skill was not found.",
+        "device_code_not_found" => "The authentication code expired or was not found.",
+        "model_not_found" => "The requested model was not found.",
+        "release_not_found" => "The release was not found.",
+        _ if code.ends_with("_not_found") => "The requested resource was not found.",
+        "not_found_or_expired" => "The resource was not found or has expired.",
         _ => "The request could not be completed.",
     }
 }

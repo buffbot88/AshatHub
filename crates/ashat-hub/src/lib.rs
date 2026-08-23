@@ -467,7 +467,11 @@ async fn request_context(
             .insert("cache-control", HeaderValue::from_static("no-store"));
     }
     state.metrics.record_response(response.status());
-    tracing::info!(%request_id, %method, %path, status = response.status().as_u16(), "AshatHub request");
+    if response.status().is_client_error() || response.status().is_server_error() {
+        tracing::warn!(%request_id, %method, %path, status = response.status().as_u16(), "AshatHub error response");
+    } else {
+        tracing::info!(%request_id, %method, %path, status = response.status().as_u16(), "AshatHub request");
+    }
     response
 }
 

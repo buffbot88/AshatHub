@@ -45,7 +45,12 @@ async function request<T>(url: string, init?: RequestInit, retried = false): Pro
     await fetch(`${API}/auth/session`, { credentials: 'same-origin' });
     return request<T>(url, init, true);
   }
-  if (!response.ok) throw new Error(message || `Request failed (${response.status})`);
+  if (!response.ok) {
+    const code = typeof error === 'string' ? error : error?.code || `http_${response.status}`;
+    const requestId = typeof error === 'object' && error !== null ? (error as Record<string, unknown>).request_id : undefined;
+    console.error(`[Galileo] ${response.status} ${code}: ${url}${requestId ? ` (${requestId})` : ''}`);
+    throw new Error(message || `Request failed (${response.status})`);
+  }
   return (body || {}) as T;
 }
 

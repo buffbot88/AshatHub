@@ -19,6 +19,8 @@ interface ShowcaseProject { id: string; name: string; description: string; categ
 interface ShowcaseResponse { projects: ShowcaseProject[] }
 type View = 'home' | 'projects' | 'games' | 'galileo' | 'community' | 'docs' | 'support' | 'account' | 'activity' | 'telemetry' | 'admin' | 'terms' | 'privacy' | 'vesper-auth' | 'verify-email' | 'reset-password' | 'error';
 
+type GalileoView = 'dashboard' | 'studio' | 'deployments' | 'settings';
+
 function viewForPath(path: string): View {
   if (path === '/projects') return 'projects';
   if (path === '/games') return 'games';

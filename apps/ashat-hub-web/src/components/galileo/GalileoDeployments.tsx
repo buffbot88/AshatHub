@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useState } from 'react';
+import { API, request } from './api';
 
 type User = { id: string; username: string; display_name: string; email: string; role: string };
 type Project = { id: string; name: string; description?: string; file_count: number };
@@ -13,38 +14,6 @@ type Deployment = {
   message: string;
   created_at: number;
 };
-
-type ApiError = string | { message?: string; code?: string };
-const API = '/api';
-
-function csrfToken(): string {
-  const cookie = document.cookie.split('; ').find((v) => v.startsWith('ashat_rust_csrf='));
-  return cookie ? decodeURIComponent(cookie.slice('ashat_rust_csrf='.length)) : '';
-}
-
-async function request<T>(url: string, init?: RequestInit): Promise<T> {
-  const response = await fetch(url, {
-    credentials: 'same-origin',
-    headers: {
-      Accept: 'application/json',
-      ...(init?.body ? { 'Content-Type': 'application/json' } : {}),
-      ...(init?.body ? { 'X-CSRF-Token': csrfToken() } : {}),
-      ...(init?.headers || {}),
-    },
-    ...init,
-  });
-  const text = await response.text();
-  let body: (T & { error?: ApiError }) | null = null;
-  try { body = text ? JSON.parse(text) as T & { error?: ApiError } : null; } catch { /* handled */ }
-  if (!response.ok) {
-    const error = body?.error;
-    const message = typeof error === 'string' ? error : error?.message || error?.code || `Request failed (${response.status})`;
-    const code = typeof error === 'string' ? error : error?.code || `http_${response.status}`;
-    console.error(`[Galileo Deployments] ${response.status} ${code}: ${url}`);
-    throw new Error(message);
-  }
-  return (body || {}) as T;
-}
 
 function timeAgo(timestamp: number): string {
   const seconds = Math.floor(Date.now() / 1000 - timestamp);

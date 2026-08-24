@@ -1,5 +1,10 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
-import type { FormEvent, KeyboardEvent, ReactNode } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import type { FormEvent, KeyboardEvent } from 'react';
+import { API, TransientError, request, encodeFilePath } from './api';
+import { MarkdownContent, normalizeContent } from './MarkdownContent';
+import { FileTreeNodes, treeFromPaths } from './FileTree';
+import { ErrorBoundary } from './ErrorBoundary';
+import { VirtualizedList } from './VirtualizedList';
 
 type User = { id: string; username: string; display_name: string; role: string };
 type Project = { id: string; name: string; description?: string; file_count: number };
@@ -14,246 +19,8 @@ type Change = { id: number; job_id: string; project_id: string; path: string; op
 
 type Panel = 'files' | 'agent' | 'git' | 'logs';
 type WorkspaceTab = 'preview' | 'editor' | 'terminal';
-type ApiError = string | { message?: string; code?: string };
 
-class TransientError extends Error {
-  constructor(message: string) { super(message); this.name = 'TransientError'; }
-}
 
-const API = '/api';
-
-function csrfToken(): string {
-  const cookie = document.cookie.split('; ').find((value) => value.startsWith('ashat_rust_csrf='));
-  return cookie ? decodeURIComponent(cookie.slice('ashat_rust_csrf='.length)) : '';
-}
-
-async function request<T>(url: string, init?: RequestInit, retried = false, retried503 = false): Promise<T> {
-  const { headers: initHeaders, ...rest } = init || {};
-  const response = await fetch(url, {
-    ...rest,
-    credentials: 'same-origin',
-    headers: {
-      Accept: 'application/json',
-      ...(init?.body ? { 'Content-Type': 'application/json' } : {}),
-      ...(init?.body ? { 'X-CSRF-Token': csrfToken() } : {}),
-      ...(initHeaders || {}),
-    },
-  });
-  const text = await response.text();
-  let body: (T & { error?: ApiError }) | null = null;
-  try { body = text ? JSON.parse(text) as T & { error?: ApiError } : null; } catch { /* handled below */ }
-  const error = body?.error;
-  const message = typeof error === 'string' ? error : error?.message || error?.code;
-  if (response.status === 403 && message === 'csrf_failed' && !retried) {
-    await fetch(`${API}/auth/session`, { credentials: 'same-origin' });
-    return request<T>(url, init, true);
-  }
-  if (response.status === 503 && !retried503) {
-    await new Promise((resolve) => setTimeout(resolve, 1200));
-    return request<T>(url, init, retried, true);
-  }
-  if (!response.ok) {
-    const code = typeof error === 'string' ? error : error?.code || `http_${response.status}`;
-    const requestId = typeof error === 'object' && error !== null ? (error as Record<string, unknown>).request_id : undefined;
-    console.error(`[Galileo] ${response.status} ${code}: ${url}${requestId ? ` (${requestId})` : ''}`);
-    if (response.status === 503) throw new TransientError(message || 'Service temporarily unavailable');
-    throw new Error(message || `Request failed (${response.status})`);
-  }
-  return (body || {}) as T;
-}
-
-function encodeFilePath(path: string): string {
-  return path.split('/').map((segment) => encodeURIComponent(segment)).join('/');
-}
-
-type TreeNode = { name: string; path: string; children: TreeNode[] };
-function treeFromPaths(paths: string[]): TreeNode[] {
-  const root: TreeNode[] = [];
-  for (const path of paths) {
-    const parts = path.split('/');
-    const fileName = parts.pop() || path;
-    let current = root;
-    let currentPath = '';
-    for (const directory of parts) {
-      currentPath = currentPath ? `${currentPath}/${directory}` : directory;
-      let node = current.find((item) => item.name === directory && item.children.length > 0);
-      if (!node) {
-        node = { name: directory, path: currentPath, children: [] };
-        current.push(node);
-      }
-      current = node.children;
-    }
-    current.push({
-      name: fileName,
-      path: currentPath ? `${currentPath}/${fileName}` : fileName,
-      children: [],
-    });
-  }
-  return root;
-}
-
-function FileTreeNodes({
-  nodes,
-  activeFile,
-  onSelect,
-}: {
-  nodes: TreeNode[];
-  activeFile: string;
-  onSelect: (path: string) => void;
-}): ReactNode {
-  return nodes.map((node) => node.children.length > 0 ? (
-    <div key={node.path} className="g-file-tree-group">
-      <span className="g-file-tree-dir">⌄ {node.name}</span>
-      <FileTreeNodes nodes={node.children} activeFile={activeFile} onSelect={onSelect} />
-    </div>
-  ) : (
-    <button
-      key={node.path}
-      type="button"
-      className={`g-file-tree-file ${activeFile === node.path ? 'active' : ''}`}
-      onClick={() => onSelect(node.path)}
-    >
-      {node.name}
-    </button>
-  ));
-}
-
-function normalizeContent(text: string): string {
-  return text.replace(/\\n/g, '\n');
-}
-
-/* ── Lightweight markdown renderer ── */
-
-const INLINE_MD = /(`(.+?)`|\*\*(.+?)\*\*|\*(.+?)\*|\[(.+?)\]\((.+?)\))/g;
-
-function parseInline(text: string): ReactNode[] {
-  const parts: ReactNode[] = [];
-  let last = 0;
-  let m: RegExpExecArray | null;
-  INLINE_MD.lastIndex = 0;
-  while ((m = INLINE_MD.exec(text)) !== null) {
-    if (m.index > last) parts.push(text.slice(last, m.index));
-    if (m[2] !== undefined) {
-      parts.push(<code key={parts.length} className="g-md-code-inline">{m[2]}</code>);
-    } else if (m[3] !== undefined) {
-      parts.push(<strong key={parts.length} className="g-md-bold">{m[3]}</strong>);
-    } else if (m[4] !== undefined) {
-      parts.push(<em key={parts.length} className="g-md-italic">{m[4]}</em>);
-    } else if (m[5] !== undefined && m[6] !== undefined) {
-      parts.push(<a key={parts.length} className="g-md-link" href={m[6]} target="_blank" rel="noopener noreferrer">{m[5]}</a>);
-    }
-    last = m.index + m[0].length;
-  }
-  if (last < text.length) parts.push(text.slice(last));
-  return parts.length > 0 ? parts : [text];
-}
-
-function renderHeading(level: number, content: ReactNode[], key: number): ReactNode {
-  const cls = 'g-md-heading';
-  switch (level) {
-    case 1: return <h1 key={key} className={cls}>{content}</h1>;
-    case 2: return <h2 key={key} className={cls}>{content}</h2>;
-    case 3: return <h3 key={key} className={cls}>{content}</h3>;
-    case 4: return <h4 key={key} className={cls}>{content}</h4>;
-    case 5: return <h5 key={key} className={cls}>{content}</h5>;
-    default: return <h6 key={key} className={cls}>{content}</h6>;
-  }
-}
-
-function MarkdownContent({ text }: { text: string }): ReactNode {
-  const lines = normalizeContent(text).split('\n');
-  const elements: ReactNode[] = [];
-  let i = 0;
-
-  while (i < lines.length) {
-    const line = lines[i];
-
-    if (line.trim() === '') { i++; continue; }
-
-    /* Fenced code block */
-    if (line.trim().startsWith('```')) {
-      const codeLines: string[] = [];
-      i++;
-      while (i < lines.length && !lines[i].trim().startsWith('```')) {
-        codeLines.push(lines[i]);
-        i++;
-      }
-      if (i < lines.length) i++;
-      elements.push(
-        <pre key={elements.length} className="g-md-code-block"><code>{codeLines.join('\n')}</code></pre>,
-      );
-      continue;
-    }
-
-    /* Heading */
-    const hMatch = line.match(/^(#{1,6})\s+(.+)$/);
-    if (hMatch) {
-      elements.push(renderHeading(hMatch[1].length, parseInline(hMatch[2]), elements.length));
-      i++;
-      continue;
-    }
-
-    /* Unordered list */
-    if (/^[-*]\s/.test(line)) {
-      const items: ReactNode[] = [];
-      while (i < lines.length && /^[-*]\s/.test(lines[i])) {
-        items.push(<li key={items.length}>{...parseInline(lines[i].replace(/^[-*]\s/, ''))}</li>);
-        i++;
-      }
-      elements.push(<ul key={elements.length} className="g-md-list">{items}</ul>);
-      continue;
-    }
-
-    /* Ordered list */
-    if (/^\d+\.\s/.test(line)) {
-      const items: ReactNode[] = [];
-      while (i < lines.length && /^\d+\.\s/.test(lines[i])) {
-        items.push(<li key={items.length}>{...parseInline(lines[i].replace(/^\d+\.\s/, ''))}</li>);
-        i++;
-      }
-      elements.push(<ol key={elements.length} className="g-md-list">{items}</ol>);
-      continue;
-    }
-
-    /* Blockquote */
-    if (line.startsWith('> ')) {
-      const qLines: string[] = [];
-      while (i < lines.length && lines[i].startsWith('> ')) {
-        qLines.push(lines[i].slice(2));
-        i++;
-      }
-      elements.push(
-        <blockquote key={elements.length} className="g-md-blockquote">
-          {qLines.map((ql, qi) => <span key={qi}>{...parseInline(ql)}{qi < qLines.length - 1 && <br />}</span>)}
-        </blockquote>,
-      );
-      continue;
-    }
-
-    /* Paragraph — collect consecutive non-special lines */
-    const paraLines: string[] = [];
-    while (
-      i < lines.length && lines[i].trim() !== ''
-      && !lines[i].trim().startsWith('```')
-      && !/^#{1,6}\s/.test(lines[i])
-      && !/^[-*]\s/.test(lines[i])
-      && !/^\d+\.\s/.test(lines[i])
-      && !lines[i].startsWith('> ')
-    ) {
-      paraLines.push(lines[i]);
-      i++;
-    }
-    if (paraLines.length > 0) {
-      elements.push(
-        <p key={elements.length} className="g-md-paragraph">
-          {paraLines.map((pl, pi) => <span key={pi}>{...parseInline(pl)}{pi < paraLines.length - 1 && <br />}</span>)}
-        </p>,
-      );
-    }
-  }
-
-  return <>{elements}</>;
-}
 
 function eventMessage(event: JobEvent): string {
   switch (event.kind) {
@@ -341,12 +108,31 @@ export function GalileoStudio({
   const [sidebarPanel, setSidebarPanel] = useState<Panel>('files');
   const [workspaceTab, setWorkspaceTab] = useState<WorkspaceTab>('preview');
   const [workspaceCollapsed, setWorkspaceCollapsed] = useState(true);
+  const [splitPercent, setSplitPercent] = useState(38);
+  const splitPercentRef = useRef(38);
+  const gridRef = useRef<HTMLDivElement>(null);
+  const dragging = useRef(false);
   const [preview, setPreview] = useState<PreviewStatus | null>(null);
   const [previewLog, setPreviewLog] = useState('');
   const [changes, setChanges] = useState<Change[]>([]);
+  const [expandedDiff, setExpandedDiff] = useState<number | null>(null);
   const [job, setJob] = useState<Job | null>(null);
   const [jobEvents, setJobEvents] = useState<JobEvent[]>([]);
   const [deploying, setDeploying] = useState(false);
+  // Loading states
+  const [loadingFiles, setLoadingFiles] = useState(false);
+  const [loadingMessages, setLoadingMessages] = useState(false);
+  // Editor tabs + auto-save
+  const [openFiles, setOpenFiles] = useState<string[]>([]);
+  const [dirtyFiles, setDirtyFiles] = useState<Set<string>>(new Set());
+  const autoSaveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const [activeTabIndex, setActiveTabIndex] = useState(0);
+  const fileContentsRef = useRef<Map<string, string>>(new Map());
+  // File search modal
+  const [fileSearchOpen, setFileSearchOpen] = useState(false);
+  const [fileSearchQuery, setFileSearchQuery] = useState('');
+  const [fileSearchIndex, setFileSearchIndex] = useState(0);
+  const fileSearchRef = useRef<HTMLInputElement>(null);
 
   const initialPromptRef = useRef((initialPrompt || '').trim());
   const initialPromptSentRef = useRef(false);
@@ -377,6 +163,86 @@ export function GalileoStudio({
     const query = mentionQuery.toLowerCase();
     return query ? all.filter((item) => item.label.toLowerCase().includes(query)) : all;
   }, [files, mentionFilter, mentionQuery]);
+
+  const fileSearchResults = useMemo(() => {
+    const query = fileSearchQuery.toLowerCase();
+    return query ? files.filter((f) => f.path.toLowerCase().includes(query)) : files;
+  }, [files, fileSearchQuery]);
+
+  // Open a file in the editor tabs
+  async function openFileInEditor(filePath: string) {
+    setOpenFiles((prev) => {
+      if (prev.includes(filePath)) return prev;
+      const next = [...prev, filePath];
+      setActiveTabIndex(next.length - 1);
+      return next;
+    });
+    setActiveFile(filePath);
+    setWorkspaceTab('editor');
+    setWorkspaceCollapsed(false);
+    // Load file content if not already cached
+    if (!fileContentsRef.current.has(filePath) && projectId) {
+      try {
+        const data = await request<{ content: string }>(`${API}/galileo/projects/${encodeURIComponent(projectId)}/files/${encodeFilePath(filePath)}`);
+        fileContentsRef.current.set(filePath, data.content);
+        if (activeFile === filePath) setFileContent(data.content);
+      } catch (reason) {
+        handleError(reason, 'Failed to load file');
+      }
+    } else {
+      setFileContent(fileContentsRef.current.get(filePath) || '');
+    }
+  }
+
+  // Close a tab
+  function closeTab(filePath: string, e?: React.MouseEvent) {
+    e?.stopPropagation();
+    setOpenFiles((prev) => {
+      const idx = prev.indexOf(filePath);
+      const next = prev.filter((f) => f !== filePath);
+      if (next.length === 0) {
+        setActiveFile('');
+        setFileContent('');
+        setActiveTabIndex(0);
+      } else if (idx <= activeTabIndex) {
+        setActiveTabIndex(Math.max(0, activeTabIndex - 1));
+        setActiveFile(next[Math.max(0, activeTabIndex - 1)]);
+      }
+      return next;
+    });
+  }
+
+  // Keyboard shortcuts
+  useEffect(() => {
+    function handleGlobalKey(e: globalThis.KeyboardEvent) {
+      // Cmd+P / Ctrl+P — file search
+      if ((e.metaKey || e.ctrlKey) && e.key === 'p') {
+        e.preventDefault();
+        setFileSearchOpen((prev) => !prev);
+        setFileSearchQuery('');
+        setFileSearchIndex(0);
+        return;
+      }
+      // Cmd+S / Ctrl+S — save file
+      if ((e.metaKey || e.ctrlKey) && e.key === 's') {
+        e.preventDefault();
+        if (activeFile) void saveFile();
+        return;
+      }
+      // Escape — close modals / collapse panels
+      if (e.key === 'Escape') {
+        if (fileSearchOpen) { setFileSearchOpen(false); return; }
+        if (mentionOpen) { setMentionOpen(false); return; }
+      }
+    }
+    window.addEventListener('keydown', handleGlobalKey);
+    return () => window.removeEventListener('keydown', handleGlobalKey);
+  }, [fileSearchOpen, mentionOpen, activeFile]);
+
+  // Focus file search input when opened
+  useEffect(() => {
+    if (fileSearchOpen) requestAnimationFrame(() => fileSearchRef.current?.focus());
+  }, [fileSearchOpen]);
 
   function autoResizeComposer() {
     const element = composerRef.current;
@@ -471,6 +337,37 @@ export function GalileoStudio({
     }
   }
 
+  // Keep ref in sync with state
+  useEffect(() => { splitPercentRef.current = splitPercent; }, [splitPercent]);
+
+  const handleDragStart = useCallback((e: React.MouseEvent) => {
+    e.preventDefault();
+    dragging.current = true;
+    const grid = gridRef.current;
+    if (!grid) return;
+    const startX = e.clientX;
+    const startPercent = splitPercentRef.current;
+    const gridWidth = grid.getBoundingClientRect().width;
+    function onMove(ev: MouseEvent) {
+      if (!dragging.current) return;
+      const delta = ev.clientX - startX;
+      const newPercent = Math.min(65, Math.max(25, startPercent + (delta / gridWidth) * 100));
+      splitPercentRef.current = newPercent;
+      setSplitPercent(newPercent);
+    }
+    function onUp() {
+      dragging.current = false;
+      document.removeEventListener('mousemove', onMove);
+      document.removeEventListener('mouseup', onUp);
+      document.body.style.cursor = '';
+      document.body.style.userSelect = '';
+    }
+    document.addEventListener('mousemove', onMove);
+    document.addEventListener('mouseup', onUp);
+    document.body.style.cursor = 'col-resize';
+    document.body.style.userSelect = 'none';
+  }, []);
+
   async function loadConversations() {
     if (!projectId) {
       setConversations([]);
@@ -492,11 +389,14 @@ export function GalileoStudio({
       setMessages([]);
       return;
     }
+    setLoadingMessages(true);
     try {
       const data = await request<{ messages: Message[] }>(`${API}/galileo/conversations/${encodeURIComponent(conversationId)}/messages`);
       setMessages(data.messages);
     } catch (reason) {
       handleError(reason, 'Messages unavailable');
+    } finally {
+      setLoadingMessages(false);
     }
   }
 
@@ -505,11 +405,14 @@ export function GalileoStudio({
       setFiles([]);
       return;
     }
+    setLoadingFiles(true);
     try {
       const data = await request<{ files: FileEntry[] }>(`${API}/galileo/projects/${encodeURIComponent(projectId)}/files`);
       setFiles(data.files);
     } catch (reason) {
       handleError(reason, 'Files unavailable');
+    } finally {
+      setLoadingFiles(false);
     }
   }
 
@@ -751,6 +654,7 @@ export function GalileoStudio({
 
   async function cancelJob() {
     if (!job) return;
+    if (!window.confirm('Cancel this build? The current progress will be lost.')) return;
     try {
       await request(`${API}/galileo/agents/jobs/${encodeURIComponent(job.id)}/cancel`, { method: 'POST' });
     } catch (reason) {
@@ -802,6 +706,11 @@ export function GalileoStudio({
 
   async function resolveChanges(action: 'accept' | 'revert', path?: string) {
     if (!job) return;
+    // Confirm destructive revert actions
+    if (action === 'revert') {
+      const confirmed = window.confirm(path ? `Revert changes to ${path}?` : 'Revert all pending changes? This cannot be undone.');
+      if (!confirmed) return;
+    }
     setError(null);
     try {
       await request(`${API}/galileo/agents/jobs/${encodeURIComponent(job.id)}/changes/${action}`, {
@@ -825,6 +734,8 @@ export function GalileoStudio({
         method: 'PUT',
         body: JSON.stringify({ content: fileContent }),
       });
+      fileContentsRef.current.set(activeFile, fileContent);
+      setDirtyFiles((prev) => { const next = new Set(prev); next.delete(activeFile); return next; });
       await loadFiles();
       setError(null);
     } catch (reason) {
@@ -872,7 +783,11 @@ export function GalileoStudio({
         {sidebarPanel === 'files' && (
           <div className="g-file-tree">
             {activeProject && <div className="g-file-tree-root">{activeProject.name}</div>}
-            {files.length > 0 ? <FileTreeNodes nodes={fileTree} activeFile={activeFile} onSelect={(path) => { setActiveFile(path); setWorkspaceTab('editor'); setWorkspaceCollapsed(false); }} /> : <p className="g-muted-sm g-sidebar-empty">No files yet. Ask Galileo to build the project.</p>}
+            {loadingFiles ? (
+              <div className="g-loading-skeleton g-skeleton-tree">
+                <div className="g-skeleton-line" /><div className="g-skeleton-line short" /><div className="g-skeleton-line medium" /><div className="g-skeleton-line" /><div className="g-skeleton-line short" />
+              </div>
+            ) : files.length > 0 ? <FileTreeNodes nodes={treeFromPaths(files.map((f) => f.path))} activeFile={activeFile} onSelect={openFileInEditor} /> : <p className="g-muted-sm g-sidebar-empty">No files yet. Ask Galileo to build the project.</p>}
           </div>
         )}
 
@@ -915,12 +830,17 @@ export function GalileoStudio({
       </aside>
 
       <div className="g-studio-main">
-        <div className={`g-studio-workspace-grid ${workspaceCollapsed ? 'workspace-collapsed' : ''}`}>
+        <div ref={gridRef} className={`g-studio-workspace-grid ${workspaceCollapsed ? 'workspace-collapsed' : ''}`} style={workspaceCollapsed ? undefined : { gridTemplateColumns: `${splitPercent}% minmax(0, 1fr)` }}>
           <section className="g-conversation-panel" aria-label="Galileo conversation">
             <header className="g-conversation-header">
               <div>
                 <span className="g-studio-kicker">GALILEO CHAT</span>
                 <h1>{activeProject?.name || 'Your project'}</h1>
+                {conversations.length > 1 && (
+                  <select className="g-select-sm g-conversation-select" value={conversationId} onChange={(e) => setConversationId(e.target.value)}>
+                    {conversations.map((c) => <option key={c.id} value={c.id}>{c.title || `Session ${c.id.slice(0, 8)}`}</option>)}
+                  </select>
+                )}
               </div>
               <span className={`g-conversation-status ${job?.status || 'idle'}`}>
                 {job?.status === 'running' ? 'Building' : job?.status === 'queued' ? 'Queued' : preview?.status === 'running' ? 'Preview running' : 'Ready'}
@@ -928,18 +848,39 @@ export function GalileoStudio({
             </header>
 
             <div className="g-conversation-scroll">
-              {messages.map((message, index) => (
-                <article className={`g-message g-message-${message.role}`} key={`${message.created_at}-${index}`}>
-                  <span className="g-message-role">{message.role === 'user' ? 'You' : message.role === 'assistant' ? 'Galileo' : message.role}</span>
-                  {message.role === 'assistant' ? <MarkdownContent text={message.content} /> : <p>{normalizeContent(message.content)}</p>}
-                </article>
-              ))}
+              {loadingMessages && (
+                <div className="g-loading-skeleton">
+                  <div className="g-skeleton-message"><div className="g-skeleton-avatar" /><div className="g-skeleton-text" /><div className="g-skeleton-text short" /></div>
+                  <div className="g-skeleton-message reverse"><div className="g-skeleton-text" /><div className="g-skeleton-text medium" /></div>
+                  <div className="g-skeleton-message"><div className="g-skeleton-avatar" /><div className="g-skeleton-text" /></div>
+                </div>
+              )}
+              {messages.length > 50 ? (
+                <VirtualizedList
+                  items={messages}
+                  itemHeight={80}
+                  className="g-virtual-messages"
+                  renderItem={(message, index) => (
+                    <article className={`g-message g-message-${message.role}`}>
+                      <span className="g-message-role">{message.role === 'user' ? 'You' : message.role === 'assistant' ? 'Galileo' : message.role}</span>
+                      {message.role === 'assistant' ? <ErrorBoundary><MarkdownContent text={message.content} /></ErrorBoundary> : <p>{normalizeContent(message.content)}</p>}
+                    </article>
+                  )}
+                />
+              ) : (
+                messages.map((message, index) => (
+                  <article className={`g-message g-message-${message.role}`} key={`${message.created_at}-${index}`}>
+                    <span className="g-message-role">{message.role === 'user' ? 'You' : message.role === 'assistant' ? 'Galileo' : message.role}</span>
+                    {message.role === 'assistant' ? <ErrorBoundary><MarkdownContent text={message.content} /></ErrorBoundary> : <p>{normalizeContent(message.content)}</p>}
+                  </article>
+                ))
+              )}
 
               {discovery && plan && (
                 <article className="g-plan-card">
                   <div className="g-plan-card-heading"><span className="g-plan-icon">◇</span><strong>Build plan ready</strong></div>
-                  {plan.summary && <MarkdownContent text={plan.summary} />}
-                  {plan.architecture && <div className="g-plan-architecture"><MarkdownContent text={plan.architecture} /></div>}
+                  {plan.summary && <ErrorBoundary><MarkdownContent text={plan.summary} /></ErrorBoundary>}
+                  {plan.architecture && <div className="g-plan-architecture"><ErrorBoundary><MarkdownContent text={plan.architecture} /></ErrorBoundary></div>}
                   <div className="g-plan-files">
                     {plan.files.map((file) => <div key={file.path}><code>{file.path}</code><span>{file.purpose}</span></div>)}
                   </div>
@@ -973,6 +914,8 @@ export function GalileoStudio({
               <div ref={messagesEndRef} />
             </div>
           </section>
+
+          {!workspaceCollapsed && <div className="g-panel-divider" onMouseDown={handleDragStart} role="separator" aria-orientation="vertical" aria-valuenow={Math.round(splitPercent)} />}
 
           <section className={`g-studio-workspace ${workspaceCollapsed ? 'collapsed' : ''}`} aria-label="Project workspace">
             {workspaceCollapsed && (
@@ -1019,11 +962,39 @@ export function GalileoStudio({
 
               {workspaceTab === 'editor' && (
                 <div className="g-code-area">
-                  {activeFile ? (
-                    <div className="g-editor">
-                      <div className="g-editor-tab"><span>{activeFile}</span><button type="button" className="g-btn-sm" onClick={() => void saveFile()}>Save</button></div>
-                      <textarea className="g-editor-content" value={fileContent} onChange={(event) => setFileContent(event.target.value)} spellCheck={false} />
-                    </div>
+                  {openFiles.length > 0 ? (
+                    <>
+                      <div className="g-editor-tabs">
+                        {openFiles.map((filePath) => (
+                          <button key={filePath} type="button" className={`g-editor-tab-btn ${activeFile === filePath ? 'active' : ''}`} onClick={() => { setActiveFile(filePath); setActiveTabIndex(openFiles.indexOf(filePath)); }}>
+                            <span>{filePath.split('/').pop()}</span>
+                            <button type="button" className="g-tab-close" onClick={(e) => closeTab(filePath, e)} aria-label={`Close ${filePath}`}>×</button>
+                          </button>
+                        ))}
+                      </div>
+                      <div className="g-editor">
+                        <div className="g-editor-header">
+                          <span className="g-editor-path">{activeFile}{dirtyFiles.has(activeFile) && <span className="g-unsaved-dot">●</span>}</span>
+                          <button type="button" className="g-btn-sm" onClick={() => void saveFile()}>Save</button>
+                        </div>
+                        <div className="g-editor-wrapper">
+                          <div className="g-editor-line-numbers" aria-hidden="true">
+                            {fileContent.split('\n').map((_, i) => <div key={i}>{i + 1}</div>)}
+                          </div>
+                          <textarea className="g-editor-content" value={fileContent} onChange={(event) => {
+                            const newValue = event.target.value;
+                            setFileContent(newValue);
+                            if (activeFile) {
+                              fileContentsRef.current.set(activeFile, newValue);
+                              setDirtyFiles((prev) => new Set(prev).add(activeFile));
+                              // Auto-save after 2 seconds of inactivity
+                              if (autoSaveTimerRef.current) clearTimeout(autoSaveTimerRef.current);
+                              autoSaveTimerRef.current = setTimeout(() => void saveFile(), 2000);
+                            }
+                          }} spellCheck={false} />
+                        </div>
+                      </div>
+                    </>
                   ) : (
                     <div className="g-empty-preview"><span>▣</span><p>Select a file from Explorer to inspect or edit it.</p></div>
                   )}
@@ -1042,11 +1013,25 @@ export function GalileoStudio({
                     {changes.length > 0 && <div className="g-changes-actions"><span>{pendingChanges.length ? `${pendingChanges.length} pending change${pendingChanges.length === 1 ? '' : 's'}` : 'All changes resolved'}</span><div><button type="button" className="g-btn-sm g-btn-gold" onClick={() => void resolveChanges('accept')} disabled={!pendingChanges.length}>Accept all</button><button type="button" className="g-btn-sm" onClick={() => void resolveChanges('revert')} disabled={!changes.some((change) => change.state === 'pending' || change.state === 'accepted')}>Revert</button></div></div>}
                     {changes.length === 0 && <p className="g-muted-sm g-changes-empty">No staged agent changes yet.</p>}
                     {changes.map((change) => (
-                      <div key={change.id} className="g-change-row">
-                        <span className={`g-change-op ${change.operation}`}>{change.operation}</span>
-                        <span className="g-change-path">{change.path}</span>
-                        <span className={`g-change-state ${change.state}`}>{change.state}</span>
-                        {change.state === 'pending' && <><button type="button" className="g-inline-action" onClick={() => void resolveChanges('accept', change.path)}>Accept</button><button type="button" className="g-inline-action" onClick={() => void resolveChanges('revert', change.path)}>Revert</button></>}
+                      <div key={change.id} className="g-change-item">
+                        <div className="g-change-row" onClick={() => setExpandedDiff(expandedDiff === change.id ? null : change.id)}>
+                          <span className="g-change-expand">{expandedDiff === change.id ? '▾' : '▸'}</span>
+                          <span className={`g-change-op ${change.operation}`}>{change.operation}</span>
+                          <span className="g-change-path">{change.path}</span>
+                          <span className={`g-change-state ${change.state}`}>{change.state}</span>
+                          {change.state === 'pending' && <><button type="button" className="g-inline-action" onClick={(e) => { e.stopPropagation(); void resolveChanges('accept', change.path); }}>Accept</button><button type="button" className="g-inline-action" onClick={(e) => { e.stopPropagation(); void resolveChanges('revert', change.path); }}>Revert</button></>}
+                        </div>
+                        {expandedDiff === change.id && (
+                          <div className="g-diff-viewer">
+                            {change.diff ? (
+                              <pre className="g-diff-content">{change.diff.split('\n').map((line, i) => (
+                                <div key={i} className={`g-diff-line ${line.startsWith('+') ? 'add' : line.startsWith('-') ? 'del' : line.startsWith('@@') ? 'hunk' : ''}`}>{line}</div>
+                              ))}</pre>
+                            ) : (
+                              <p className="g-diff-empty">No diff available for this change.</p>
+                            )}
+                          </div>
+                        )}
                       </div>
                     ))}
                   </div>
@@ -1102,6 +1087,27 @@ export function GalileoStudio({
       </div>
 
       {error && <div className="g-error-bar" role="alert">{error}</div>}
+
+      {fileSearchOpen && (
+        <div className="g-palette-backdrop" role="dialog" aria-label="File search" onMouseDown={(e) => { if (e.target === e.currentTarget) setFileSearchOpen(false); }}>
+          <div className="g-palette">
+            <input ref={fileSearchRef} className="g-palette-input" value={fileSearchQuery} onChange={(e) => { setFileSearchQuery(e.target.value); setFileSearchIndex(0); }} onKeyDown={(e) => {
+              if (e.key === 'Escape') setFileSearchOpen(false);
+              if (e.key === 'ArrowDown') { e.preventDefault(); setFileSearchIndex((i) => Math.min(i + 1, fileSearchResults.length - 1)); }
+              if (e.key === 'ArrowUp') { e.preventDefault(); setFileSearchIndex((i) => Math.max(i - 1, 0)); }
+              if (e.key === 'Enter' && fileSearchResults[fileSearchIndex]) { openFileInEditor(fileSearchResults[fileSearchIndex].path); setFileSearchOpen(false); }
+            }} placeholder="Search files..." />
+            <div className="g-palette-results">
+              {fileSearchResults.slice(0, 20).map((f, i) => (
+                <button key={f.path} type="button" className={`g-palette-item ${i === fileSearchIndex ? 'selected' : ''}`} onClick={() => { openFileInEditor(f.path); setFileSearchOpen(false); }} onMouseEnter={() => setFileSearchIndex(i)}>
+                  <span className="g-palette-file-icon">▣</span> {f.path}
+                </button>
+              ))}
+              {fileSearchResults.length === 0 && <div className="g-palette-empty">No files match</div>}
+            </div>
+          </div>
+        </div>
+      )}
 
       {toasts.length > 0 && (
         <div className="g-toast-container" aria-live="polite">

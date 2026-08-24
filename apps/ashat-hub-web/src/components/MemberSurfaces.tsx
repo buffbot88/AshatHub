@@ -1,8 +1,8 @@
 import { useCallback, useEffect, useState } from 'react';
 import type { FormEvent } from 'react';
+import { API, request } from './galileo/api';
 
 type User = { id: string; username: string; email: string; display_name: string; role: string };
-type ApiError = string | { message?: string; code?: string };
 export type MemberTab = 'community' | 'docs' | 'support' | 'account' | 'activity';
 
 type Project = { id: string; name: string };
@@ -29,35 +29,7 @@ type Activity = { id: string; project_id?: string | null; action: string; metada
 type AccountSummary = { user: User; stats: { projects: number; deployments: number; conversation_messages: number } };
 type AdminTelemetry = { servers: { id: string; label: string; ip: string; online: boolean; active_users: number; activity_total: number }[]; gateway_metrics: Record<string, number>; updated_at: number };
 
-const API = '/api';
 const categories = ['all', 'tools', 'ai', 'pipeline', 'games', 'general'];
-
-function csrfToken(): string {
-  const cookie = document.cookie.split('; ').find((value) => value.startsWith('ashat_rust_csrf='));
-  return cookie ? decodeURIComponent(cookie.slice('ashat_rust_csrf='.length)) : '';
-}
-
-function errorText(error: ApiError | undefined, fallback: string): string {
-  if (typeof error === 'string') return error;
-  return error?.message || error?.code || fallback;
-}
-
-async function request<T>(url: string, init?: RequestInit): Promise<T> {
-  const response = await fetch(url, {
-    credentials: 'same-origin',
-    headers: {
-      Accept: 'application/json',
-      ...(init?.body ? { 'Content-Type': 'application/json', 'X-CSRF-Token': csrfToken() } : {}),
-      ...(init?.headers || {}),
-    },
-    ...init,
-  });
-  const text = await response.text();
-  let body: (T & { error?: ApiError }) | null = null;
-  try { body = text ? JSON.parse(text) as T & { error?: ApiError } : null; } catch { /* handled below */ }
-  if (!response.ok) throw new Error(errorText(body?.error, `Request failed (${response.status})`));
-  return (body || {}) as T;
-}
 
 function formatDate(value: string | number): string {
   const date = typeof value === 'number' ? new Date(value * 1000) : new Date(value);

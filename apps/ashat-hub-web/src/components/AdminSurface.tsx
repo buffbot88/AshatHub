@@ -1,6 +1,5 @@
 import { useCallback, useEffect, useState } from 'react';
-
-// ── Types ──
+import { API, request } from './galileo/api';
 
 type User = { id: string; username: string; email: string; display_name: string; role: string };
 type AdminUser = { id: string; username: string; email: string; display_name: string; role: string; is_active: number; banned_at?: number | null; email_verified_at?: string | null };
@@ -21,33 +20,6 @@ type AuditEvent = {
   target_type: string; target_id: string; detail: string | null; created_at: number;
 };
 type AdminTab = 'overview' | 'users' | 'deployments' | 'system' | 'audit';
-
-type ApiError = string | { message?: string; code?: string };
-const API = '/api';
-
-function csrfToken(): string {
-  const cookie = document.cookie.split('; ').find((value) => value.startsWith('ashat_rust_csrf='));
-  return cookie ? decodeURIComponent(cookie.slice('ashat_rust_csrf='.length)) : '';
-}
-
-async function request<T>(url: string, init?: RequestInit, retried = false): Promise<T> {
-  const response = await fetch(url, {
-    credentials: 'same-origin',
-    headers: { Accept: 'application/json', ...(init?.body ? { 'Content-Type': 'application/json', 'X-CSRF-Token': csrfToken() } : {}), ...(init?.headers || {}) },
-    ...init,
-  });
-  const text = await response.text();
-  let body: (T & { error?: ApiError }) | null = null;
-  try { body = text ? JSON.parse(text) as T & { error?: ApiError } : null; } catch { /* handled below */ }
-  const error = body?.error;
-  const message = typeof error === 'string' ? error : error?.message || error?.code;
-  if (response.status === 403 && message === 'csrf_failed' && !retried) {
-    await fetch(`${API}/auth/session`, { credentials: 'same-origin' });
-    return request<T>(url, init, true);
-  }
-  if (!response.ok) throw new Error(message || `Request failed (${response.status})`);
-  return (body || {}) as T;
-}
 
 // ── Helpers ──
 

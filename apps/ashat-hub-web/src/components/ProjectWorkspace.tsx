@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { FormEvent } from 'react';
 import type { TaskEvent, TaskFrameData, TaskStatus } from './TaskFrame';
+import { API, request, encodeFilePath, csrfToken, type ApiError } from './galileo/api';
 
 type User = { id: string; username: string; display_name: string; role: string };
 type Project = { id: string; name: string; description?: string; created_at?: string; file_count: number };
@@ -15,39 +16,6 @@ type PreviewStatus = { project_id: string; status: string; url?: string | null; 
 type Deployment = { ok: boolean; project_id: string; status: string; url?: string | null; backup_url?: string | null; subdomain?: string | null; deployment_id?: string | null; file_count?: number | null };
 type WorkspacePanel = 'preview' | 'code';
 type BottomPanel = 'terminal' | 'changes';
-type ApiError = string | { message?: string; code?: string };
-
-const RUST_API = '/api';
-function encodeFilePath(path: string): string { return path.split('/').map((segment) => encodeURIComponent(segment)).join('/'); }
-
-function csrfToken(): string {
-  const cookie = document.cookie.split('; ').find((value) => value.startsWith('ashat_rust_csrf='));
-  return cookie ? decodeURIComponent(cookie.slice('ashat_rust_csrf='.length)) : '';
-}
-
-async function request<T>(url: string, init?: RequestInit, retried = false): Promise<T> {
-  const response = await fetch(url, {
-    credentials: 'same-origin',
-    headers: {
-      Accept: 'application/json',
-      ...(init?.body ? { 'Content-Type': 'application/json' } : {}),
-      ...(init?.body ? { 'X-CSRF-Token': csrfToken() } : {}),
-      ...(init?.headers || {}),
-    },
-    ...init,
-  });
-  const text = await response.text();
-  let body: (T & { error?: ApiError }) | null = null;
-  try { body = text ? JSON.parse(text) as T & { error?: ApiError } : null; } catch { /* handled below */ }
-  const error = body?.error;
-  const message = typeof error === 'string' ? error : error?.message || error?.code;
-  if (response.status === 403 && message === 'csrf_failed' && !retried) {
-    await fetch(`${RUST_API}/auth/session`, { credentials: 'same-origin' });
-    return request<T>(url, init, true);
-  }
-  if (!response.ok) throw new Error(message || `Request failed (${response.status})`);
-  return (body || {}) as T;
-}
 
 function safeJson(value: string): string {
   try { return JSON.stringify(JSON.parse(value), null, 2); } catch { return value; }
@@ -112,7 +80,7 @@ export function ProjectWorkspace({ user, onTaskChange }: { user: User | null; on
   const loadProjects = useCallback(async () => {
     if (!user) { setProjects([]); setProjectId(''); return; }
     try {
-      const data = await request<{ projects: Project[] }>(`${RUST_API}/galileo/projects`);
+      const data = await request<{ projects: Project[] }>(`${API}/galileo/projects`);
       setProjects(data.projects);
       setProjectId((current) => data.projects.some((project) => project.id === current) ? current : data.projects[0]?.id || '');
       setError(null);
@@ -124,7 +92,7 @@ export function ProjectWorkspace({ user, onTaskChange }: { user: User | null; on
   const loadConversations = useCallback(async () => {
     if (!user || !projectId) { setConversations([]); setConversationId(''); setMessages([]); return; }
     try {
-      const data = await request<{ conversations: Conversation[] }>(`${RUST_API}/galileo/conversations/${encodeURIComponent(projectId)}`);
+      const data = await request<{ conversations: Conversation[] }>(`${API}/galileo/conversations/${encodeURIComponent(projectId)}`);
       setConversations(data.conversations);
       setConversationId((current) => data.conversations.some((conversation) => conversation.id === current) ? current : data.conversations[0]?.id || '');
     } catch (reason) {
@@ -135,7 +103,7 @@ export function ProjectWorkspace({ user, onTaskChange }: { user: User | null; on
   const loadFiles = useCallback(async () => {
     if (!user || !projectId) { setFiles([]); return; }
     try {
-      const data = await request<{ files: FileEntry[] }>(`${RUST_API}/galileo/projects/${encodeURIComponent(projectId)}/files`);
+      const data = await request<{ files: FileEntry[] }>(`${API}/galileo/projects/${encodeURIComponent(projectId)}/files`);
       setFiles(data.files);
     } catch (reason) {
       setError(reason instanceof Error ? reason.message : 'Files unavailable');
@@ -145,7 +113,7 @@ export function ProjectWorkspace({ user, onTaskChange }: { user: User | null; on
   const loadMessages = useCallback(async () => {
     if (!user || !conversationId) { setMessages([]); return; }
     try {
-      const data = await request<{ messages: Message[] }>(`${RUST_API}/galileo/conversations/${encodeURIComponent(conversationId)}/messages`);
+      const data = await request<{ messages: Message[] }>(`${API}/galileo/conversations/${encodeURIComponent(conversationId)}/messages`);
       setMessages(data.messages);
     } catch (reason) {
       setError(reason instanceof Error ? reason.message : 'Messages unavailable');
@@ -155,9 +123,9 @@ export function ProjectWorkspace({ user, onTaskChange }: { user: User | null; on
   const loadPreview = useCallback(async () => {
     if (!user || !projectId) { setPreview(null); setDeployment(null); return; }
     try {
-      const data = await request<PreviewStatus>(`${RUST_API}/galileo/preview/status?project_id=${encodeURIComponent(projectId)}`);
+      const data = await request<PreviewStatus>(`${API}/galileo/preview/status?project_id=${encodeURIComponent(projectId)}`);
       setPreview(data);
-      const deployed = await request<Deployment>(`${RUST_API}/galileo/deploy/status?project_id=${encodeURIComponent(projectId)}`);
+      const deployed = await request<Deployment>(`${API}/galileo/deploy/status?project_id=${encodeURIComponent(projectId)}`);
       setDeployment(deployed);
     } catch (reason) {
       setError(reason instanceof Error ? reason.message : 'Preview status unavailable');
@@ -167,7 +135,7 @@ export function ProjectWorkspace({ user, onTaskChange }: { user: User | null; on
   const loadPreviewLog = useCallback(async () => {
     if (!user || !projectId) return;
     try {
-      const data = await request<{ content: string }>(`${RUST_API}/galileo/preview/log?project_id=${encodeURIComponent(projectId)}`);
+      const data = await request<{ content: string }>(`${API}/galileo/preview/log?project_id=${encodeURIComponent(projectId)}`);
       setPreviewLog(data.content);
     } catch (reason) { setError(reason instanceof Error ? reason.message : 'Preview log unavailable'); }
   }, [projectId, user]);
@@ -175,7 +143,7 @@ export function ProjectWorkspace({ user, onTaskChange }: { user: User | null; on
   const loadChanges = useCallback(async () => {
     if (!user || !job) { setChanges([]); return; }
     try {
-      const data = await request<{ changes: Change[] }>(`${RUST_API}/galileo/agents/jobs/${encodeURIComponent(job.id)}/changes`);
+      const data = await request<{ changes: Change[] }>(`${API}/galileo/agents/jobs/${encodeURIComponent(job.id)}/changes`);
       setChanges(data.changes);
     } catch (reason) { setError(reason instanceof Error ? reason.message : 'Changes unavailable'); }
   }, [job, user]);
@@ -187,7 +155,7 @@ export function ProjectWorkspace({ user, onTaskChange }: { user: User | null; on
   useEffect(() => {
     const savedJobId = user ? localStorage.getItem('ashat.activeJob') : null;
     if (!savedJobId) { setJob(null); return; }
-    void request<{ job: Job }>(`${RUST_API}/galileo/agents/jobs/${encodeURIComponent(savedJobId)}`)
+    void request<{ job: Job }>(`${API}/galileo/agents/jobs/${encodeURIComponent(savedJobId)}`)
       .then((data) => setJob(data.job))
       .catch(() => localStorage.removeItem('ashat.activeJob'));
   }, [user]);
@@ -199,8 +167,8 @@ export function ProjectWorkspace({ user, onTaskChange }: { user: User | null; on
     const refresh = async () => {
       try {
         const [statusData, eventData] = await Promise.all([
-          request<{ job: Job }>(`${RUST_API}/galileo/agents/jobs/${encodeURIComponent(job.id)}`),
-          request<{ events: JobEvent[] }>(`${RUST_API}/galileo/agents/jobs/${encodeURIComponent(job.id)}/events?after_id=${afterId}`),
+          request<{ job: Job }>(`${API}/galileo/agents/jobs/${encodeURIComponent(job.id)}`),
+          request<{ events: JobEvent[] }>(`${API}/galileo/agents/jobs/${encodeURIComponent(job.id)}/events?after_id=${afterId}`),
         ]);
         if (stopped) return;
         setJob(statusData.job);
@@ -243,7 +211,7 @@ export function ProjectWorkspace({ user, onTaskChange }: { user: User | null; on
     event.preventDefault();
     if (!projectName.trim()) return;
     try {
-      const data = await request<{ project_id: string }>(`${RUST_API}/galileo/projects`, { method: 'POST', body: JSON.stringify({ name: projectName }) });
+      const data = await request<{ project_id: string }>(`${API}/galileo/projects`, { method: 'POST', body: JSON.stringify({ name: projectName }) });
       setProjectName('');
       await loadProjects();
       setProjectId(data.project_id);
@@ -254,7 +222,7 @@ export function ProjectWorkspace({ user, onTaskChange }: { user: User | null; on
   async function createConversation() {
     if (!projectId) return;
     try {
-      const data = await request<{ id: string; title: string }>(`${RUST_API}/galileo/conversations`, { method: 'POST', body: JSON.stringify({ project_id: projectId, title: 'Chat' }) });
+      const data = await request<{ id: string; title: string }>(`${API}/galileo/conversations`, { method: 'POST', body: JSON.stringify({ project_id: projectId, title: 'Chat' }) });
       setConversationId(data.id);
       await loadConversations();
     } catch (reason) { setError(reason instanceof Error ? reason.message : 'Conversation creation failed'); }
@@ -262,7 +230,7 @@ export function ProjectWorkspace({ user, onTaskChange }: { user: User | null; on
 
   async function appendMessages(activeConversation: string, items: { role: string; content: string }[]) {
     if (!activeConversation || !items.length) return;
-    await request(`${RUST_API}/galileo/conversations/${encodeURIComponent(activeConversation)}/messages`, { method: 'POST', body: JSON.stringify({ messages: items }) });
+    await request(`${API}/galileo/conversations/${encodeURIComponent(activeConversation)}/messages`, { method: 'POST', body: JSON.stringify({ messages: items }) });
     await loadMessages();
     await loadConversations();
   }
@@ -276,14 +244,14 @@ export function ProjectWorkspace({ user, onTaskChange }: { user: User | null; on
     try {
       let activeConversation = conversationId;
       if (!activeConversation) {
-        const created = await request<{ id: string }>(`${RUST_API}/galileo/conversations`, { method: 'POST', body: JSON.stringify({ project_id: projectId, title: 'Chat' }) });
+        const created = await request<{ id: string }>(`${API}/galileo/conversations`, { method: 'POST', body: JSON.stringify({ project_id: projectId, title: 'Chat' }) });
         activeConversation = created.id;
         setConversationId(activeConversation);
       }
-      await request(`${RUST_API}/galileo/conversations/${encodeURIComponent(activeConversation)}/messages`, { method: 'POST', body: JSON.stringify({ messages: [{ role: 'user', content: message }] }) });
+      await request(`${API}/galileo/conversations/${encodeURIComponent(activeConversation)}/messages`, { method: 'POST', body: JSON.stringify({ messages: [{ role: 'user', content: message }] }) });
       setMessages((current) => [...current, { role: 'user', content: message, created_at: new Date().toISOString() }]);
       setDraft('');
-      const response = await fetch(`${RUST_API}/galileo/chat`, {
+      const response = await fetch(`${API}/galileo/chat`, {
         method: 'POST', credentials: 'same-origin',
         headers: { Accept: 'application/json', 'Content-Type': 'application/json', 'X-CSRF-Token': csrfToken() },
         body: JSON.stringify({ project_id: projectId, conversation_id: activeConversation, message, stream: false }),
@@ -310,11 +278,11 @@ export function ProjectWorkspace({ user, onTaskChange }: { user: User | null; on
     try {
       let activeConversation = conversationId;
       if (!activeConversation) {
-        const created = await request<{ id: string }>(`${RUST_API}/galileo/conversations`, { method: 'POST', body: JSON.stringify({ project_id: projectId, title: 'Chat' }) });
+        const created = await request<{ id: string }>(`${API}/galileo/conversations`, { method: 'POST', body: JSON.stringify({ project_id: projectId, title: 'Chat' }) });
         activeConversation = created.id;
         setConversationId(activeConversation);
       }
-      const data = await request<{ kind: string; content: string; plan?: Plan; plan_id?: string }>(`${RUST_API}/galileo/discovery`, { method: 'POST', body: JSON.stringify({ project_id: projectId, conversation_id: activeConversation, message: requestText }) });
+      const data = await request<{ kind: string; content: string; plan?: Plan; plan_id?: string }>(`${API}/galileo/discovery`, { method: 'POST', body: JSON.stringify({ project_id: projectId, conversation_id: activeConversation, message: requestText }) });
       setDiscovery(data.content); setPlan(data.plan || null); setPlanId(data.plan_id || '');
       await appendMessages(activeConversation, [{ role: 'user', content: requestText }, { role: 'assistant', content: data.content }]);
     } catch (reason) { setDiscovery(null); setError(reason instanceof Error ? reason.message : 'Discovery failed'); }
@@ -323,7 +291,7 @@ export function ProjectWorkspace({ user, onTaskChange }: { user: User | null; on
   async function approvePlan() {
     if (!projectId || !plan || !planId) return;
     try {
-      const data = await request<{ job: Job }>(`${RUST_API}/galileo/agents/jobs`, { method: 'POST', body: JSON.stringify({ project_id: projectId, request: requestText, plan_id: planId }) });
+      const data = await request<{ job: Job }>(`${API}/galileo/agents/jobs`, { method: 'POST', body: JSON.stringify({ project_id: projectId, request: requestText, plan_id: planId }) });
       jobEventsRef.current = [];
       localStorage.setItem('ashat.activeJob', data.job.id);
       setJob(data.job); setJobEvents([]); setPlan(null); setPlanId(''); setDiscovery('Plan approved. The build is now running in the task frame.');
@@ -332,14 +300,14 @@ export function ProjectWorkspace({ user, onTaskChange }: { user: User | null; on
 
   async function cancelJob() {
     if (!job) return;
-    try { await request(`${RUST_API}/galileo/agents/jobs/${encodeURIComponent(job.id)}/cancel`, { method: 'POST' }); } catch (reason) { setError(reason instanceof Error ? reason.message : 'Cancellation failed'); }
+    try { await request(`${API}/galileo/agents/jobs/${encodeURIComponent(job.id)}/cancel`, { method: 'POST' }); } catch (reason) { setError(reason instanceof Error ? reason.message : 'Cancellation failed'); }
   }
 
   async function previewAction(action: 'start' | 'restart' | 'stop') {
     if (!projectId) return;
     setPreviewBusy(true); setError(null);
     try {
-      const data = await request<PreviewStatus>(`${RUST_API}/galileo/preview/${action}`, { method: 'POST', body: JSON.stringify({ project_id: projectId }) });
+      const data = await request<PreviewStatus>(`${API}/galileo/preview/${action}`, { method: 'POST', body: JSON.stringify({ project_id: projectId }) });
       setPreview(data); setPanel('preview');
       if (action !== 'stop') await loadPreviewLog();
     } catch (reason) { setError(reason instanceof Error ? reason.message : 'Preview operation failed'); }
@@ -352,7 +320,7 @@ export function ProjectWorkspace({ user, onTaskChange }: { user: User | null; on
     if (subdomain === null) return;
     setPreviewBusy(true); setError(null);
     try {
-      const data = await request<Deployment>(`${RUST_API}/galileo/deploy`, { method: 'POST', body: JSON.stringify({ project_id: projectId, subdomain: subdomain.trim() || null }) });
+      const data = await request<Deployment>(`${API}/galileo/deploy`, { method: 'POST', body: JSON.stringify({ project_id: projectId, subdomain: subdomain.trim() || null }) });
       setDeployment(data);
     } catch (reason) { setError(reason instanceof Error ? reason.message : 'Deployment failed'); }
     finally { setPreviewBusy(false); }
@@ -361,7 +329,7 @@ export function ProjectWorkspace({ user, onTaskChange }: { user: User | null; on
   async function resolveChanges(action: 'accept' | 'revert', path?: string) {
     if (!job) return;
     try {
-      await request(`${RUST_API}/galileo/agents/jobs/${encodeURIComponent(job.id)}/changes/${action}`, { method: 'POST', body: JSON.stringify({ path }) });
+      await request(`${API}/galileo/agents/jobs/${encodeURIComponent(job.id)}/changes/${action}`, { method: 'POST', body: JSON.stringify({ path }) });
       await loadChanges(); await loadFiles();
     } catch (reason) { setError(reason instanceof Error ? reason.message : `Unable to ${action} changes`); }
   }
@@ -369,18 +337,18 @@ export function ProjectWorkspace({ user, onTaskChange }: { user: User | null; on
   async function createFile() {
     const filePath = window.prompt('New file path, for example src/App.tsx');
     if (!filePath?.trim() || !projectId) return;
-    try { await request(`${RUST_API}/galileo/projects/${encodeURIComponent(projectId)}/files/${encodeFilePath(filePath.trim())}`, { method: 'PUT', body: JSON.stringify({ content: '' }) }); await loadFiles(); setPath(filePath.trim()); setContent(''); }
+    try { await request(`${API}/galileo/projects/${encodeURIComponent(projectId)}/files/${encodeFilePath(filePath.trim())}`, { method: 'PUT', body: JSON.stringify({ content: '' }) }); await loadFiles(); setPath(filePath.trim()); setContent(''); }
     catch (reason) { setError(reason instanceof Error ? reason.message : 'File creation failed'); }
   }
 
   async function createFolder() {
     const folderPath = window.prompt('New folder path, for example src/components');
     if (!folderPath?.trim() || !projectId) return;
-    try { await request(`${RUST_API}/galileo/projects/${encodeURIComponent(projectId)}/files/folder`, { method: 'POST', body: JSON.stringify({ path: folderPath.trim() }) }); await loadFiles(); }
+    try { await request(`${API}/galileo/projects/${encodeURIComponent(projectId)}/files/folder`, { method: 'POST', body: JSON.stringify({ path: folderPath.trim() }) }); await loadFiles(); }
     catch (reason) { setError(reason instanceof Error ? reason.message : 'Folder creation failed'); }
   }
 
-  function exportProject() { if (projectId) window.open(`${RUST_API}/galileo/projects/${encodeURIComponent(projectId)}/files/export`, '_blank', 'noopener,noreferrer'); }
+  function exportProject() { if (projectId) window.open(`${API}/galileo/projects/${encodeURIComponent(projectId)}/files/export`, '_blank', 'noopener,noreferrer'); }
 
   function importProject() {
     if (!projectId) return;
@@ -390,7 +358,7 @@ export function ProjectWorkspace({ user, onTaskChange }: { user: User | null; on
       const file = picker.files?.[0];
       if (!file) return;
       try {
-        const response = await fetch(`${RUST_API}/galileo/projects/${encodeURIComponent(projectId)}/files/import`, { method: 'POST', credentials: 'same-origin', headers: { 'X-CSRF-Token': csrfToken() }, body: file });
+        const response = await fetch(`${API}/galileo/projects/${encodeURIComponent(projectId)}/files/import`, { method: 'POST', credentials: 'same-origin', headers: { 'X-CSRF-Token': csrfToken() }, body: file });
         if (!response.ok) throw new Error(`Import failed (${response.status})`);
         await loadFiles();
       } catch (reason) { setError(reason instanceof Error ? reason.message : 'Import failed'); }
@@ -400,14 +368,14 @@ export function ProjectWorkspace({ user, onTaskChange }: { user: User | null; on
 
   async function openFile(filePath: string) {
     try {
-      const data = await request<{ content: string }>(`${RUST_API}/galileo/projects/${encodeURIComponent(projectId)}/files/${encodeFilePath(filePath)}`);
+      const data = await request<{ content: string }>(`${API}/galileo/projects/${encodeURIComponent(projectId)}/files/${encodeFilePath(filePath)}`);
       setPath(filePath); setContent(data.content);
     } catch (reason) { setError(reason instanceof Error ? reason.message : 'File unavailable'); }
   }
 
   async function saveFile() {
     if (!projectId || !path) return;
-    try {      await request(`${RUST_API}/galileo/projects/${encodeURIComponent(projectId)}/files/${encodeFilePath(path)}`, { method: 'PUT', body: JSON.stringify({ content }) }); await loadFiles(); }
+    try {      await request(`${API}/galileo/projects/${encodeURIComponent(projectId)}/files/${encodeFilePath(path)}`, { method: 'PUT', body: JSON.stringify({ content }) }); await loadFiles(); }
     catch (reason) { setError(reason instanceof Error ? reason.message : 'Save failed'); }
   }
 
@@ -477,7 +445,7 @@ export function ProjectWorkspace({ user, onTaskChange }: { user: User | null; on
           </div>
           <div className="workspace-main">
             {panel === 'preview' && (
-              preview?.url ? <iframe className="preview-frame" title="Project preview" src={`${RUST_API}${preview.url}`} /> : <div className="tool-empty"><span className="eyebrow">Preview</span><p>Start the preview to see your application running.</p></div>
+              preview?.url ? <iframe className="preview-frame" title="Project preview" src={`${API}${preview.url}`} /> : <div className="tool-empty"><span className="eyebrow">Preview</span><p>Start the preview to see your application running.</p></div>
             )}
             {panel === 'code' && (
               <div className="workspace-grid">

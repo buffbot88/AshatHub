@@ -1,19 +1,8 @@
 import { FormEvent, useEffect, useRef, useState } from 'react';
+import { API, csrfToken, errorMessage, type ApiError } from './galileo/api';
 
 type User = { id: string; username: string; email: string; display_name: string; role: string };
-type ApiError = string | { message?: string; code?: string };
 type AuthMode = 'login' | 'register' | 'reset-request';
-const API = '/api';
-
-function csrfToken(): string {
-  const cookie = document.cookie.split('; ').find((value) => value.startsWith('ashat_rust_csrf='));
-  return cookie ? decodeURIComponent(cookie.slice('ashat_rust_csrf='.length)) : '';
-}
-
-function errorMessage(error: ApiError | undefined, fallback: string): string {
-  if (typeof error === 'string') return error;
-  return error?.message || error?.code || fallback;
-}
 
 export function AuthPanel({ onChange, onNavigate, embedded = false }: { onChange: (user: User | null) => void; onNavigate?: (path: string) => void; embedded?: boolean }) {
   const [user, setUser] = useState<User | null>(null);

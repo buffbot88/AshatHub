@@ -10,6 +10,7 @@ import { GalileoStudio } from './components/galileo/GalileoStudio';
 import type { StudioCommand } from './components/galileo/GalileoStudio';
 import { GalileoDeployments } from './components/galileo/GalileoDeployments';
 import { CommandPalette } from './components/galileo/CommandPalette';
+import { csrfToken } from './components/galileo/api';
 import './styles.css';
 
 type User = { id: string; display_name: string; username: string; email: string; role: string };
@@ -384,11 +385,6 @@ function VesperAuthPage() {
       if (url.protocol !== 'http:' || !['127.0.0.1', 'localhost'].includes(url.hostname) || url.pathname !== '/callback' || !url.port) return null;
       return url;
     } catch { return null; }
-  }
-
-  function csrfToken(): string {
-    const cookie = document.cookie.split('; ').find((value) => value.startsWith('ashat_rust_csrf='));
-    return cookie ? decodeURIComponent(cookie.slice('ashat_rust_csrf='.length)) : '';
   }
 
   // If the user is already signed in (cookie session), mint a Vesper bearer

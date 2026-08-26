@@ -1,7 +1,7 @@
 use axum::{
     extract::State,
-    http::StatusCode,
-    response::IntoResponse,
+    http::{header, StatusCode},
+    response::{IntoResponse, Response},
     routing::{get, post},
     Json, Router,
 };
@@ -14,6 +14,7 @@ use alpha_core::router::{Intent, IntentRouter};
 pub fn create_router(state: AppState) -> Router {
     Router::new()
         .route("/v1/chat/completions", post(chat_completions))
+        .route("/v1/models", get(models))
         .route("/health", get(health))
         .route("/status", get(status))
         .route("/workers", get(workers))
@@ -23,7 +24,7 @@ pub fn create_router(state: AppState) -> Router {
 async fn chat_completions(
     State(state): State<AppState>,
     Json(request): Json<ChatRequest>,
-) -> impl IntoResponse {
+) -> Response {
     // Wire the wait queue: full -> 429, else enqueue and wait for a concurrency slot.
     let request_id = format!(
         "req-{}",
@@ -41,7 +42,7 @@ async fn chat_completions(
                     "error": "Queue full",
                     "message": "Maximum requests in queue reached"
                 })),
-            );
+            ).into_response();
         }
     }
     // Clone the semaphore before awaiting. Holding the queue's read lock
@@ -54,7 +55,7 @@ async fn chat_completions(
             return (
                 StatusCode::INTERNAL_SERVER_ERROR,
                 Json(serde_json::json!({ "error": "Queue error" })),
-            );
+            ).into_response();
         }
     };
     {
@@ -80,16 +81,13 @@ async fn chat_completions(
         // ── Vision: on-demand 450M VL ──────────────────────────
         Intent::Vision => {
             match alpha_core::proxy::vision_completions(&state.vision_pool, &request).await {
-                Ok(body) => (StatusCode::OK, Json(body)),
+                Ok(body) => completion_response(request.stream, StatusCode::OK, body),
                 Err(e) => {
                     tracing::error!("Vision inference failed: {}", e);
-                    (
-                        StatusCode::BAD_GATEWAY,
-                        Json(serde_json::json!({
-                            "error": "Vision inference failed",
-                            "message": e.to_string()
-                        })),
-                    )
+                    completion_response(request.stream, StatusCode::BAD_GATEWAY, serde_json::json!({
+                        "error": "Vision inference failed",
+                        "message": e.to_string()
+                    }))
                 }
             }
         }
@@ -97,16 +95,13 @@ async fn chat_completions(
         // ── Text: always-on 350M text worker ───────────────────
         Intent::LocalInference => {
             match alpha_core::proxy::text_worker_completions(&state.text_worker, &request).await {
-                Ok(body) => (StatusCode::OK, Json(body)),
+                Ok(body) => completion_response(request.stream, StatusCode::OK, body),
                 Err(e) => {
                     tracing::error!("Text worker inference failed: {}", e);
-                    (
-                        StatusCode::BAD_GATEWAY,
-                        Json(serde_json::json!({
-                            "error": "Text worker inference failed",
-                            "message": e.to_string()
-                        })),
-                    )
+                    completion_response(request.stream, StatusCode::BAD_GATEWAY, serde_json::json!({
+                        "error": "Text worker inference failed",
+                        "message": e.to_string()
+                    }))
                 }
             }
         }
@@ -115,28 +110,63 @@ async fn chat_completions(
         Intent::ChatStudio | Intent::FileGeneration => {
             let remote = alpha_core::inference::RemoteInference::new(state.router.config().clone());
             match remote.infer(&request).await {
-                Ok(response) => (StatusCode::OK, Json(serde_json::json!(response))),
+                Ok(response) => completion_response(request.stream, StatusCode::OK, serde_json::to_value(response).unwrap_or_default()),
                 Err(e) => {
                     tracing::error!("Omega inference failed: {}", e);
-                    (
-                        StatusCode::BAD_GATEWAY,
-                        Json(serde_json::json!({
-                            "error": "Inference failed",
-                            "message": e.to_string()
-                        })),
-                    )
+                    completion_response(request.stream, StatusCode::BAD_GATEWAY, serde_json::json!({
+                        "error": "Inference failed",
+                        "message": e.to_string()
+                    }))
                 }
             }
         }
 
-        Intent::Unknown => (
-            StatusCode::BAD_REQUEST,
-            Json(serde_json::json!({
-                "error": "Unknown intent",
-                "message": "Could not classify the request"
-            })),
-        ),
+        Intent::Unknown => completion_response(request.stream, StatusCode::BAD_REQUEST, serde_json::json!({
+            "error": "Unknown intent",
+            "message": "Could not classify the request"
+        })),
     }
+}
+
+fn completion_response(stream: bool, status: StatusCode, body: serde_json::Value) -> Response {
+    if !stream {
+        return (status, Json(body)).into_response();
+    }
+
+    let content = body
+        .pointer("/choices/0/message/content")
+        .and_then(serde_json::Value::as_str)
+        .unwrap_or_default();
+    let id = format!(
+        "chatcmpl-{}",
+        std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map(|value| value.as_nanos())
+            .unwrap_or_default()
+    );
+    let chunk = serde_json::json!({
+        "id": id,
+        "object": "chat.completion.chunk",
+        "choices": [{"index": 0, "delta": {"role": "assistant", "content": content}, "finish_reason": null}]
+    });
+    let done = serde_json::json!({
+        "id": id,
+        "object": "chat.completion.chunk",
+        "choices": [{"index": 0, "delta": {}, "finish_reason": "stop"}]
+    });
+    let payload = format!("data: {chunk}\n\ndata: {done}\n\ndata: [DONE]\n\n");
+    (
+        status,
+        [(header::CONTENT_TYPE, "text/event-stream"), (header::CACHE_CONTROL, "no-cache")],
+        payload,
+    ).into_response()
+}
+
+async fn models() -> impl IntoResponse {
+    Json(serde_json::json!({
+        "object": "list",
+        "data": [{"id": "ashat", "object": "model", "owned_by": "ashat"}]
+    }))
 }
 
 #[derive(Serialize)]

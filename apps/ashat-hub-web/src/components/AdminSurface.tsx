@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from 'react';
-import { API, request } from './galileo/api';
+import { API, request } from './api';
 
 type User = { id: string; username: string; email: string; display_name: string; role: string };
 type AdminUser = { id: string; username: string; email: string; display_name: string; role: string; is_active: number; banned_at?: number | null; email_verified_at?: string | null };

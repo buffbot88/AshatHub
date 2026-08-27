@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from 'react';
 import type { FormEvent } from 'react';
-import { API, request } from './galileo/api';
+import { API, request } from './api';
 
 type User = { id: string; username: string; email: string; display_name: string; role: string };
 export type MemberTab = 'community' | 'docs' | 'support' | 'account' | 'activity';
@@ -264,7 +264,7 @@ export function MemberSurfaces({ user, initialTab = 'community' }: { user: User 
 
       {tab === 'account' && <div className="member-panel account-grid">{!user ? <div className="tool-empty"><p>Sign in to view your account.</p></div> : account ? <><div className="account-card"><span className="eyebrow">Account</span><h3>{account.user.display_name}</h3><p className="muted">@{account.user.username} · {account.user.email}</p><span className="account-role">{account.user.role}</span></div><div className="account-stats"><Metric label="Projects" value={account.stats.projects} /><Metric label="Deployments" value={account.stats.deployments} /><Metric label="Messages" value={account.stats.conversation_messages} /></div></> : <div className="tool-empty"><p>Loading account...</p></div>}</div>}
 
-      {tab === 'activity' && <div className="member-panel activity-panel">{!user ? <div className="tool-empty"><p>Sign in to view Galileo activity.</p></div> : activityItems.length ? activityItems.map((item) => <article className="activity-row" key={item.id}><span className="activity-icon">•</span><div><strong>{item.action}</strong><small>{formatDate(item.created_at)}{item.project_id ? ` · ${item.project_id}` : ''}</small>{item.metadata && <code>{item.metadata}</code>}</div></article>) : <div className="tool-empty"><p>No Galileo activity recorded yet.</p></div>}</div>}
+      {tab === 'activity' && <div className="member-panel activity-panel">{!user ? <div className="tool-empty"><p>Sign in to view your activity.</p></div> : activityItems.length ? activityItems.map((item) => <article className="activity-row" key={item.id}><span className="activity-icon">•</span><div><strong>{item.action}</strong><small>{formatDate(item.created_at)}{item.project_id ? ` · ${item.project_id}` : ''}</small>{item.metadata && <code>{item.metadata}</code>}</div></article>) : <div className="tool-empty"><p>No activity recorded yet.</p></div>}</div>}
 
       {adminTelemetry && <details className="admin-telemetry"><summary>Admin telemetry controls</summary><div className="admin-telemetry-grid">{adminTelemetry.servers.map((server) => <div className="admin-server" key={server.id}><strong>{server.label}</strong><span>{server.online ? 'Online' : 'Offline'} · {server.ip}</span><small>{server.active_users} active users · {server.activity_total} activity</small></div>)}</div><form className="member-toolbar" onSubmit={(event) => void restartTelemetry(event)}><select value={restartServer} onChange={(event) => setRestartServer(event.target.value)}><option value="">Select server</option>{adminTelemetry.servers.map((server) => <option key={server.id} value={server.id}>{server.label}</option>)}</select><button type="submit" disabled={busy || !restartServer}>Restart allow-listed server</button></form></details>}
     </section>

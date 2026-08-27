@@ -1,5 +1,5 @@
 import { FormEvent, useEffect, useRef, useState } from 'react';
-import { API, csrfToken, errorMessage, type ApiError } from './galileo/api';
+import { API, csrfToken, errorMessage, type ApiError } from './api';
 
 type User = { id: string; username: string; email: string; display_name: string; role: string };
 type AuthMode = 'login' | 'register' | 'reset-request';
@@ -171,9 +171,9 @@ export function AuthPanel({ onChange, onNavigate, embedded = false }: { onChange
 
   const title = mode === 'login' ? 'Welcome back' : mode === 'register' ? 'Create your account' : 'Reset your password';
   const sub = mode === 'login'
-    ? 'Sign in to open Galileo and your AGP Studios projects.'
+    ? 'Sign in to access your AGP Studios projects.'
     : mode === 'register'
-      ? 'A few details and you can start building in Galileo.'
+      ? 'A few details and you can start building.'
       : 'Enter your username or email and we will send a reset link if the account exists.';
 
   const form = (
@@ -211,7 +211,7 @@ export function AuthPanel({ onChange, onNavigate, embedded = false }: { onChange
   if (embedded) {
     return (
       <div className="auth-card">
-        <span className="eyebrow">AGP Studios · Galileo</span>
+        <span className="eyebrow">AGP Studios</span>
         <h2>{title}</h2>
         <p className="auth-card-sub">{sub}</p>
         {form}

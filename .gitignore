@@ -33,6 +33,9 @@ Thumbs.db
 *.bak.*
 *.phase*bak
 
+# Archived frontend
+AshatHub_Old/
+
 # Preview runtime (ephemeral dev servers)
 modules/AshatHub/previews/
 

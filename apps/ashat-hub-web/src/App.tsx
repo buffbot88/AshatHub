@@ -4,28 +4,19 @@ import { AuthPanel } from './components/AuthPanel';
 import { MemberSurfaces } from './components/MemberSurfaces';
 import type { MemberTab } from './components/MemberSurfaces';
 import { AdminSurface } from './components/AdminSurface';
-import { GalileoShell } from './components/galileo/GalileoShell';
-import { GalileoDashboard } from './components/galileo/GalileoDashboard';
-import { GalileoStudio } from './components/galileo/GalileoStudio';
-import type { StudioCommand } from './components/galileo/GalileoStudio';
-import { GalileoDeployments } from './components/galileo/GalileoDeployments';
-import { CommandPalette } from './components/galileo/CommandPalette';
-import { csrfToken } from './components/galileo/api';
+import { csrfToken } from './components/api';
 import './styles.css';
 
 type User = { id: string; display_name: string; username: string; email: string; role: string };
 interface ServerSnapshot { id: string; label: string; online: boolean; active_users: number; activity_total: number; tokens_per_second: number; total_tokens_generated: number }
 interface TelemetryResponse { servers: ServerSnapshot[]; slowest_tokens_per_second: number; fastest_tokens_per_second: number; total_tokens_generated: number; updated_at: number }
 interface ShowcaseProject { id: string; name: string; description: string; category: string; status: string; updated: string }
-interface ShowcaseResponse { projects: ShowcaseProject[] }
-type View = 'home' | 'projects' | 'games' | 'galileo' | 'community' | 'docs' | 'support' | 'account' | 'activity' | 'telemetry' | 'admin' | 'terms' | 'privacy' | 'vesper-auth' | 'verify-email' | 'reset-password' | 'error';
+interface ShowcaseResponse { projects: ShowcaseProject[] }type View = 'home' | 'projects' | 'games' | 'community' | 'docs' | 'support' | 'account' | 'activity' | 'telemetry' | 'admin' | 'terms' | 'privacy' | 'vesper-auth' | 'verify-email' | 'reset-password' | 'error';
 
-type GalileoView = 'dashboard' | 'studio' | 'deployments' | 'settings';
 
 function viewForPath(path: string): View {
   if (path === '/projects') return 'projects';
   if (path === '/games') return 'games';
-  if (path === '/galileo') return 'galileo';
   if (path.startsWith('/community')) return 'community';
   if (path.startsWith('/docs')) return 'docs';
   if (path.startsWith('/support')) return 'support';
@@ -67,7 +58,7 @@ function Metric({ label, value }: { label: string; value: string }) {
 function ProjectCard({ project }: { project: ShowcaseProject }) {
   const statusClass = project.status === 'live' ? 'live' : project.status === 'in-development' ? 'in-development' : 'archived';
   const statusLabel = project.status === 'live' ? 'Live' : project.status === 'in-development' ? 'In Development' : 'Archived';
-  const url = project.id === 'galileo' ? '/galileo' : project.id === 'paws-and-parcels' ? 'https://pawsandparcels.agpstudios.org/' : undefined;
+  const url = project.id === 'paws-and-parcels' ? 'https://pawsandparcels.agpstudios.org/' : undefined;
   const card = (
     <article className="project-card">
       <div className="project-card-thumb">
@@ -87,8 +78,8 @@ function ProjectCard({ project }: { project: ShowcaseProject }) {
 }
 
 function LegalPage({ kind }: { kind: 'terms' | 'privacy' }) {
-  if (kind === 'privacy') return <section className="legal-panel"><span className="eyebrow">AGP Studios</span><h1>Privacy Policy</h1><p className="legal-lead">AGP Studios builds software, games, and tools. This policy explains what information AshatHub and Galileo handle and why.</p><h2>Information we handle</h2><p>We may store account details such as your username, email address, display name, authentication records, projects, files, conversations, deployments, support requests, and activity needed to operate the service.</p><h2>How we use it</h2><p>We use this information to provide authentication, save and run your projects, respond to requests, maintain security, provide support, and improve reliability. We do not sell personal information.</p><h2>Project and AI data</h2><p>Project files and messages are used to provide the requested workspace and coding assistance. Do not submit secrets or information you are not authorized to share.</p><h2>Choices and deletion</h2><p>You may request account and associated project deletion through an administrator. Deletion is intended to remove the account, sessions, linked accounts, project data, conversations, deployments, and related records, subject to necessary security or legal retention.</p><h2>Contact</h2><p>For privacy questions or requests, use the support channel on this site.</p></section>;
-  return <section className="legal-panel"><span className="eyebrow">AGP Studios</span><h1>Terms of Service</h1><p className="legal-lead">By using AGP Studios, AshatHub, or Galileo, you agree to use the services lawfully and responsibly.</p><h2>Using the services</h2><p>You are responsible for your account, credentials, submitted content, and activity. Do not use the services to abuse infrastructure, bypass access controls, distribute malware, infringe rights, or interfere with other users.</p><h2>Your content</h2><p>You retain rights to content you submit. You grant AGP Studios the limited permission needed to store, process, display, preview, deploy, and transmit that content as requested by you.</p><h2>AI-assisted output</h2><p>Ashat may produce incomplete or incorrect output. Review generated code and commands before relying on them. You are responsible for the software you run or deploy.</p><h2>Availability</h2><p>Services may change, pause, or be unavailable for maintenance, security, or operational reasons. We do not guarantee that every generated result or deployment will be error-free.</p><h2>Termination</h2><p>We may suspend access for abuse, security risk, or material violations. You may stop using the services and request deletion of your account.</p><h2>Contact</h2><p>For questions about these terms, use the support channel on this site.</p></section>;
+  if (kind === 'privacy') return <section className="legal-panel"><span className="eyebrow">AGP Studios</span><h1>Privacy Policy</h1><p className="legal-lead">AGP Studios builds software, games, and tools. This policy explains what information AshatHub handles and why.</p><h2>Information we handle</h2><p>We may store account details such as your username, email address, display name, authentication records, projects, files, conversations, deployments, support requests, and activity needed to operate the service.</p><h2>How we use it</h2><p>We use this information to provide authentication, save and run your projects, respond to requests, maintain security, provide support, and improve reliability. We do not sell personal information.</p><h2>Project and AI data</h2><p>Project files and messages are used to provide the requested workspace and coding assistance. Do not submit secrets or information you are not authorized to share.</p><h2>Choices and deletion</h2><p>You may request account and associated project deletion through an administrator. Deletion is intended to remove the account, sessions, linked accounts, project data, conversations, deployments, and related records, subject to necessary security or legal retention.</p><h2>Contact</h2><p>For privacy questions or requests, use the support channel on this site.</p></section>;
+  return <section className="legal-panel"><span className="eyebrow">AGP Studios</span><h1>Terms of Service</h1><p className="legal-lead">By using AGP Studios or AshatHub, you agree to use the services lawfully and responsibly.</p><h2>Using the services</h2><p>You are responsible for your account, credentials, submitted content, and activity. Do not use the services to abuse infrastructure, bypass access controls, distribute malware, infringe rights, or interfere with other users.</p><h2>Your content</h2><p>You retain rights to content you submit. You grant AGP Studios the limited permission needed to store, process, display, preview, deploy, and transmit that content as requested by you.</p><h2>AI-assisted output</h2><p>Ashat may produce incomplete or incorrect output. Review generated code and commands before relying on them. You are responsible for the software you run or deploy.</p><h2>Availability</h2><p>Services may change, pause, or be unavailable for maintenance, security, or operational reasons. We do not guarantee that every generated result or deployment will be error-free.</p><h2>Termination</h2><p>We may suspend access for abuse, security risk, or material violations. You may stop using the services and request deletion of your account.</p><h2>Contact</h2><p>For questions about these terms, use the support channel on this site.</p></section>;
 }
 
 export default function App() {
@@ -139,36 +130,7 @@ export default function App() {
   }, [loadTelemetry]);
 
   const handleAuthChange = useCallback((nextUser: User | null) => setUser(nextUser), []);
-  const showWorkspace = view === 'galileo';
   const showHome = view === 'home';
-  const [galileoView, setGalileoView] = useState<'dashboard' | 'studio' | 'deployments' | 'settings'>('dashboard');
-  const [showPalette, setShowPalette] = useState(false);
-  const [studioCommand, setStudioCommand] = useState<StudioCommand | null>(null);
-  const [studioProjectId, setStudioProjectId] = useState<string | null>(null);
-  const [studioInitialPrompt, setStudioInitialPrompt] = useState<string | null>(null);
-  const [dashboardAutoNew, setDashboardAutoNew] = useState(false);
-  const [paletteProjects, setPaletteProjects] = useState<{ id: string; name: string }[]>([]);
-  useEffect(() => {
-    const onKey = (e: KeyboardEvent) => {
-      if ((e.metaKey || e.ctrlKey) && e.key === 'k') {
-        e.preventDefault();
-        setShowPalette((prev) => !prev);
-      }
-    };
-    window.addEventListener('keydown', onKey);
-    return () => window.removeEventListener('keydown', onKey);
-  }, []);
-
-  // Load projects when the palette opens so "Open <project>" commands work
-  useEffect(() => {
-    if (!showPalette || !user) return;
-    fetch('/api/galileo/projects', { credentials: 'same-origin' })
-      .then((r) => (r.ok ? r.json() : null))
-      .then((d: { projects?: { id: string; name: string }[] } | null) => {
-        if (d?.projects) setPaletteProjects(d.projects);
-      })
-      .catch(() => {});
-  }, [showPalette, user]);
   if (view === 'vesper-auth') return <VesperAuthPage />;
   if (view === 'verify-email') return <EmailVerificationPage />;
   if (view === 'reset-password') return <PasswordResetPage />;
@@ -179,20 +141,18 @@ export default function App() {
   const gameProjects = showcase.filter(p => p.category === 'game');
 
   return (
-    <main className={showWorkspace ? 'hub-shell app-shell' : 'hub-shell'}>
-      {/* The marketing header only belongs on the public site. Inside the
-          Galileo app the shell provides its own thin top bar. */}
-      {!showWorkspace && <header className="hub-header">
+    <main className="hub-shell">
+      <header className="hub-header">
         <button type="button" className="brand-mark brand-button" onClick={() => navigate('/')}><img className="brand-logo" src="/agp-logo.png" alt="" width="32" height="32" /><span>AGP<span className="brand-accent">Studios</span></span></button>
         <nav className="site-nav" aria-label="Primary navigation">
           <button type="button" className={view === 'projects' ? 'site-nav-link selected' : 'site-nav-link'} onClick={() => navigate('/projects')}>Projects</button>
           <button type="button" className={view === 'games' ? 'site-nav-link selected' : 'site-nav-link'} onClick={() => navigate('/games')}>Games</button>
         </nav>
         <div className="header-actions"><AuthPanel onChange={handleAuthChange} onNavigate={navigate} /></div>
-      </header>}
+      </header>
 
       {showHome && <>
-        <section className="home-hero"><div className="hero-copy"><span className="eyebrow">Independent software studio</span><h1>Software, games, and tools built with purpose.</h1><p>AGP Studios builds practical software, games, and tools—including Galileo, our browser-based development studio powered by the Ashat coding agent.</p><div className="hero-actions"><button type="button" className="primary-button" onClick={() => navigate('/projects')}>Explore Projects</button><button type="button" className="secondary-button" onClick={() => navigate('/galileo')}>Launch Galileo</button></div></div><div className="hero-ornament" aria-hidden="true"><span>AGP</span><i /><i /><i /></div></section>
+        <section className="home-hero"><div className="hero-copy"><span className="eyebrow">Independent software studio</span><h1>Software, games, and tools built with purpose.</h1><p>AGP Studios builds practical software, games, and tools.</p><div className="hero-actions"><button type="button" className="primary-button" onClick={() => navigate('/projects')}>Explore Projects</button></div></div><div className="hero-ornament" aria-hidden="true"><span>AGP</span><i /><i /><i /></div></section>
         <section className="home-section workspace-section"><div className="section-heading"><div><span className="eyebrow">Selected work</span><h2>Projects</h2></div><button type="button" className="text-button" onClick={() => navigate('/projects')}>View all →</button></div><div className="project-grid">{studioProjects.slice(0, 3).map(project => <ProjectCard key={project.id} project={project} />)}</div></section>
         {gameProjects.length > 0 && <section className="home-section"><div className="section-heading"><div><span className="eyebrow">Other worlds</span><h2>Games</h2></div><button type="button" className="text-button" onClick={() => navigate('/games')}>Explore games →</button></div><div className="project-grid">{gameProjects.slice(0, 3).map(project => <ProjectCard key={project.id} project={project} />)}</div></section>}
       </>}
@@ -219,83 +179,7 @@ export default function App() {
         </div>
       </>}
 
-      {showWorkspace && !user && (
-        <section className="auth-gate" aria-label="Sign in to Galileo">
-          <aside className="auth-gate-aside">
-            <div className="auth-gate-mark"><span className="dot" /> Galileo Studio</div>
-            <div className="auth-gate-hero">
-              <h1>Your ideas, <span className="gold">built</span> in the browser.</h1>
-              <p>Galileo is a development studio powered by Ashat — plan projects, scaffold code, and ship to your own subdomain without leaving the tab.</p>
-              <div className="auth-gate-feats">
-                <div className="auth-gate-feat"><span className="tick">◇</span><span>Plan and scaffold full-stack projects from a single prompt.</span></div>
-                <div className="auth-gate-feat"><span className="tick">▲</span><span>Preview and deploy to instant, per-project subdomains.</span></div>
-                <div className="auth-gate-feat"><span className="tick">⌘</span><span>Command palette, terminal, and change tracking built in.</span></div>
-              </div>
-            </div>
-            <div className="auth-gate-foot">AGP Studios — software, games, and tools built with purpose.</div>
-          </aside>
-          <div className="auth-gate-form">
-            <AuthPanel onChange={handleAuthChange} onNavigate={navigate} embedded />
-          </div>
-        </section>
-      )}
-      {showWorkspace && user && <>
-        <GalileoShell
-          user={user}
-          initialView={galileoView}
-          view={galileoView}
-          onViewChange={setGalileoView}
-        >
-          {(shellView) => {
-            if (shellView === 'dashboard') return (
-              <GalileoDashboard
-                user={user}
-                onNavigate={(nextView, pid, prompt) => {
-                  if (pid) setStudioProjectId(pid);
-                  setStudioInitialPrompt(prompt || null);
-                  setGalileoView(nextView);
-                }}
-                autoNew={dashboardAutoNew}
-                onAutoNewConsumed={() => setDashboardAutoNew(false)}
-              />
-            );
-            if (shellView === 'studio') return (
-              <GalileoStudio
-                user={user}
-                projectId={studioProjectId ?? undefined}
-                initialPrompt={studioInitialPrompt}
-                onInitialPromptConsumed={() => setStudioInitialPrompt(null)}
-                command={studioCommand}
-                onCommandHandled={() => setStudioCommand(null)}
-              />
-            );
-            if (shellView === 'deployments') return (
-              <GalileoDeployments
-                user={user}
-                onOpenProject={(pid) => { setStudioProjectId(pid); setStudioInitialPrompt(null); setGalileoView('studio'); }}
-              />
-            );
-            return <section className="member-panel legal-panel"><span className="eyebrow">Galileo</span><h2>Settings</h2><p className="muted">Settings coming soon.</p></section>;
-          }}
-        </GalileoShell>
-        {showPalette && user && <CommandPalette commands={[
-          { id: 'new-project', category: 'Projects', label: 'New Project', action: () => { setGalileoView('dashboard'); setDashboardAutoNew(true); } },
-          { id: 'open-studio', category: 'Projects', label: 'Open Studio', action: () => { setStudioInitialPrompt(null); setGalileoView('studio'); } },
-          { id: 'open-deployments', category: 'Projects', label: 'View Deployments', action: () => setGalileoView('deployments') },
-          ...paletteProjects.map((p) => ({
-            id: `open-${p.id}`,
-            category: 'Projects',
-            label: `Open ${p.name}`,
-            action: () => { setStudioProjectId(p.id); setStudioInitialPrompt(null); setGalileoView('studio'); },
-          })),
-          { id: 'deploy', category: 'Actions', label: 'Deploy Current Project', action: () => { setGalileoView('studio'); setStudioCommand('deploy'); } },
-          { id: 'open-terminal', category: 'Actions', label: 'Open Terminal', action: () => { setGalileoView('studio'); setStudioCommand('open-terminal'); } },
-          { id: 'open-changes', category: 'Actions', label: 'View Changes', action: () => { setGalileoView('studio'); setStudioCommand('open-changes'); } },
-          { id: 'start-preview', category: 'Actions', label: 'Start Preview', action: () => { setGalileoView('studio'); setStudioCommand('start-preview'); } },
-          { id: 'stop-preview', category: 'Actions', label: 'Stop Preview', action: () => { setGalileoView('studio'); setStudioCommand('stop-preview'); } },
-          { id: 'focus-agent', category: 'Agent', label: 'Ask Galileo', action: () => { setGalileoView('studio'); setStudioCommand('focus-agent'); } },
-        ]} onClose={() => setShowPalette(false)} />}
-      </>}
+
       {showMemberSurface && <MemberSurfaces user={user} initialTab={memberTab} />}
       {view === 'admin' && <AdminSurface user={user} />}
       {view === 'telemetry' && <><MemberSurfaces user={user} initialTab="activity" /><TelemetrySection user={user} telemetry={telemetry} telemetryError={telemetryError} updatedAt={updatedAt} /></>}
@@ -303,7 +187,7 @@ export default function App() {
       {view === 'privacy' && <LegalPage kind="privacy" />}
       {view === 'error' && <section className="member-panel legal-panel"><span className="eyebrow">Ashat platform</span><h2>Page unavailable</h2><p>The requested page could not be found.</p></section>}
       {showHome && <TelemetrySection user={user} telemetry={telemetry} telemetryError={telemetryError} updatedAt={updatedAt} />}
-      {!showWorkspace && !showPalette && <StudioFooter navigate={navigate} />}
+      <StudioFooter navigate={navigate} />
     </main>
   );
 }
@@ -431,7 +315,7 @@ function VesperAuthPage() {
 }
 
 function StudioFooter({ navigate }: { navigate: (path: string) => void }) {
-  return <footer className="studio-footer"><div><strong className="footer-brand">AGP<span>Studios</span></strong><p>Independent software, games, and tools built with purpose.</p></div><div><span className="footer-label">Explore</span><button onClick={() => navigate('/projects')}>Projects</button><button onClick={() => navigate('/games')}>Games</button><button onClick={() => navigate('/community')}>Community</button></div><div><span className="footer-label">Galileo</span><button onClick={() => navigate('/galileo')}>Overview</button><button onClick={() => navigate('/docs')}>Documentation</button><button onClick={() => navigate('/support')}>Support</button></div><div><span className="footer-label">AGP Studios</span><button onClick={() => navigate('/privacy')}>Privacy</button><button onClick={() => navigate('/terms')}>Terms</button></div><div className="footer-bottom">© {new Date().getFullYear()} AGP Studios</div></footer>;
+  return <footer className="studio-footer"><div><strong className="footer-brand">AGP<span>Studios</span></strong><p>Independent software, games, and tools built with purpose.</p></div><div><span className="footer-label">Explore</span><button onClick={() => navigate('/projects')}>Projects</button><button onClick={() => navigate('/games')}>Games</button><button onClick={() => navigate('/community')}>Community</button></div>      <div><span className="footer-label">Resources</span><button onClick={() => navigate('/docs')}>Documentation</button><button onClick={() => navigate('/support')}>Support</button></div><div><span className="footer-label">AGP Studios</span><button onClick={() => navigate('/privacy')}>Privacy</button><button onClick={() => navigate('/terms')}>Terms</button></div><div className="footer-bottom">© {new Date().getFullYear()} AGP Studios</div></footer>;
 }
 
 function TelemetrySection({ user, telemetry, telemetryError, updatedAt }: { user: User | null; telemetry: TelemetryResponse | null; telemetryError: string | null; updatedAt: Date | null }) {

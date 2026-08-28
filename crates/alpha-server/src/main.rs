@@ -8,7 +8,7 @@ use alpha_core::text_worker::TextWorker;
 use anyhow::Result;
 use axum::extract::DefaultBodyLimit;
 use std::sync::Arc;
-use tokio::sync::RwLock;
+use tokio::sync::{RwLock, Semaphore};
 use tower_http::cors::{Any, CorsLayer};
 use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
 
@@ -18,6 +18,9 @@ pub struct AppState {
     pub router: Arc<IntentRouter>,
     pub text_worker: Arc<TextWorker>,
     pub vision_pool: Arc<VisionPool>,
+    pub text_slots: Arc<Semaphore>,
+    pub vision_slots: Arc<Semaphore>,
+    pub agent_slots: Arc<Semaphore>,
     pub config: Config,
 }
 
@@ -75,6 +78,10 @@ async fn main() -> Result<()> {
         router: Arc::new(intent_router),
         text_worker,
         vision_pool,
+        // One local 350M process; three independent remote coding agents.
+        text_slots: Arc::new(Semaphore::new(1)),
+        vision_slots: Arc::new(Semaphore::new(config.models.max_instances.max(1) as usize)),
+        agent_slots: Arc::new(Semaphore::new(config.agents.endpoints.len().max(1))),
         config: config.clone(),
     };
 

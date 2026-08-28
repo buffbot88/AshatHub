@@ -45,24 +45,6 @@ async fn chat_completions(
             ).into_response();
         }
     }
-    // Clone the semaphore before awaiting. Holding the queue's read lock
-    // while waiting would starve the writer that dequeues completed work.
-    let semaphore = { state.queue.read().await.semaphore() };
-    let _permit = match semaphore.acquire_owned().await {
-        Ok(p) => p,
-        Err(e) => {
-            tracing::error!("acquire slot failed: {}", e);
-            return (
-                StatusCode::INTERNAL_SERVER_ERROR,
-                Json(serde_json::json!({ "error": "Queue error" })),
-            ).into_response();
-        }
-    };
-    {
-        let mut queue = state.queue.write().await;
-        queue.dequeue();
-    }
-
     // Classify intent — image detection + "model": "local" bypass.
     let intent = if request.model.as_deref() == Some("local") {
         // "model": "local" from AshatHub — check for images.
@@ -76,6 +58,29 @@ async fn chat_completions(
         intent,
         request.messages.len()
     );
+
+    let capacity = match intent {
+        Intent::Vision => state.vision_slots.clone(),
+        Intent::LocalInference => state.text_slots.clone(),
+        Intent::ChatStudio | Intent::FileGeneration => state.agent_slots.clone(),
+        Intent::Unknown => return completion_response(request.stream, StatusCode::BAD_REQUEST, serde_json::json!({
+            "error": "Unknown intent",
+            "message": "Could not classify the request"
+        })),
+    };
+    let _permit = match capacity.acquire_owned().await {
+        Ok(permit) => permit,
+        Err(error) => {
+            tracing::error!(?error, "inference capacity unavailable");
+            return completion_response(request.stream, StatusCode::SERVICE_UNAVAILABLE, serde_json::json!({
+                "error": "Inference capacity unavailable"
+            }));
+        }
+    };
+    {
+        let mut queue = state.queue.write().await;
+        queue.dequeue();
+    }
 
     match intent {
         // ── Vision: on-demand 450M VL ──────────────────────────
@@ -184,17 +189,28 @@ async fn health() -> impl IntoResponse {
 
 #[derive(Serialize)]
 struct StatusResponse {
-    queue_size: usize,
+    queued_requests: usize,
     max_queue: usize,
-    available_slots: usize,
+    active_requests: usize,
+    available_text_slots: usize,
+    available_agent_slots: usize,
+    available_vision_slots: usize,
 }
 
 async fn status(State(state): State<AppState>) -> impl IntoResponse {
     let queue = state.queue.read().await;
+    let text_available = state.text_slots.available_permits();
+    let agent_available = state.agent_slots.available_permits();
+    let vision_available = state.vision_slots.available_permits();
     Json(StatusResponse {
-        queue_size: queue.queue_size(),
+        queued_requests: queue.queue_size(),
         max_queue: queue.max_queue_size(),
-        available_slots: queue.available_slots(),
+        active_requests: text_available.max(1) - text_available
+            + agent_available.max(1) - agent_available
+            + vision_available.max(1) - vision_available,
+        available_text_slots: text_available,
+        available_agent_slots: agent_available,
+        available_vision_slots: vision_available,
     })
 }
 

@@ -163,7 +163,6 @@ export function AuthPanel({ onChange, onNavigate, embedded = false }: { onChange
             <button type="button" className="auth-menu-link" onClick={() => navigateFromMenu('/community')}>Community</button>
             {user.role.toLowerCase() === 'admin' && <button type="button" className="auth-menu-link" onClick={() => navigateFromMenu('/admin')}>Admin</button>}
           </nav>}
-          <a className="auth-menu-link" href={`${API}/auth/github`}>Link GitHub account</a>
           <button type="button" className="auth-logout" onClick={() => void logout()} disabled={busy}>Sign out</button>
         </div>
       </details>

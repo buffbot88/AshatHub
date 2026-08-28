@@ -40,18 +40,14 @@ impl IntentRouter {
     }
 
     /// Classify the intent of an incoming request.
-    pub fn classify(&self, messages: &[ChatMessage], is_stream: bool) -> Intent {
+    pub fn classify(&self, messages: &[ChatMessage], _is_stream: bool) -> Intent {
         // Image detection takes priority — always route to vision pool.
         if Self::has_images(messages) {
             return Intent::Vision;
         }
 
-        // Chat Studio typically sends streaming requests.
-        if is_stream {
-            return Intent::ChatStudio;
-        }
-
-        // Analyze message content for intent.
+        // Analyze message content for intent. Streaming is transport, not intent:
+        // normal chat must remain on the always-on 350M worker.
         if let Some(last_msg) = messages.last() {
             let content = last_msg.text().to_lowercase();
 
@@ -66,13 +62,6 @@ impl IntentRouter {
                 return Intent::FileGeneration;
             }
 
-            if content.contains("chat")
-                || content.contains("ask")
-                || content.contains("question")
-                || content.contains("help")
-            {
-                return Intent::ChatStudio;
-            }
         }
 
         // Default to local text inference.

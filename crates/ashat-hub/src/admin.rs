@@ -61,7 +61,26 @@ pub(crate) fn routes() -> Router<AppState> {
         .route("/api/admin/system/update", post(system_update))
         .route("/api/admin/galileo/update", post(galileo_update))
         .route("/api/admin/coding-agents/update", post(coding_agents_update))
+        .route("/api/admin/coding-agents/push", post(coding_agents_push))
+        .route("/api/admin/repo-status", get(repo_status))
         .route("/api/admin/support", get(support))
+}
+
+async fn coding_agents_push(
+    auth::AdminUser(_admin): auth::AdminUser,
+) -> Response {
+    let output = Command::new("ssh").args(["-i", "/var/oled/data/oraclehost_id_rsa", "-o", "IdentitiesOnly=yes", "-o", "BatchMode=yes", "opc@129.213.94.124", "/var/oled/data/AshatCodingAgent/scripts/github_sync.sh", "push", "--json", "--yes"]).output().await;
+    match output { Ok(output) if output.status.success() => Json(serde_json::json!({"ok":true,"output":String::from_utf8_lossy(&output.stdout)})).into_response(), _ => error_response(StatusCode::BAD_GATEWAY, "coding_agents_push_failed") }
+}
+
+async fn repo_status(
+    auth::AdminUser(_admin): auth::AdminUser,
+) -> Response {
+    let local = |directory: &'static str| async move { Command::new("git").args(["-C", directory, "rev-parse", "HEAD"]).output().await };
+    let (ashat, galileo) = tokio::join!(local("/var/oled/data/AshatHub"), local("/var/oled/data/Galileo"));
+    let agent = Command::new("ssh").args(["-i", "/var/oled/data/oraclehost_id_rsa", "-o", "IdentitiesOnly=yes", "-o", "BatchMode=yes", "opc@129.213.94.124", "/var/oled/data/AshatCodingAgent/scripts/github_sync.sh", "status", "--json", "--yes"]).output().await;
+    let sha = |result: Result<std::process::Output, std::io::Error>| String::from_utf8_lossy(&result.map(|o| o.stdout).unwrap_or_default()).trim().to_owned();
+    Json(serde_json::json!({"ashathub":sha(ashat),"galileo":sha(galileo),"coding_agents":String::from_utf8_lossy(&agent.map(|o| o.stdout).unwrap_or_default())})).into_response()
 }
 
 async fn coding_agents_update(

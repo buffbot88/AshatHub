@@ -16,7 +16,7 @@ type AdminDeploymentRow = {
   username: string; display_name: string;
 };
 type AdminTelemetry = { servers: { id: string; label: string; online: boolean; active_requests: number; requests_last_5m: number; generation_tokens_per_second: number; prompt_tokens_per_second: number; total_completion_tokens: number; queue_depth: number; queue_limit: number }[]; updated_at: number };
-type AdminTab = 'overview' | 'users' | 'deployments' | 'telemetry' | 'system';
+type AdminTab = 'overview' | 'users' | 'galileo' | 'telemetry' | 'system';
 type RepoStatus = { ashathub: string; galileo: string; coding_agents: string };
 
 // ── Helpers ──
@@ -52,7 +52,7 @@ function deployDot(status: string): { dot: string; cls: string } {
 export function AdminSurface({ user }: { user: User | null }) {
   const [tab, setTab] = useState<AdminTab>(() => {
     const value = window.location.hash.slice(1) as AdminTab;
-    return ['overview', 'users', 'deployments', 'telemetry', 'system'].includes(value) ? value : 'overview';
+    return ['overview', 'users', 'galileo', 'telemetry', 'system'].includes(value) ? value : 'overview';
   });
   const [summary, setSummary] = useState<AdminSummary | null>(null);
   const [users, setUsers] = useState<AdminUser[]>([]);
@@ -99,7 +99,7 @@ export function AdminSurface({ user }: { user: User | null }) {
   }, [deployFilter, user]);
 
   useEffect(() => { void load(); }, [load]);
-  useEffect(() => { if (tab === 'deployments') void loadDeployments(); }, [tab, loadDeployments]);
+  useEffect(() => { if (tab === 'galileo') void loadDeployments(); }, [tab, loadDeployments]);
   const loadTelemetry = useCallback(async () => { try { setTelemetry(await request<AdminTelemetry>(`${API}/admin/telemetry`)); } catch (reason) { setError(reason instanceof Error ? reason.message : 'Telemetry unavailable'); } }, []);
   useEffect(() => { if (tab === 'telemetry') void loadTelemetry(); }, [tab, loadTelemetry]);
   async function telemetryAction(action: 'refresh' | 'clear') { setBusy(true); setError(null); try { await request(`${API}/admin/telemetry/${action}`, { method: 'POST' }); await loadTelemetry(); } catch (reason) { setError(reason instanceof Error ? reason.message : `Telemetry ${action} failed`); } finally { setBusy(false); } }
@@ -167,7 +167,7 @@ export function AdminSurface({ user }: { user: User | null }) {
   const tabs: { id: AdminTab; label: string }[] = [
     { id: 'overview', label: 'Overview' },
     { id: 'users', label: 'Users' },
-    { id: 'deployments', label: 'Deployments' },
+    { id: 'galileo', label: 'Galileo' },
     { id: 'telemetry', label: 'Coding Agents' },
     { id: 'system', label: 'System' },
   ];
@@ -188,7 +188,7 @@ export function AdminSurface({ user }: { user: User | null }) {
 
       {tab === 'overview' && <OverviewTab summary={summary} onNavigate={setTab} />}
       {tab === 'users' && <UsersTab users={users} query={query} onQueryChange={setQuery} onSearch={load} onSelectUser={setSelectedUser} selectedUser={selectedUser} busy={busy} currentUser={user} onUpdateUser={updateUser} onBanUser={banUser} onDeleteUser={deleteUser} />}
-      {tab === 'deployments' && <DeploymentsTab deployments={deployments} filter={deployFilter} onFilterChange={setDeployFilter} onRefresh={loadDeployments} onSelectDeploy={setSelectedDeploy} selectedDeploy={selectedDeploy} busy={busy} onUndeploy={adminUndeploy} onGalileoUpdate={galileoUpdate} onGalileoPush={galileoPush} status={repoStatus} />}
+      {tab === 'galileo' && <DeploymentsTab deployments={deployments} filter={deployFilter} onFilterChange={setDeployFilter} onRefresh={loadDeployments} onSelectDeploy={setSelectedDeploy} selectedDeploy={selectedDeploy} busy={busy} onUndeploy={adminUndeploy} onGalileoUpdate={galileoUpdate} onGalileoPush={galileoPush} status={repoStatus} />}
       {tab === 'telemetry' && <TelemetryTab telemetry={telemetry} busy={busy} onAction={telemetryAction} onUpdate={codingAgentsUpdate} onPush={codingAgentsPush} status={repoStatus} />}
       {tab === 'system' && <SystemTab database={database} settings={settings} onPush={pushGithub} onUpdate={systemUpdate} status={repoStatus} />}
     </section>
@@ -223,7 +223,7 @@ function OverviewTab({ summary, onNavigate }: { summary: AdminSummary | null; on
       </div>
       <div className="adm-overview-actions">
         <button type="button" className="adm-action-card" onClick={() => onNavigate('users')}><span className="adm-action-icon">👤</span><span>Manage Users</span></button>
-        <button type="button" className="adm-action-card" onClick={() => onNavigate('deployments')}><span className="adm-action-icon">▲</span><span>View Deployments</span></button>
+        <button type="button" className="adm-action-card" onClick={() => onNavigate('galileo')}><span className="adm-action-icon">▲</span><span>View Deployments</span></button>
         <button type="button" className="adm-action-card" onClick={() => onNavigate('system')}><span className="adm-action-icon">⚙</span><span>System Health</span></button>
       </div>
 
@@ -325,7 +325,7 @@ function DeploymentsTab({ deployments, filter, onFilterChange, onRefresh, onSele
             <option value="undeployed">Removed</option>
           </select>
           <button type="button" className="secondary-button" onClick={onRefresh}>Refresh</button>
-          <button type="button" className="secondary-button" onClick={onGalileoPush}>Push Changes to Galileo GitHub</button>
+          <button type="button" className="secondary-button" onClick={onGalileoPush}>Fix GitHub update card</button>
           <button type="button" className="secondary-button" onClick={onGalileoUpdate}>Update Galileo</button>
         </div>
         <div className="adm-deploy-list">

@@ -80,7 +80,11 @@ async fn repo_status(
     let (ashat, galileo) = tokio::join!(local("/var/oled/data/AshatHub"), local("/var/oled/data/Galileo"));
     let agent = Command::new("ssh").args(["-i", "/var/oled/data/oraclehost_id_rsa", "-o", "IdentitiesOnly=yes", "-o", "BatchMode=yes", "opc@129.213.94.124", "/var/oled/data/AshatCodingAgent/scripts/github_sync.sh", "status", "--json", "--yes"]).output().await;
     let sha = |result: Result<std::process::Output, std::io::Error>| String::from_utf8_lossy(&result.map(|o| o.stdout).unwrap_or_default()).trim().to_owned();
-    Json(serde_json::json!({"ashathub":sha(ashat),"galileo":sha(galileo),"coding_agents":String::from_utf8_lossy(&agent.map(|o| o.stdout).unwrap_or_default())})).into_response()
+    let coding_agents = agent.map(|output| {
+        let raw = String::from_utf8_lossy(&output.stdout);
+        serde_json::from_str::<serde_json::Value>(raw.trim()).unwrap_or_else(|_| serde_json::json!({"ok": false, "error": "invalid_status_response"}))
+    }).unwrap_or_else(|_| serde_json::json!({"ok": false, "error": "repository_unreachable"}));
+    Json(serde_json::json!({"ashathub":sha(ashat),"galileo":sha(galileo),"coding_agents":coding_agents})).into_response()
 }
 
 async fn coding_agents_update(

@@ -18,7 +18,13 @@ type AdminDeploymentRow = {
 type AdminTelemetry = { servers: { id: string; label: string; online: boolean; active_requests: number; requests_last_5m: number; generation_tokens_per_second: number; prompt_tokens_per_second: number; total_completion_tokens: number; queue_depth: number; queue_limit: number }[]; updated_at: number };
 type AdminTab = 'overview' | 'users' | 'galileo' | 'telemetry' | 'system';
 type GalileoSection = 'overview' | 'projects' | 'deployments' | 'system';
-type RepoStatus = { ashathub: string; galileo: string; coding_agents: string };
+type CodingAgentRepoStatus = { ok?: boolean; repo?: string; branch?: string; direction?: string; local_sha?: string; remote_sha?: string; error?: string };
+
+function codingAgentStatus(status: RepoStatus | null): CodingAgentRepoStatus {
+  if (!status || typeof status.coding_agents === 'string') return { error: typeof status?.coding_agents === 'string' ? status.coding_agents : 'Loading…' };
+  return status.coding_agents;
+}
+type RepoStatus = { ashathub: string; galileo: string; coding_agents: CodingAgentRepoStatus | string; ashathub_live?: string; ashathub_repo?: string };
 
 // ── Helpers ──
 
@@ -199,8 +205,8 @@ export function AdminSurface({ user }: { user: User | null }) {
 
 function TelemetryTab({ telemetry, busy, onAction, onUpdate, onPush, status }: { telemetry: AdminTelemetry | null; busy: boolean; onAction: (action: 'refresh' | 'clear') => void; onUpdate: () => void; onPush: () => void; status: RepoStatus | null }) {
   return <div className="adm-telemetry-page">
-    <div className="adm-repo-status"><div><strong>Coding Agents</strong><span className="adm-repo-subtitle">Omega · Beta · Delta</span></div><div className="adm-repo-commit"><span>Current commit</span><code>{status?.coding_agents || 'Loading…'}</code></div></div>
-    <section className="adm-update-card"><div className="adm-update-card-copy"><span className="eyebrow">Coding Agents Update</span><h3>Keep every coding agent in sync</h3><p>Pull the latest changes, rebuild the agent services, restart them, and verify Omega, Beta, and Delta together.</p></div><div className="adm-update-card-actions"><button type="button" className="primary-button" onClick={onUpdate} disabled={busy}>{busy ? 'Updating…' : 'Update All Coding Agents'}</button><button type="button" className="secondary-button" onClick={onPush} disabled={busy}>Fix GitHub update card</button></div></section>
+    <div className="adm-repo-status"><div><strong>Coding Agents</strong><span className="adm-repo-subtitle">AshatCodingAgent · Omega master · Beta/Delta slave</span></div><div className="adm-repo-commit"><span>{codingAgentStatus(status).ok ? 'Connected · main' : 'Repository status'}</span><code>{codingAgentStatus(status).local_sha || codingAgentStatus(status).error || 'Loading…'}</code></div></div>
+    <section className="adm-update-card"><div className="adm-update-card-copy"><span className="eyebrow">Coding Agents Update</span><h3>Build and validate Omega, then seed Beta and Delta</h3><p>Omega is the master edition. Pull the latest AshatCodingAgent changes, build and test Omega with its local LFM2.5 models, then push the verified slave edition to Beta and Delta.</p><div className="adm-agent-flow"><span>1 · Omega master</span><b>→</b><span>2 · Build & test</span><b>→</b><span>3 · Beta / Delta slaves</span></div></div><div className="adm-update-card-actions"><button type="button" className="primary-button" onClick={onUpdate} disabled={busy}>{busy ? 'Updating…' : 'Build, Test & Seed Agents'}</button></div></section>
     <div className="adm-toolbar adm-telemetry-toolbar"><button type="button" className="secondary-button" onClick={() => onAction('refresh')} disabled={busy}>Refresh telemetry</button><button type="button" className="secondary-button" onClick={() => onAction('clear')} disabled={busy}>Clear server cache</button><span className="refresh-state">{telemetry ? `Updated ${new Date(telemetry.updated_at * 1000).toLocaleTimeString()}` : 'Loading…'}</span></div>
     <div className="admin-telemetry-grid">{telemetry?.servers.map((server) => <div className={`admin-server ${server.online ? 'online' : 'offline'}`} key={server.id}><div className="admin-server-heading"><strong>{server.label}</strong><span className="admin-server-status">{server.online ? '● Online' : '○ Offline'}</span></div><small>{server.active_requests} active requests · {server.requests_last_5m} in 5m</small><small>{server.generation_tokens_per_second.toFixed(1)} generation tok/s · {server.prompt_tokens_per_second.toFixed(1)} prompt tok/s</small><small>Queue {server.queue_depth}/{server.queue_limit}</small></div>)}</div>
   </div>;
@@ -409,7 +415,6 @@ function DeployDetailPanel({ deployment: d, busy, onUndeploy, onClose }: {
 function SystemTab({ database, settings, onPush, onUpdate, status }: { database: DatabaseStatus | null; settings: Record<string, string | boolean> | null; onPush: () => void; onUpdate: () => void; status: RepoStatus | null }) {
   return (
     <div className="adm-system">
-      <div className="adm-toolbar"><button type="button" className="secondary-button" onClick={onPush}>Push Changes to GitHub</button><button type="button" className="secondary-button" onClick={onUpdate}>Pull, Build & Restart</button></div>
       <div className="adm-system-grid">
         <section className="adm-panel">
           <span className="eyebrow">Database</span>
@@ -430,7 +435,7 @@ function SystemTab({ database, settings, onPush, onUpdate, status }: { database:
         <section className="adm-panel">
           <span className="eyebrow">Application Runtime</span>
           <h3>Services</h3><div className="adm-field"><span className="adm-field-label">Backend</span><span className="adm-field-value">Rust · <b className="system-status-ok">● Running</b></span></div><div className="adm-field"><span className="adm-field-label">Frontend</span><span className="adm-field-value">Vite · <b className="system-status-ok">● Available</b></span></div><span className="eyebrow">Security & Configuration</span>
-          <div className="adm-system-updates"><span className="adm-field-label">System Updates</span><div className="adm-system-update-actions"><button type="button" className="secondary-button" onClick={onPush}>Push Changes to GitHub</button><button type="button" className="secondary-button" onClick={onUpdate}>Pull, Build & Restart</button></div></div>
+          <div className="adm-system-updates"><span className="adm-field-label">System Updates</span><div className="adm-commit-comparison"><div><span>Live commit</span><code>{status?.ashathub_live || '—'}</code></div><div><span>Repo commit</span><code>{status?.ashathub_repo || status?.ashathub || '—'}</code></div></div><div className="adm-system-update-actions"><button type="button" className="secondary-button" onClick={onPush}>Push Changes to GitHub</button><button type="button" className="secondary-button" onClick={onUpdate}>Pull, Build & Restart</button></div></div>
           {settings && Object.entries(settings).map(([key, value]) => (
             <div className="adm-setting-row" key={key}><span>{key.replace(/_/g, ' ')}</span><strong>{typeof value === 'boolean' ? (value ? '✓ Enabled' : '○ Disabled') : String(value)}</strong></div>
           ))}

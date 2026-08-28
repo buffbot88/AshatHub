@@ -7,6 +7,8 @@ use axum::{
 };
 use serde::{Deserialize, Serialize};
 use sqlx::FromRow;
+use tokio::{fs, process::Command};
+use uuid::Uuid;
 
 use crate::{auth, response::error_response, AppState};
 
@@ -54,7 +56,26 @@ pub(crate) fn routes() -> Router<AppState> {
         .route("/api/admin/audit", get(audit_log))
         .route("/api/admin/database/status", get(database_status))
         .route("/api/admin/settings", get(settings))
+        .route("/api/admin/github/push", post(github_push))
         .route("/api/admin/support", get(support))
+}
+
+async fn github_push(
+    State(state): State<AppState>,
+    auth::AdminUser(admin): auth::AdminUser,
+) -> Response {
+    let Some(pool) = state.db.as_ref() else { return error_response(StatusCode::SERVICE_UNAVAILABLE, "database_unavailable"); };
+    let token = match sqlx::query_scalar::<_, Option<String>>("SELECT github_access_token FROM users WHERE id=?").bind(&admin.id).fetch_one(pool).await {
+        Ok(Some(token)) if !token.is_empty() => token,
+        _ => return error_response(StatusCode::BAD_REQUEST, "github_account_not_linked"),
+    };
+    let repo = std::env::var("GITHUB_REPOSITORY").unwrap_or_else(|_| "buffbot88/AshatHostingPlatform".to_owned());
+    let askpass = std::env::temp_dir().join(format!("ashat-github-askpass-{}", Uuid::new_v4()));
+    if fs::write(&askpass, format!("#!/bin/sh\nprintf '%s\\n' '{}'\n", token.replace('\'', "'\\''"))).await.is_err() { return error_response(StatusCode::SERVICE_UNAVAILABLE, "github_push_unavailable"); }
+    let _ = Command::new("chmod").arg("700").arg(&askpass).status().await;
+    let result = Command::new("git").current_dir("/var/oled/data/AshatHub").arg("push").arg(format!("https://github.com/{repo}.git")).arg("HEAD:main").env("GIT_ASKPASS", &askpass).env("GIT_TERMINAL_PROMPT", "0").output().await;
+    let _ = fs::remove_file(&askpass).await;
+    match result { Ok(output) if output.status.success() => Json(serde_json::json!({"ok":true,"repository":repo,"branch":"main"})).into_response(), _ => error_response(StatusCode::BAD_GATEWAY, "github_push_failed") }
 }
 
 async fn summary(

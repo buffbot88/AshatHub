@@ -110,6 +110,7 @@ export function AdminSurface({ user }: { user: User | null }) {
   const loadTelemetry = useCallback(async () => { try { setTelemetry(await request<AdminTelemetry>(`${API}/admin/telemetry`)); } catch (reason) { setError(reason instanceof Error ? reason.message : 'Telemetry unavailable'); } }, []);
   useEffect(() => { if (tab === 'telemetry') void loadTelemetry(); }, [tab, loadTelemetry]);
   async function telemetryAction(action: 'refresh' | 'clear') { setBusy(true); setError(null); try { await request(`${API}/admin/telemetry/${action}`, { method: 'POST' }); await loadTelemetry(); } catch (reason) { setError(reason instanceof Error ? reason.message : `Telemetry ${action} failed`); } finally { setBusy(false); } }
+  async function pushGithub() { if (!window.confirm('Push committed Ashat Hub changes to GitHub main?')) return; setBusy(true); setError(null); try { await request(`${API}/admin/github/push`, { method: 'POST' }); } catch (reason) { setError(reason instanceof Error ? reason.message : 'GitHub push failed'); } finally { setBusy(false); } }
 
   async function updateUser(userId: string, body: { role?: string; is_active?: boolean }) {
     setBusy(true); setError(null);
@@ -191,15 +192,15 @@ export function AdminSurface({ user }: { user: User | null }) {
       {tab === 'overview' && <OverviewTab summary={summary} onNavigate={setTab} />}
       {tab === 'users' && <UsersTab users={users} query={query} onQueryChange={setQuery} onSearch={load} onSelectUser={setSelectedUser} selectedUser={selectedUser} busy={busy} currentUser={user} onUpdateUser={updateUser} onBanUser={banUser} onDeleteUser={deleteUser} />}
       {tab === 'deployments' && <DeploymentsTab deployments={deployments} filter={deployFilter} onFilterChange={setDeployFilter} onRefresh={loadDeployments} onSelectDeploy={setSelectedDeploy} selectedDeploy={selectedDeploy} busy={busy} onUndeploy={adminUndeploy} />}
-      {tab === 'telemetry' && <TelemetryTab telemetry={telemetry} busy={busy} onAction={telemetryAction} />}
+      {tab === 'telemetry' && <TelemetryTab telemetry={telemetry} busy={busy} onAction={telemetryAction} onPush={pushGithub} />}
       {tab === 'system' && <SystemTab database={database} settings={settings} />}
       {tab === 'audit' && <AuditTab events={auditEvents} />}
     </section>
   );
 }
 
-function TelemetryTab({ telemetry, busy, onAction }: { telemetry: AdminTelemetry | null; busy: boolean; onAction: (action: 'refresh' | 'clear') => void }) {
-  return <div className="adm-telemetry-page"><div className="adm-toolbar"><button type="button" className="secondary-button" onClick={() => onAction('refresh')} disabled={busy}>Refresh now</button><button type="button" className="secondary-button" onClick={() => onAction('clear')} disabled={busy}>Clear server cache</button><span className="refresh-state">{telemetry ? `Updated ${new Date(telemetry.updated_at * 1000).toLocaleTimeString()}` : 'Loading…'}</span></div><div className="admin-telemetry-grid">{telemetry?.servers.map((server) => <div className="admin-server" key={server.id}><strong>{server.label}</strong><span>{server.online ? 'Online' : 'Offline'}</span><small>{server.active_requests} active requests · {server.requests_last_5m} in 5m</small><small>{server.generation_tokens_per_second.toFixed(1)} generation tok/s · {server.prompt_tokens_per_second.toFixed(1)} prompt tok/s</small><small>Queue {server.queue_depth}/{server.queue_limit}</small></div>)}</div></div>;
+function TelemetryTab({ telemetry, busy, onAction, onPush }: { telemetry: AdminTelemetry | null; busy: boolean; onAction: (action: 'refresh' | 'clear') => void; onPush: () => void }) {
+  return <div className="adm-telemetry-page"><div className="adm-toolbar"><button type="button" className="secondary-button" onClick={() => onAction('refresh')} disabled={busy}>Refresh now</button><button type="button" className="secondary-button" onClick={() => onAction('clear')} disabled={busy}>Clear server cache</button><button type="button" className="secondary-button" onClick={onPush} disabled={busy}>Push changes to GitHub</button><span className="refresh-state">{telemetry ? `Updated ${new Date(telemetry.updated_at * 1000).toLocaleTimeString()}` : 'Loading…'}</span></div><div className="admin-telemetry-grid">{telemetry?.servers.map((server) => <div className="admin-server" key={server.id}><strong>{server.label}</strong><span>{server.online ? 'Online' : 'Offline'}</span><small>{server.active_requests} active requests · {server.requests_last_5m} in 5m</small><small>{server.generation_tokens_per_second.toFixed(1)} generation tok/s · {server.prompt_tokens_per_second.toFixed(1)} prompt tok/s</small><small>Queue {server.queue_depth}/{server.queue_limit}</small></div>)}</div></div>;
 }
 
 // ── Overview Tab ──

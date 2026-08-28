@@ -1,0 +1,6 @@
+ALTER TABLE users
+    ADD COLUMN IF NOT EXISTS github_id VARCHAR(64) NULL UNIQUE,
+    ADD COLUMN IF NOT EXISTS github_login VARCHAR(120) NULL,
+    ADD COLUMN IF NOT EXISTS github_access_token TEXT NULL,
+    ADD COLUMN IF NOT EXISTS github_refresh_token TEXT NULL,
+    ADD COLUMN IF NOT EXISTS github_token_expires_at DATETIME NULL;

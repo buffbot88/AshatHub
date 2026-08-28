@@ -3,7 +3,7 @@ use std::{net::SocketAddr, time::Duration};
 use axum::{
     extract::{ConnectInfo, FromRequestParts, Query, State},
     http::{header, request::Parts, HeaderMap, HeaderValue, Method, StatusCode},
-    response::{IntoResponse, Response},
+    response::{IntoResponse, Redirect, Response},
     routing::{get, post},
     Json, Router,
 };
@@ -266,6 +266,8 @@ pub(crate) fn routes() -> Router<AppState> {
         .route("/api/auth/session", get(session))
         .route("/api/auth/me", get(me))
         .route("/api/me", get(me))
+        .route("/api/auth/github", get(github_authorize))
+        .route("/api/github/callback", get(github_callback))
         .route("/api/auth/login", post(login))
         .route("/api/auth/register", post(register))
         .route("/api/auth/verify-email", get(verify_email))
@@ -274,6 +276,46 @@ pub(crate) fn routes() -> Router<AppState> {
         .route("/api/auth/password-reset/confirm", post(confirm_password_reset))
         .route("/api/auth/logout", post(logout))
         .route("/api/account", get(account).put(update_account))
+}
+
+#[derive(Debug, Deserialize)]
+struct GithubCallback { code: String, state: String }
+#[derive(Debug, Deserialize)]
+struct GithubToken { access_token: String, refresh_token: Option<String>, expires_in: Option<i64> }
+#[derive(Debug, Deserialize)]
+struct GithubUser { id: i64, login: String, name: Option<String>, email: Option<String> }
+
+async fn github_authorize(State(state): State<AppState>) -> Response {
+    let Some(client_id) = std::env::var("GITHUB_CLIENT_ID").ok().filter(|v| !v.is_empty()) else {
+        return error_response(StatusCode::SERVICE_UNAVAILABLE, "github_auth_unavailable");
+    };
+    let state_token = new_token();
+    let url = format!("https://github.com/login/oauth/authorize?client_id={client_id}&redirect_uri=https%3A%2F%2Fagpstudios.org%2Fapi%2Fgithub%2Fcallback&scope=user%3Aemail%20repo&state={state_token}");
+    let mut response = Redirect::to(&url).into_response();
+    response.headers_mut().append(header::SET_COOKIE, HeaderValue::from_str(&format!("ashat_github_state={state_token}; Path=/; Max-Age=600; HttpOnly; SameSite=Lax{}", if state.auth.secure_cookie { "; Secure" } else { "" })).unwrap());
+    response
+}
+
+async fn github_callback(State(state): State<AppState>, headers: HeaderMap, Query(input): Query<GithubCallback>) -> Response {
+    let Some(expected) = cookie_value(&headers, "ashat_github_state") else { return error_response(StatusCode::BAD_REQUEST, "github_state_invalid"); };
+    if !constant_time_equal(&expected, &input.state) { return error_response(StatusCode::BAD_REQUEST, "github_state_invalid"); }
+    let (Some(client_id), Some(client_secret)) = (std::env::var("GITHUB_CLIENT_ID").ok(), std::env::var("GITHUB_CLIENT_SECRET").ok()) else { return error_response(StatusCode::SERVICE_UNAVAILABLE, "github_auth_unavailable"); };
+    let token = match state.client.post("https://github.com/login/oauth/access_token").header(header::ACCEPT, "application/json").form(&serde_json::json!({"client_id": client_id, "client_secret": client_secret, "code": input.code, "redirect_uri": "https://agpstudios.org/api/github/callback"})).send().await.and_then(|r| r.error_for_status()) { Ok(response) => match response.json::<GithubToken>().await { Ok(token) => token, Err(_) => return error_response(StatusCode::BAD_GATEWAY, "github_token_failed") }, Err(_) => return error_response(StatusCode::BAD_GATEWAY, "github_token_failed") };
+    let profile = match state.client.get("https://api.github.com/user").header(header::USER_AGENT, "AshatHub").bearer_auth(&token.access_token).send().await.and_then(|r| r.error_for_status()) { Ok(response) => match response.json::<GithubUser>().await { Ok(user) => user, Err(_) => return error_response(StatusCode::BAD_GATEWAY, "github_profile_failed") }, Err(_) => return error_response(StatusCode::BAD_GATEWAY, "github_profile_failed") };
+    let Some(pool) = state.db.as_ref() else { return error_response(StatusCode::SERVICE_UNAVAILABLE, "auth_unavailable"); };
+    let current = current_auth(pool, &state, &headers).await.ok().flatten();
+    let user_id = if let Some(current) = current { current.user.id } else if let Ok(Some(id)) = sqlx::query_scalar::<_, String>("SELECT id FROM users WHERE github_id=?").bind(profile.id.to_string()).fetch_optional(pool).await { id } else {
+        let email = match profile.email { Some(email) => email, None => return error_response(StatusCode::BAD_REQUEST, "github_email_unavailable") };
+        if let Ok(Some(id)) = sqlx::query_scalar::<_, String>("SELECT id FROM users WHERE email=?").bind(&email).fetch_optional(pool).await { id } else {
+            let id = Uuid::new_v4().to_string(); let username = format!("{}-{}", profile.login, &id[..8]); let password = hash(new_token(), DEFAULT_COST).unwrap(); let display = profile.name.unwrap_or_else(|| profile.login.clone());
+            if sqlx::query("INSERT INTO users (id,username,email,password_hash,display_name,role,is_active,email_verified_at,github_id,github_login) VALUES (?,?,?,? ,?,'member',1,UTC_TIMESTAMP(),?,?)").bind(&id).bind(&username).bind(&email).bind(&password).bind(&display).bind(profile.id.to_string()).bind(&profile.login).execute(pool).await.is_err() { return error_response(StatusCode::CONFLICT, "github_account_failed"); } id
+        }
+    };
+    let expires = token.expires_in.unwrap_or(28800);
+    let _ = sqlx::query("UPDATE users SET github_id=?,github_login=?,github_access_token=?,github_refresh_token=?,github_token_expires_at=DATE_ADD(UTC_TIMESTAMP(), INTERVAL ? SECOND),email_verified_at=COALESCE(email_verified_at,UTC_TIMESTAMP()) WHERE id=?").bind(profile.id.to_string()).bind(&profile.login).bind(&token.access_token).bind(token.refresh_token.as_deref()).bind(expires).bind(&user_id).execute(pool).await;
+    let session = new_token(); let csrf = new_token(); let lifetime = state.auth.session_lifetime_seconds;
+    if sqlx::query("INSERT INTO rust_sessions (session_hash,user_id,csrf_hash,created_at,last_seen,expires_at) VALUES (?,?,?,UTC_TIMESTAMP(),UTC_TIMESTAMP(),DATE_ADD(UTC_TIMESTAMP(),INTERVAL ? SECOND))").bind(hash_token(&session)).bind(&user_id).bind(hash_token(&csrf)).bind(lifetime).execute(pool).await.is_err() { return error_response(StatusCode::SERVICE_UNAVAILABLE, "session_unavailable"); }
+    let mut response = Redirect::to("/").into_response(); response.headers_mut().append(header::SET_COOKIE, HeaderValue::from_str("ashat_github_state=; Path=/; Max-Age=0; HttpOnly; SameSite=Lax").unwrap()); with_auth_cookies(response, &state, &session, &csrf, lifetime)
 }
 
 async fn login(

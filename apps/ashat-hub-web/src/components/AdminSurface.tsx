@@ -24,7 +24,9 @@ function codingAgentStatus(status: RepoStatus | null): CodingAgentRepoStatus {
   if (!status || typeof status.coding_agents === 'string') return { error: typeof status?.coding_agents === 'string' ? status.coding_agents : 'Loading…' };
   return status.coding_agents;
 }
-type RepoStatus = { ashathub: string; galileo: string; coding_agents: CodingAgentRepoStatus | string; ashathub_live?: string; ashathub_repo?: string };
+type RepoPair = { live: string; repo: string; state: string };
+type RepoStatus = { ashathub: RepoPair; galileo: RepoPair; coding_agents: CodingAgentRepoStatus };
+function repoCommit(pair?: RepoPair) { return pair ? `${pair.live.slice(0, 8)} / ${pair.repo.slice(0, 8)}` : 'Loading…'; }
 
 // ── Helpers ──
 
@@ -334,7 +336,7 @@ function GalileoProjects({ summary }: { summary: AdminSummary | null }) {
 }
 
 function GalileoSystem({ onPush, onUpdate, status }: { onPush: () => void; onUpdate: () => void; status: RepoStatus | null }) {
-  return <div className="galileo-page"><span className="eyebrow">Galileo system</span><h3 className="galileo-page-title">Engine maintenance</h3><p className="galileo-intro">Manage the Galileo runtime and keep its GitHub source synchronized.</p><section className="galileo-update-card"><div><span className="eyebrow">GitHub updater</span><h4>Update Galileo</h4><p>Pull the latest Galileo changes, rebuild the workspace engine, and restart the live service.</p><code>Current commit: {status?.galileo || 'Loading…'}</code></div><div className="galileo-update-actions"><button type="button" className="primary-button" onClick={onUpdate}>Update Galileo</button><button type="button" className="secondary-button" onClick={onPush}>Fix GitHub update card</button></div></section></div>;
+  return <div className="galileo-page"><span className="eyebrow">Galileo system</span><h3 className="galileo-page-title">Engine maintenance</h3><p className="galileo-intro">Manage the Galileo runtime and keep its GitHub source synchronized.</p><section className="galileo-update-card"><div><span className="eyebrow">GitHub updater</span><h4>Update Galileo</h4><p>Pull the latest Galileo changes, rebuild the workspace engine, and restart the live service.</p><code>Live / repo: {repoCommit(status?.galileo)}</code></div><div className="galileo-update-actions"><button type="button" className="primary-button" onClick={onUpdate}>Update Galileo</button><button type="button" className="secondary-button" onClick={onPush}>Push Changes to Galileo GitHub</button></div></section></div>;
 }
 
 // ── Deployments Tab ──
@@ -347,7 +349,7 @@ function DeploymentsTab({ deployments, filter, onFilterChange, onRefresh, onSele
   return (
     <div className="adm-panel-layout">
       <div className="adm-panel-list">
-        <div className="adm-repo-status"><strong>Galileo</strong><span className="adm-repo-commit-label">Current commit</span><code>{status?.galileo || 'Loading…'}</code></div>
+        <div className={`adm-repo-status adm-repo-${status?.galileo?.state || 'unknown'}`}><strong>Galileo</strong><span className="adm-repo-commit-label">Live / repo</span><code>{repoCommit(status?.galileo)}</code></div>
         <div className="adm-toolbar">
           <select value={filter} onChange={(e) => onFilterChange(e.target.value)}>
             <option value="">All status</option>
@@ -357,7 +359,7 @@ function DeploymentsTab({ deployments, filter, onFilterChange, onRefresh, onSele
             <option value="undeployed">Removed</option>
           </select>
           <button type="button" className="secondary-button" onClick={onRefresh}>Refresh</button>
-          <button type="button" className="secondary-button" onClick={onGalileoPush}>Fix GitHub update card</button>
+          <button type="button" className="secondary-button" onClick={onGalileoPush}>Push Changes to Galileo GitHub</button>
           <button type="button" className="secondary-button" onClick={onGalileoUpdate}>Update Galileo</button>
         </div>
         <div className="adm-deploy-list">
@@ -435,7 +437,7 @@ function SystemTab({ database, settings, onPush, onUpdate, status }: { database:
         <section className="adm-panel">
           <span className="eyebrow">Application Runtime</span>
           <h3>Services</h3><div className="adm-field"><span className="adm-field-label">Backend</span><span className="adm-field-value">Rust · <b className="system-status-ok">● Running</b></span></div><div className="adm-field"><span className="adm-field-label">Frontend</span><span className="adm-field-value">Vite · <b className="system-status-ok">● Available</b></span></div><span className="eyebrow">Security & Configuration</span>
-          <div className="adm-system-updates"><span className="adm-field-label">System Updates</span><div className="adm-commit-comparison"><div><span>Live commit</span><code>{status?.ashathub_live || '—'}</code></div><div><span>Repo commit</span><code>{status?.ashathub_repo || status?.ashathub || '—'}</code></div></div><div className="adm-system-update-actions"><button type="button" className="secondary-button" onClick={onPush}>Push Changes to GitHub</button><button type="button" className="secondary-button" onClick={onUpdate}>Pull, Build & Restart</button></div></div>
+          <div className={`adm-system-updates adm-repo-${status?.ashathub?.state || 'unknown'}`}><span className="adm-field-label">System Updates</span><div className="adm-commit-comparison"><div><span>Live commit</span><code>{status?.ashathub?.live?.slice(0, 8) || '—'}</code></div><div><span>Repo commit</span><code>{status?.ashathub?.repo?.slice(0, 8) || '—'}</code></div></div><div className="adm-system-update-actions"><button type="button" className="secondary-button" onClick={onPush}>Push Changes to GitHub</button><button type="button" className="secondary-button" onClick={onUpdate}>Pull, Build & Restart</button></div></div>
           {settings && Object.entries(settings).map(([key, value]) => (
             <div className="adm-setting-row" key={key}><span>{key.replace(/_/g, ' ')}</span><strong>{typeof value === 'boolean' ? (value ? '✓ Enabled' : '○ Disabled') : String(value)}</strong></div>
           ))}

@@ -73,18 +73,25 @@ async fn coding_agents_push(
     match output { Ok(output) if output.status.success() => Json(serde_json::json!({"ok":true,"output":String::from_utf8_lossy(&output.stdout)})).into_response(), _ => error_response(StatusCode::BAD_GATEWAY, "coding_agents_push_failed") }
 }
 
+async fn repo_pair(directory: &'static str, remote: &'static str) -> serde_json::Value {
+    let local = Command::new("git").args(["-C", directory, "rev-parse", "HEAD"]).output().await;
+    let repo = Command::new("git").args(["ls-remote", remote, "refs/heads/main"]).output().await;
+    let live = String::from_utf8_lossy(&local.map(|o| o.stdout).unwrap_or_default()).trim().to_owned();
+    let remote_sha = String::from_utf8_lossy(&repo.map(|o| o.stdout).unwrap_or_default()).split_whitespace().next().unwrap_or("").to_owned();
+    let state = if live.is_empty() || remote_sha.is_empty() { "unknown" } else if live == remote_sha { "current" } else {
+        let incoming = Command::new("git").args(["-C", directory, "merge-base", "--is-ancestor", "HEAD", &remote_sha]).status().await.map(|s| s.success()).unwrap_or(false);
+        if incoming { "incoming" } else { "older" }
+    };
+    serde_json::json!({"live":live,"repo":remote_sha,"state":state})
+}
+
 async fn repo_status(
     auth::AdminUser(_admin): auth::AdminUser,
 ) -> Response {
-    let local = |directory: &'static str| async move { Command::new("git").args(["-C", directory, "rev-parse", "HEAD"]).output().await };
-    let (ashat, galileo) = tokio::join!(local("/var/oled/data/AshatHub"), local("/var/oled/data/Galileo"));
+    let (ashathub, galileo) = tokio::join!(repo_pair("/var/oled/data/AshatHub", "https://github.com/buffbot88/AshatHub.git"), repo_pair("/var/oled/data/Galileo", "https://github.com/buffbot88/Galileo.git"));
     let agent = Command::new("ssh").args(["-i", "/var/oled/data/oraclehost_id_rsa", "-o", "IdentitiesOnly=yes", "-o", "BatchMode=yes", "opc@129.213.94.124", "/var/oled/data/AshatCodingAgent/scripts/github_sync.sh", "status", "--json", "--yes"]).output().await;
-    let sha = |result: Result<std::process::Output, std::io::Error>| String::from_utf8_lossy(&result.map(|o| o.stdout).unwrap_or_default()).trim().to_owned();
-    let coding_agents = agent.map(|output| {
-        let raw = String::from_utf8_lossy(&output.stdout);
-        serde_json::from_str::<serde_json::Value>(raw.trim()).unwrap_or_else(|_| serde_json::json!({"ok": false, "error": "invalid_status_response"}))
-    }).unwrap_or_else(|_| serde_json::json!({"ok": false, "error": "repository_unreachable"}));
-    Json(serde_json::json!({"ashathub":sha(ashat),"galileo":sha(galileo),"coding_agents":coding_agents})).into_response()
+    let coding_agents = serde_json::from_slice::<serde_json::Value>(&agent.map(|o| o.stdout).unwrap_or_default()).unwrap_or_else(|_| serde_json::json!({"state":"unknown"}));
+    Json(serde_json::json!({"ashathub":ashathub,"galileo":galileo,"coding_agents":coding_agents})).into_response()
 }
 
 async fn coding_agents_update(

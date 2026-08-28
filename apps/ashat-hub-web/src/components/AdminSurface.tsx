@@ -17,6 +17,7 @@ type AdminDeploymentRow = {
 };
 type AdminTelemetry = { servers: { id: string; label: string; online: boolean; active_requests: number; requests_last_5m: number; generation_tokens_per_second: number; prompt_tokens_per_second: number; total_completion_tokens: number; queue_depth: number; queue_limit: number }[]; updated_at: number };
 type AdminTab = 'overview' | 'users' | 'galileo' | 'telemetry' | 'system';
+type GalileoSection = 'overview' | 'projects' | 'deployments' | 'system';
 type RepoStatus = { ashathub: string; galileo: string; coding_agents: string };
 
 // ── Helpers ──
@@ -68,6 +69,7 @@ export function AdminSurface({ user }: { user: User | null }) {
   // Side panels
   const [selectedUser, setSelectedUser] = useState<AdminUser | null>(null);
   const [selectedDeploy, setSelectedDeploy] = useState<AdminDeploymentRow | null>(null);
+  const [galileoSection, setGalileoSection] = useState<GalileoSection>('overview');
 
   const load = useCallback(async () => {
     if (!user || user.role.toLowerCase() !== 'admin') return;
@@ -99,7 +101,7 @@ export function AdminSurface({ user }: { user: User | null }) {
   }, [deployFilter, user]);
 
   useEffect(() => { void load(); }, [load]);
-  useEffect(() => { if (tab === 'galileo') void loadDeployments(); }, [tab, loadDeployments]);
+  useEffect(() => { if (tab === 'galileo' && (galileoSection === 'deployments' || galileoSection === 'overview')) void loadDeployments(); }, [tab, galileoSection, loadDeployments]);
   const loadTelemetry = useCallback(async () => { try { setTelemetry(await request<AdminTelemetry>(`${API}/admin/telemetry`)); } catch (reason) { setError(reason instanceof Error ? reason.message : 'Telemetry unavailable'); } }, []);
   useEffect(() => { if (tab === 'telemetry') void loadTelemetry(); }, [tab, loadTelemetry]);
   async function telemetryAction(action: 'refresh' | 'clear') { setBusy(true); setError(null); try { await request(`${API}/admin/telemetry/${action}`, { method: 'POST' }); await loadTelemetry(); } catch (reason) { setError(reason instanceof Error ? reason.message : `Telemetry ${action} failed`); } finally { setBusy(false); } }
@@ -188,7 +190,7 @@ export function AdminSurface({ user }: { user: User | null }) {
 
       {tab === 'overview' && <OverviewTab summary={summary} onNavigate={setTab} />}
       {tab === 'users' && <UsersTab users={users} query={query} onQueryChange={setQuery} onSearch={load} onSelectUser={setSelectedUser} selectedUser={selectedUser} busy={busy} currentUser={user} onUpdateUser={updateUser} onBanUser={banUser} onDeleteUser={deleteUser} />}
-      {tab === 'galileo' && <DeploymentsTab deployments={deployments} filter={deployFilter} onFilterChange={setDeployFilter} onRefresh={loadDeployments} onSelectDeploy={setSelectedDeploy} selectedDeploy={selectedDeploy} busy={busy} onUndeploy={adminUndeploy} onGalileoUpdate={galileoUpdate} onGalileoPush={galileoPush} status={repoStatus} />}
+      {tab === 'galileo' && <GalileoTab section={galileoSection} onSectionChange={(section) => { setGalileoSection(section); setSelectedDeploy(null); }} summary={summary} deployments={deployments} filter={deployFilter} onFilterChange={setDeployFilter} onRefresh={loadDeployments} onSelectDeploy={setSelectedDeploy} selectedDeploy={selectedDeploy} busy={busy} onUndeploy={adminUndeploy} onUpdate={galileoUpdate} onPush={galileoPush} status={repoStatus} />}
       {tab === 'telemetry' && <TelemetryTab telemetry={telemetry} busy={busy} onAction={telemetryAction} onUpdate={codingAgentsUpdate} onPush={codingAgentsPush} status={repoStatus} />}
       {tab === 'system' && <SystemTab database={database} settings={settings} onPush={pushGithub} onUpdate={systemUpdate} status={repoStatus} />}
     </section>
@@ -196,7 +198,12 @@ export function AdminSurface({ user }: { user: User | null }) {
 }
 
 function TelemetryTab({ telemetry, busy, onAction, onUpdate, onPush, status }: { telemetry: AdminTelemetry | null; busy: boolean; onAction: (action: 'refresh' | 'clear') => void; onUpdate: () => void; onPush: () => void; status: RepoStatus | null }) {
-  return <div className="adm-telemetry-page"><div className="adm-repo-status"><strong>Coding Agents</strong><code>{status?.coding_agents || 'Loading…'}</code></div><div className="adm-toolbar"><button type="button" className="secondary-button" onClick={() => onAction('refresh')} disabled={busy}>Refresh now</button><button type="button" className="secondary-button" onClick={() => onAction('clear')} disabled={busy}>Clear server cache</button><button type="button" className="secondary-button" onClick={onUpdate} disabled={busy}>Update All Coding Agents</button><button type="button" className="secondary-button" onClick={onPush} disabled={busy}>Push Hotfixes to GitHub</button><span className="refresh-state">{telemetry ? `Updated ${new Date(telemetry.updated_at * 1000).toLocaleTimeString()}` : 'Loading…'}</span></div><div className="admin-telemetry-grid">{telemetry?.servers.map((server) => <div className="admin-server" key={server.id}><strong>{server.label}</strong><span>{server.online ? 'Online' : 'Offline'}</span><small>{server.active_requests} active requests · {server.requests_last_5m} in 5m</small><small>{server.generation_tokens_per_second.toFixed(1)} generation tok/s · {server.prompt_tokens_per_second.toFixed(1)} prompt tok/s</small><small>Queue {server.queue_depth}/{server.queue_limit}</small></div>)}</div></div>;
+  return <div className="adm-telemetry-page">
+    <div className="adm-repo-status"><div><strong>Coding Agents</strong><span className="adm-repo-subtitle">Omega · Beta · Delta</span></div><div className="adm-repo-commit"><span>Current commit</span><code>{status?.coding_agents || 'Loading…'}</code></div></div>
+    <section className="adm-update-card"><div className="adm-update-card-copy"><span className="eyebrow">Coding Agents Update</span><h3>Keep every coding agent in sync</h3><p>Pull the latest changes, rebuild the agent services, restart them, and verify Omega, Beta, and Delta together.</p></div><div className="adm-update-card-actions"><button type="button" className="primary-button" onClick={onUpdate} disabled={busy}>{busy ? 'Updating…' : 'Update All Coding Agents'}</button><button type="button" className="secondary-button" onClick={onPush} disabled={busy}>Fix GitHub update card</button></div></section>
+    <div className="adm-toolbar adm-telemetry-toolbar"><button type="button" className="secondary-button" onClick={() => onAction('refresh')} disabled={busy}>Refresh telemetry</button><button type="button" className="secondary-button" onClick={() => onAction('clear')} disabled={busy}>Clear server cache</button><span className="refresh-state">{telemetry ? `Updated ${new Date(telemetry.updated_at * 1000).toLocaleTimeString()}` : 'Loading…'}</span></div>
+    <div className="admin-telemetry-grid">{telemetry?.servers.map((server) => <div className={`admin-server ${server.online ? 'online' : 'offline'}`} key={server.id}><div className="admin-server-heading"><strong>{server.label}</strong><span className="admin-server-status">{server.online ? '● Online' : '○ Offline'}</span></div><small>{server.active_requests} active requests · {server.requests_last_5m} in 5m</small><small>{server.generation_tokens_per_second.toFixed(1)} generation tok/s · {server.prompt_tokens_per_second.toFixed(1)} prompt tok/s</small><small>Queue {server.queue_depth}/{server.queue_limit}</small></div>)}</div>
+  </div>;
 }
 
 // ── Overview Tab ──
@@ -222,9 +229,10 @@ function OverviewTab({ summary, onNavigate }: { summary: AdminSummary | null; on
         </div>
       </div>
       <div className="adm-overview-actions">
-        <button type="button" className="adm-action-card" onClick={() => onNavigate('users')}><span className="adm-action-icon">👤</span><span>Manage Users</span></button>
-        <button type="button" className="adm-action-card" onClick={() => onNavigate('galileo')}><span className="adm-action-icon">▲</span><span>View Deployments</span></button>
-        <button type="button" className="adm-action-card" onClick={() => onNavigate('system')}><span className="adm-action-icon">⚙</span><span>System Health</span></button>
+        <button type="button" className="adm-action-card" onClick={() => onNavigate('users')}><span className="adm-action-icon">♙</span><span><strong>Manage Users</strong><small>Accounts, roles, and access</small></span><b>→</b></button>
+        <button type="button" className="adm-action-card" onClick={() => onNavigate('galileo')}><span className="adm-action-icon">✦</span><span><strong>Galileo Workspace</strong><small>Projects and deployments</small></span><b>→</b></button>
+        <button type="button" className="adm-action-card" onClick={() => onNavigate('telemetry')}><span className="adm-action-icon">⌁</span><span><strong>Coding Agents</strong><small>Runtime telemetry and updates</small></span><b>→</b></button>
+        <button type="button" className="adm-action-card" onClick={() => onNavigate('system')}><span className="adm-action-icon">⚙</span><span><strong>System Health</strong><small>Database and configuration</small></span><b>→</b></button>
       </div>
 
     </div>
@@ -305,6 +313,24 @@ function UserDetailPanel({ user: u, busy, currentUser, onUpdate, onBan, onDelete
   );
 }
 
+// ── Galileo workspace ──
+
+function GalileoTab({ section, onSectionChange, summary, deployments, filter, onFilterChange, onRefresh, onSelectDeploy, selectedDeploy, busy, onUndeploy, onUpdate, onPush, status }: { section: GalileoSection; onSectionChange: (section: GalileoSection) => void; summary: AdminSummary | null; deployments: AdminDeploymentRow[]; filter: string; onFilterChange: (filter: string) => void; onRefresh: () => void; onSelectDeploy: (deployment: AdminDeploymentRow | null) => void; selectedDeploy: AdminDeploymentRow | null; busy: boolean; onUndeploy: (userId: string, projectId: string) => void; onUpdate: () => void; onPush: () => void; status: RepoStatus | null }) {
+  return <div className="galileo-layout"><aside className="galileo-sidebar"><div className="galileo-sidebar-brand"><span className="galileo-mark">✦</span><div><strong>Galileo</strong><small>Workspace engine</small></div></div><nav aria-label="Galileo administration">{([{ id: 'overview', label: 'Overview', icon: '◈' }, { id: 'projects', label: 'Projects', icon: '▦' }, { id: 'deployments', label: 'Deployments', icon: '▲' }, { id: 'system', label: 'System', icon: '⚙' }] as { id: GalileoSection; label: string; icon: string }[]).map(item => <button key={item.id} type="button" className={section === item.id ? 'galileo-nav-item selected' : 'galileo-nav-item'} onClick={() => onSectionChange(item.id)}><span>{item.icon}</span>{item.label}</button>)}</nav></aside><div className="galileo-content">{section === 'overview' && <GalileoOverview summary={summary} deployments={deployments} onNavigate={onSectionChange} />}{section === 'projects' && <GalileoProjects summary={summary} />}{section === 'deployments' && <DeploymentsTab deployments={deployments} filter={filter} onFilterChange={onFilterChange} onRefresh={onRefresh} onSelectDeploy={onSelectDeploy} selectedDeploy={selectedDeploy} busy={busy} onUndeploy={onUndeploy} onGalileoUpdate={onUpdate} onGalileoPush={onPush} status={status} />}{section === 'system' && <GalileoSystem onPush={onPush} onUpdate={onUpdate} status={status} />}</div></div>;
+}
+
+function GalileoOverview({ summary, deployments, onNavigate }: { summary: AdminSummary | null; deployments: AdminDeploymentRow[]; onNavigate: (section: GalileoSection) => void }) {
+  return <div className="galileo-page"><span className="eyebrow">Galileo administration</span><h3 className="galileo-page-title">Workspace engine overview</h3><p className="galileo-intro">Manage projects, deployments, and the services that power user workspaces.</p><div className="galileo-stat-grid"><div><span>Active projects</span><strong>{summary?.active_projects ?? '—'}</strong></div><div><span>Live deployments</span><strong>{summary?.active_deploys ?? '—'}</strong></div><div><span>Recent deployments</span><strong>{deployments.length}</strong></div></div><div className="galileo-overview-grid"><section className="galileo-info-card"><span className="eyebrow">Operations</span><h4>Workspace management</h4><p>Review user projects and deployment activity, investigate failures, and remove deployments when needed.</p><button type="button" className="secondary-button" onClick={() => onNavigate('deployments')}>Review deployments →</button></section><section className="galileo-info-card"><span className="eyebrow">Runtime</span><h4>Galileo services</h4><p>Keep the engine current by pulling the latest code, rebuilding the service, and restarting the live runtime.</p><button type="button" className="secondary-button" onClick={() => onNavigate('system')}>Open Galileo System →</button></section></div></div>;
+}
+
+function GalileoProjects({ summary }: { summary: AdminSummary | null }) {
+  return <div className="galileo-page"><span className="eyebrow">Galileo projects</span><h3 className="galileo-page-title">Project management</h3><p className="galileo-intro">Project-level moderation and support tools are ready for the Galileo workspace.</p><div className="galileo-project-placeholder"><strong>{summary?.active_projects ?? '—'} active projects</strong><span>Use deployment records to trace project ownership, status, and live URLs.</span></div></div>;
+}
+
+function GalileoSystem({ onPush, onUpdate, status }: { onPush: () => void; onUpdate: () => void; status: RepoStatus | null }) {
+  return <div className="galileo-page"><span className="eyebrow">Galileo system</span><h3 className="galileo-page-title">Engine maintenance</h3><p className="galileo-intro">Manage the Galileo runtime and keep its GitHub source synchronized.</p><section className="galileo-update-card"><div><span className="eyebrow">GitHub updater</span><h4>Update Galileo</h4><p>Pull the latest Galileo changes, rebuild the workspace engine, and restart the live service.</p><code>Current commit: {status?.galileo || 'Loading…'}</code></div><div className="galileo-update-actions"><button type="button" className="primary-button" onClick={onUpdate}>Update Galileo</button><button type="button" className="secondary-button" onClick={onPush}>Fix GitHub update card</button></div></section></div>;
+}
+
 // ── Deployments Tab ──
 
 function DeploymentsTab({ deployments, filter, onFilterChange, onRefresh, onSelectDeploy, selectedDeploy, busy, onUndeploy, onGalileoUpdate, onGalileoPush, status }: {
@@ -315,7 +341,7 @@ function DeploymentsTab({ deployments, filter, onFilterChange, onRefresh, onSele
   return (
     <div className="adm-panel-layout">
       <div className="adm-panel-list">
-        <div className="adm-repo-status"><strong>Galileo</strong><code>{status?.galileo || 'Loading…'}</code></div>
+        <div className="adm-repo-status"><strong>Galileo</strong><span className="adm-repo-commit-label">Current commit</span><code>{status?.galileo || 'Loading…'}</code></div>
         <div className="adm-toolbar">
           <select value={filter} onChange={(e) => onFilterChange(e.target.value)}>
             <option value="">All status</option>
@@ -382,7 +408,7 @@ function DeployDetailPanel({ deployment: d, busy, onUndeploy, onClose }: {
 
 function SystemTab({ database, settings, onPush, onUpdate, status }: { database: DatabaseStatus | null; settings: Record<string, string | boolean> | null; onPush: () => void; onUpdate: () => void; status: RepoStatus | null }) {
   return (
-    <div className="adm-system"><div className="adm-repo-status"><strong>AshatHub</strong><code>{status?.ashathub || 'Loading…'}</code></div>
+    <div className="adm-system">
       <div className="adm-toolbar"><button type="button" className="secondary-button" onClick={onPush}>Push Changes to GitHub</button><button type="button" className="secondary-button" onClick={onUpdate}>Pull, Build & Restart</button></div>
       <div className="adm-system-grid">
         <section className="adm-panel">
@@ -404,6 +430,7 @@ function SystemTab({ database, settings, onPush, onUpdate, status }: { database:
         <section className="adm-panel">
           <span className="eyebrow">Application Runtime</span>
           <h3>Services</h3><div className="adm-field"><span className="adm-field-label">Backend</span><span className="adm-field-value">Rust · <b className="system-status-ok">● Running</b></span></div><div className="adm-field"><span className="adm-field-label">Frontend</span><span className="adm-field-value">Vite · <b className="system-status-ok">● Available</b></span></div><span className="eyebrow">Security & Configuration</span>
+          <div className="adm-system-updates"><span className="adm-field-label">System Updates</span><div className="adm-system-update-actions"><button type="button" className="secondary-button" onClick={onPush}>Push Changes to GitHub</button><button type="button" className="secondary-button" onClick={onUpdate}>Pull, Build & Restart</button></div></div>
           {settings && Object.entries(settings).map(([key, value]) => (
             <div className="adm-setting-row" key={key}><span>{key.replace(/_/g, ' ')}</span><strong>{typeof value === 'boolean' ? (value ? '✓ Enabled' : '○ Disabled') : String(value)}</strong></div>
           ))}

@@ -137,7 +137,7 @@ GIT_ASKPASS="$ask" GIT_TERMINAL_PROMPT=0 git fetch "https://github.com/$GITHUB_R
 GIT_ASKPASS="$ask" GIT_TERMINAL_PROMPT=0 git reset --hard FETCH_HEAD
 cp "$backup" crates/alpha-server/config.toml
 npm run build --prefix apps/ashat-hub-web
-cargo build -p ashat-hub --release
+/home/opc/.cargo/bin/cargo build -p ashat-hub --release
 sudo -n install -m 755 target/release/ashat-hub /usr/local/libexec/ashat-hub/ashat-hub
 sudo -n systemctl restart ashat-hub-rust.service
 git rev-parse HEAD

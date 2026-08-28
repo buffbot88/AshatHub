@@ -58,7 +58,7 @@ function Metric({ label, value }: { label: string; value: string }) {
 function ProjectCard({ project }: { project: ShowcaseProject }) {
   const statusClass = project.status === 'live' ? 'live' : project.status === 'in-development' ? 'in-development' : 'archived';
   const statusLabel = project.status === 'live' ? 'Live' : project.status === 'in-development' ? 'In Development' : 'Archived';
-  const url = project.id === 'paws-and-parcels' ? 'https://pawsandparcels.agpstudios.org/' : undefined;
+  const url = project.id === 'galileo' ? 'https://galileo.agpstudios.org/' : project.id === 'paws-and-parcels' ? 'https://pawsandparcels.agpstudios.org/' : undefined;
   const card = (
     <article className="project-card">
       <div className="project-card-thumb">

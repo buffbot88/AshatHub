@@ -58,6 +58,7 @@ pub(crate) fn routes() -> Router<AppState> {
         .route("/api/admin/settings", get(settings))
         .route("/api/admin/github/push", post(github_push))
         .route("/api/admin/system/update", post(system_update))
+        .route("/api/admin/galileo/update", post(galileo_update))
         .route("/api/admin/coding-agents/update", post(coding_agents_update))
         .route("/api/admin/support", get(support))
 }
@@ -74,6 +75,29 @@ async fn coding_agents_update(
         Ok(Ok(output)) => { tracing::error!(status=?output.status, stderr=%String::from_utf8_lossy(&output.stderr), "coding agents update failed"); error_response(StatusCode::BAD_GATEWAY, "coding_agents_update_failed") },
         Ok(Err(error)) => { tracing::error!(?error, "coding agents update process failed"); error_response(StatusCode::BAD_GATEWAY, "coding_agents_update_failed") },
         Err(_) => error_response(StatusCode::GATEWAY_TIMEOUT, "coding_agents_update_timeout"),
+    }
+}
+
+async fn galileo_update(
+    State(state): State<AppState>,
+    auth::AdminUser(admin): auth::AdminUser,
+) -> Response {
+    let Some(pool) = state.db.as_ref() else { return error_response(StatusCode::SERVICE_UNAVAILABLE, "database_unavailable"); };
+    let token = match sqlx::query_scalar::<_, Option<String>>("SELECT github_access_token FROM users WHERE id=?").bind(&admin.id).fetch_one(pool).await { Ok(Some(token)) if !token.is_empty() => token, _ => return error_response(StatusCode::BAD_REQUEST, "github_account_not_linked") };
+    let script = r#"set -e
+ask=$(mktemp); trap 'rm -f "$ask"' EXIT
+printf '%s\n' '#!/bin/sh' 'case "$1" in *Username*) printf "%s\\n" "x-access-token" ;; *) printf "%s\\n" "$GITHUB_TOKEN" ;; esac' > "$ask"
+chmod 700 "$ask"
+GIT_ASKPASS="$ask" GIT_TERMINAL_PROMPT=0 git fetch "https://github.com/buffbot88/Galileo.git" main
+GIT_ASKPASS="$ask" GIT_TERMINAL_PROMPT=0 git reset --hard FETCH_HEAD
+corepack pnpm run build
+sudo -n systemctl restart galileo.service
+git rev-parse HEAD
+"#;
+    match Command::new("bash").arg("-c").arg(script).current_dir("/var/oled/data/Galileo").env("GITHUB_TOKEN", token).output().await {
+        Ok(output) if output.status.success() => Json(serde_json::json!({"ok":true,"commit":String::from_utf8_lossy(&output.stdout).lines().last().unwrap_or("unknown")})).into_response(),
+        Ok(output) => { tracing::error!(status=?output.status, stderr=%String::from_utf8_lossy(&output.stderr), "Galileo update failed"); error_response(StatusCode::BAD_GATEWAY, "galileo_update_failed") },
+        Err(error) => { tracing::error!(?error, "Galileo update process failed"); error_response(StatusCode::BAD_GATEWAY, "galileo_update_failed") },
     }
 }
 

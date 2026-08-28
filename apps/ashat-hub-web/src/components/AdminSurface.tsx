@@ -112,6 +112,7 @@ export function AdminSurface({ user }: { user: User | null }) {
   async function telemetryAction(action: 'refresh' | 'clear') { setBusy(true); setError(null); try { await request(`${API}/admin/telemetry/${action}`, { method: 'POST' }); await loadTelemetry(); } catch (reason) { setError(reason instanceof Error ? reason.message : `Telemetry ${action} failed`); } finally { setBusy(false); } }
   async function pushGithub() { if (!window.confirm('Push committed Ashat Hub changes to GitHub main?')) return; setBusy(true); setError(null); try { await request(`${API}/admin/github/push`, { method: 'POST' }); } catch (reason) { setError(reason instanceof Error ? reason.message : 'GitHub push failed'); } finally { setBusy(false); } }
   async function systemUpdate() { if (!window.confirm('Pull main, rebuild Ashat Hub, and restart the live service?')) return; setBusy(true); setError(null); try { const result = await request<{ commit: string }>(`${API}/admin/system/update`, { method: 'POST' }); window.alert(`System updated to ${result.commit}`); } catch (reason) { setError(reason instanceof Error ? reason.message : 'System update failed'); } finally { setBusy(false); } }
+  async function galileoUpdate() { if (!window.confirm('Pull Galileo, rebuild it, and restart the live service?')) return; setBusy(true); setError(null); try { const result = await request<{ commit: string }>(`${API}/admin/galileo/update`, { method: 'POST' }); window.alert(`Galileo updated to ${result.commit}`); } catch (reason) { setError(reason instanceof Error ? reason.message : 'Galileo update failed'); } finally { setBusy(false); } }
   async function codingAgentsUpdate() { if (!window.confirm('Pull, rebuild, restart, and verify Omega, Beta, and Delta?')) return; setBusy(true); setError(null); try { const result = await request<{ message?: string; local_sha?: string; peers?: string[] }>(`${API}/admin/coding-agents/update`, { method: 'POST' }); window.alert(`Coding agents update complete. ${result.message || result.local_sha || ''}`); } catch (reason) { setError(reason instanceof Error ? reason.message : 'Coding agents update failed'); } finally { setBusy(false); } }
 
   async function updateUser(userId: string, body: { role?: string; is_active?: boolean }) {
@@ -195,7 +196,7 @@ export function AdminSurface({ user }: { user: User | null }) {
       {tab === 'users' && <UsersTab users={users} query={query} onQueryChange={setQuery} onSearch={load} onSelectUser={setSelectedUser} selectedUser={selectedUser} busy={busy} currentUser={user} onUpdateUser={updateUser} onBanUser={banUser} onDeleteUser={deleteUser} />}
       {tab === 'deployments' && <DeploymentsTab deployments={deployments} filter={deployFilter} onFilterChange={setDeployFilter} onRefresh={loadDeployments} onSelectDeploy={setSelectedDeploy} selectedDeploy={selectedDeploy} busy={busy} onUndeploy={adminUndeploy} />}
       {tab === 'telemetry' && <TelemetryTab telemetry={telemetry} busy={busy} onAction={telemetryAction} onUpdate={codingAgentsUpdate} />}
-      {tab === 'system' && <SystemTab database={database} settings={settings} onPush={pushGithub} onUpdate={systemUpdate} />}
+      {tab === 'system' && <SystemTab database={database} settings={settings} onPush={pushGithub} onUpdate={systemUpdate} onGalileoUpdate={galileoUpdate} />}
       {tab === 'audit' && <AuditTab events={auditEvents} />}
     </section>
   );
@@ -384,10 +385,10 @@ function DeployDetailPanel({ deployment: d, busy, onUndeploy, onClose }: {
 
 // ── System Tab ──
 
-function SystemTab({ database, settings, onPush, onUpdate }: { database: DatabaseStatus | null; settings: Record<string, string | boolean> | null; onPush: () => void; onUpdate: () => void }) {
+function SystemTab({ database, settings, onPush, onUpdate, onGalileoUpdate }: { database: DatabaseStatus | null; settings: Record<string, string | boolean> | null; onPush: () => void; onUpdate: () => void; onGalileoUpdate: () => void }) {
   return (
     <div className="adm-system">
-      <div className="adm-toolbar"><button type="button" className="secondary-button" onClick={onPush}>Push Changes to GitHub</button><button type="button" className="secondary-button" onClick={onUpdate}>Pull, Build & Restart</button></div>
+      <div className="adm-toolbar"><button type="button" className="secondary-button" onClick={onPush}>Push Changes to GitHub</button><button type="button" className="secondary-button" onClick={onUpdate}>Pull, Build & Restart</button><button type="button" className="secondary-button" onClick={onGalileoUpdate}>Update Galileo</button></div>
       <div className="adm-system-grid">
         <section className="adm-panel">
           <span className="eyebrow">Database</span>

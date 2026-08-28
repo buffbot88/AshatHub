@@ -56,13 +56,15 @@ export async function request<T>(
   _retried503 = false,
 ): Promise<T> {
   const { headers: initHeaders, ...rest } = init || {};
+  const method = (init?.method || 'GET').toUpperCase();
+  const mutating = method === 'POST' || method === 'PUT' || method === 'DELETE';
   const response = await fetch(url, {
     ...rest,
     credentials: 'same-origin',
     headers: {
       Accept: 'application/json',
       ...(init?.body ? { 'Content-Type': 'application/json' } : {}),
-      ...(init?.body ? { 'X-CSRF-Token': csrfToken() } : {}),
+      ...(mutating ? { 'X-CSRF-Token': csrfToken() } : {}),
       ...(initHeaders || {}),
     },
   });

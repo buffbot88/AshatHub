@@ -1090,7 +1090,7 @@ pub(crate) async fn enforce_csrf(
     path: &str,
     headers: &HeaderMap,
 ) -> Result<(), Response> {
-    if !matches!(method, &Method::POST | &Method::PUT | &Method::DELETE)
+    if (!matches!(method, &Method::POST | &Method::PUT | &Method::DELETE)
         || matches!(
             path,
             "/api/auth/login"
@@ -1111,7 +1111,9 @@ pub(crate) async fn enforce_csrf(
             // Admin endpoints still require the AdminUser extractor; this action
             // is exempt because the admin session may be legacy and lack CSRF.
             | "/api/admin/github/push"
-        )
+            | "/api/admin/users/role" | "/api/admin/users/status" | "/api/admin/users/ban"
+            | "/api/admin/users" | "/api/admin/telemetry/refresh" | "/api/admin/telemetry/clear"
+        )) && !path.starts_with("/api/admin/users/")
     {
         return Ok(());
     }

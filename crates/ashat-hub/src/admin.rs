@@ -75,7 +75,7 @@ async fn github_push(
     let _ = Command::new("chmod").arg("700").arg(&askpass).status().await;
     let result = Command::new("git").current_dir("/var/oled/data/AshatHub").arg("push").arg(format!("https://github.com/{repo}.git")).arg("HEAD:main").env("GIT_ASKPASS", &askpass).env("GIT_TERMINAL_PROMPT", "0").output().await;
     let _ = fs::remove_file(&askpass).await;
-    match result { Ok(output) if output.status.success() => Json(serde_json::json!({"ok":true,"repository":repo,"branch":"main"})).into_response(), _ => error_response(StatusCode::BAD_GATEWAY, "github_push_failed") }
+    match result { Ok(output) if output.status.success() => Json(serde_json::json!({"ok":true,"repository":repo,"branch":"main"})).into_response(), Ok(output) => { tracing::error!(status=?output.status, stderr=%String::from_utf8_lossy(&output.stderr), "GitHub push failed"); error_response(StatusCode::BAD_GATEWAY, "github_push_failed") }, Err(error) => { tracing::error!(?error, "GitHub push process failed"); error_response(StatusCode::BAD_GATEWAY, "github_push_failed") } }
 }
 
 async fn summary(

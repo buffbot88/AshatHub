@@ -1108,6 +1108,9 @@ pub(crate) async fn enforce_csrf(
             | "/api/icarus/auth/login"
             // OIDC token endpoint: called server-to-server by Paws & Parcels.
             | "/api/oauth/token" | "/api/oauth/authorize"
+            // Admin endpoints still require the AdminUser extractor; this action
+            // is exempt because the admin session may be legacy and lack CSRF.
+            | "/api/admin/github/push"
         )
     {
         return Ok(());

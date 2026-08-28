@@ -16,11 +16,7 @@ type AdminDeploymentRow = {
   username: string; display_name: string;
 };
 type AdminTelemetry = { servers: { id: string; label: string; online: boolean; active_requests: number; requests_last_5m: number; generation_tokens_per_second: number; prompt_tokens_per_second: number; total_completion_tokens: number; queue_depth: number; queue_limit: number }[]; updated_at: number };
-type AuditEvent = {
-  id: number; actor_id: string; actor_name: string; action: string;
-  target_type: string; target_id: string; detail: string | null; created_at: number;
-};
-type AdminTab = 'overview' | 'users' | 'deployments' | 'telemetry' | 'system' | 'audit';
+type AdminTab = 'overview' | 'users' | 'deployments' | 'telemetry' | 'system';
 
 // ── Helpers ──
 
@@ -53,11 +49,13 @@ function deployDot(status: string): { dot: string; cls: string } {
 // ── Main Component ──
 
 export function AdminSurface({ user }: { user: User | null }) {
-  const [tab, setTab] = useState<AdminTab>('overview');
+  const [tab, setTab] = useState<AdminTab>(() => {
+    const value = window.location.hash.slice(1) as AdminTab;
+    return ['overview', 'users', 'deployments', 'telemetry', 'system'].includes(value) ? value : 'overview';
+  });
   const [summary, setSummary] = useState<AdminSummary | null>(null);
   const [users, setUsers] = useState<AdminUser[]>([]);
   const [deployments, setDeployments] = useState<AdminDeploymentRow[]>([]);
-  const [auditEvents, setAuditEvents] = useState<AuditEvent[]>([]);
   const [database, setDatabase] = useState<DatabaseStatus | null>(null);
   const [telemetry, setTelemetry] = useState<AdminTelemetry | null>(null);
   const [settings, setSettings] = useState<Record<string, string | boolean> | null>(null);
@@ -96,22 +94,14 @@ export function AdminSurface({ user }: { user: User | null }) {
     } catch (reason) { setError(reason instanceof Error ? reason.message : 'Deployments unavailable'); }
   }, [deployFilter, user]);
 
-  const loadAudit = useCallback(async () => {
-    if (!user || user.role.toLowerCase() !== 'admin') return;
-    try {
-      const data = await request<{ events: AuditEvent[] }>(`${API}/admin/audit`);
-      setAuditEvents(data.events);
-    } catch (reason) { setError(reason instanceof Error ? reason.message : 'Audit log unavailable'); }
-  }, [user]);
-
   useEffect(() => { void load(); }, [load]);
   useEffect(() => { if (tab === 'deployments') void loadDeployments(); }, [tab, loadDeployments]);
-  useEffect(() => { if (tab === 'audit') void loadAudit(); }, [tab, loadAudit]);
   const loadTelemetry = useCallback(async () => { try { setTelemetry(await request<AdminTelemetry>(`${API}/admin/telemetry`)); } catch (reason) { setError(reason instanceof Error ? reason.message : 'Telemetry unavailable'); } }, []);
   useEffect(() => { if (tab === 'telemetry') void loadTelemetry(); }, [tab, loadTelemetry]);
   async function telemetryAction(action: 'refresh' | 'clear') { setBusy(true); setError(null); try { await request(`${API}/admin/telemetry/${action}`, { method: 'POST' }); await loadTelemetry(); } catch (reason) { setError(reason instanceof Error ? reason.message : `Telemetry ${action} failed`); } finally { setBusy(false); } }
   async function pushGithub() { if (!window.confirm('Push committed Ashat Hub changes to GitHub main?')) return; setBusy(true); setError(null); try { await request(`${API}/admin/github/push`, { method: 'POST' }); } catch (reason) { setError(reason instanceof Error ? reason.message : 'GitHub push failed'); } finally { setBusy(false); } }
   async function systemUpdate() { if (!window.confirm('Pull main, rebuild Ashat Hub, and restart the live service?')) return; setBusy(true); setError(null); try { const result = await request<{ commit: string }>(`${API}/admin/system/update`, { method: 'POST' }); window.alert(`System updated to ${result.commit}`); } catch (reason) { setError(reason instanceof Error ? reason.message : 'System update failed'); } finally { setBusy(false); } }
+  async function galileoPush() { if (!window.confirm('Push committed Galileo changes to GitHub main?')) return; setBusy(true); setError(null); try { await request(`${API}/admin/github/galileo-push`, { method: 'POST' }); window.alert('Galileo changes pushed.'); } catch (reason) { setError(reason instanceof Error ? reason.message : 'Galileo GitHub push failed'); } finally { setBusy(false); } }
   async function galileoUpdate() { if (!window.confirm('Pull Galileo, rebuild it, and restart the live service?')) return; setBusy(true); setError(null); try { const result = await request<{ commit: string }>(`${API}/admin/galileo/update`, { method: 'POST' }); window.alert(`Galileo updated to ${result.commit}`); } catch (reason) { setError(reason instanceof Error ? reason.message : 'Galileo update failed'); } finally { setBusy(false); } }
   async function codingAgentsUpdate() { if (!window.confirm('Pull, rebuild, restart, and verify Omega, Beta, and Delta?')) return; setBusy(true); setError(null); try { const result = await request<{ message?: string; local_sha?: string; peers?: string[] }>(`${API}/admin/coding-agents/update`, { method: 'POST' }); window.alert(`Coding agents update complete. ${result.message || result.local_sha || ''}`); } catch (reason) { setError(reason instanceof Error ? reason.message : 'Coding agents update failed'); } finally { setBusy(false); } }
 
@@ -175,29 +165,27 @@ export function AdminSurface({ user }: { user: User | null }) {
     { id: 'deployments', label: 'Deployments' },
     { id: 'telemetry', label: 'Coding Agents' },
     { id: 'system', label: 'System' },
-    { id: 'audit', label: 'Audit' },
   ];
 
   return (
     <section className="member-section adm-surface" aria-label="AGP admin control panel">
       <div className="section-heading">
         <div><span className="eyebrow">AGP Studios</span><h2>Admin Control</h2></div>
-        <a className="adm-back-link" href="/" onClick={(e) => { e.preventDefault(); window.history.pushState({}, '', '/'); }}>← Back to AGP Studios</a>
+        <a className="adm-back-link" href="/">← Back to AGP Studios</a>
       </div>
       {error && <p className="workspace-error" role="alert">{error}</p>}
 
       <nav className="adm-tabs" aria-label="Admin navigation">
         {tabs.map((t) => (
-          <button key={t.id} type="button" className={tab === t.id ? 'adm-tab selected' : 'adm-tab'} onClick={() => { setTab(t.id); setSelectedUser(null); setSelectedDeploy(null); }}>{t.label}</button>
+          <button key={t.id} type="button" className={tab === t.id ? 'adm-tab selected' : 'adm-tab'} onClick={() => { setTab(t.id); window.history.replaceState({}, '', `/admin#${t.id}`); setSelectedUser(null); setSelectedDeploy(null); }}>{t.label}</button>
         ))}
       </nav>
 
       {tab === 'overview' && <OverviewTab summary={summary} onNavigate={setTab} />}
       {tab === 'users' && <UsersTab users={users} query={query} onQueryChange={setQuery} onSearch={load} onSelectUser={setSelectedUser} selectedUser={selectedUser} busy={busy} currentUser={user} onUpdateUser={updateUser} onBanUser={banUser} onDeleteUser={deleteUser} />}
-      {tab === 'deployments' && <DeploymentsTab deployments={deployments} filter={deployFilter} onFilterChange={setDeployFilter} onRefresh={loadDeployments} onSelectDeploy={setSelectedDeploy} selectedDeploy={selectedDeploy} busy={busy} onUndeploy={adminUndeploy} />}
+      {tab === 'deployments' && <DeploymentsTab deployments={deployments} filter={deployFilter} onFilterChange={setDeployFilter} onRefresh={loadDeployments} onSelectDeploy={setSelectedDeploy} selectedDeploy={selectedDeploy} busy={busy} onUndeploy={adminUndeploy} onGalileoUpdate={galileoUpdate} onGalileoPush={galileoPush} />}
       {tab === 'telemetry' && <TelemetryTab telemetry={telemetry} busy={busy} onAction={telemetryAction} onUpdate={codingAgentsUpdate} />}
-      {tab === 'system' && <SystemTab database={database} settings={settings} onPush={pushGithub} onUpdate={systemUpdate} onGalileoUpdate={galileoUpdate} />}
-      {tab === 'audit' && <AuditTab events={auditEvents} />}
+      {tab === 'system' && <SystemTab database={database} settings={settings} onUpdate={systemUpdate} />}
     </section>
   );
 }
@@ -232,7 +220,6 @@ function OverviewTab({ summary, onNavigate }: { summary: AdminSummary | null; on
         <button type="button" className="adm-action-card" onClick={() => onNavigate('users')}><span className="adm-action-icon">👤</span><span>Manage Users</span></button>
         <button type="button" className="adm-action-card" onClick={() => onNavigate('deployments')}><span className="adm-action-icon">▲</span><span>View Deployments</span></button>
         <button type="button" className="adm-action-card" onClick={() => onNavigate('system')}><span className="adm-action-icon">⚙</span><span>System Health</span></button>
-        <button type="button" className="adm-action-card" onClick={() => onNavigate('audit')}><span className="adm-action-icon">📋</span><span>Audit Log</span></button>
       </div>
 
     </div>
@@ -315,10 +302,10 @@ function UserDetailPanel({ user: u, busy, currentUser, onUpdate, onBan, onDelete
 
 // ── Deployments Tab ──
 
-function DeploymentsTab({ deployments, filter, onFilterChange, onRefresh, onSelectDeploy, selectedDeploy, busy, onUndeploy }: {
+function DeploymentsTab({ deployments, filter, onFilterChange, onRefresh, onSelectDeploy, selectedDeploy, busy, onUndeploy, onGalileoUpdate, onGalileoPush }: {
   deployments: AdminDeploymentRow[]; filter: string; onFilterChange: (f: string) => void; onRefresh: () => void;
   onSelectDeploy: (d: AdminDeploymentRow | null) => void; selectedDeploy: AdminDeploymentRow | null;
-  busy: boolean; onUndeploy: (userId: string, projectId: string) => void;
+  busy: boolean; onUndeploy: (userId: string, projectId: string) => void; onGalileoUpdate: () => void; onGalileoPush: () => void;
 }) {
   return (
     <div className="adm-panel-layout">
@@ -332,6 +319,8 @@ function DeploymentsTab({ deployments, filter, onFilterChange, onRefresh, onSele
             <option value="undeployed">Removed</option>
           </select>
           <button type="button" className="secondary-button" onClick={onRefresh}>Refresh</button>
+          <button type="button" className="secondary-button" onClick={onGalileoPush}>Push Changes to Galileo GitHub</button>
+          <button type="button" className="secondary-button" onClick={onGalileoUpdate}>Update Galileo</button>
         </div>
         <div className="adm-deploy-list">
           {deployments.map((d) => {
@@ -385,10 +374,10 @@ function DeployDetailPanel({ deployment: d, busy, onUndeploy, onClose }: {
 
 // ── System Tab ──
 
-function SystemTab({ database, settings, onPush, onUpdate, onGalileoUpdate }: { database: DatabaseStatus | null; settings: Record<string, string | boolean> | null; onPush: () => void; onUpdate: () => void; onGalileoUpdate: () => void }) {
+function SystemTab({ database, settings, onUpdate }: { database: DatabaseStatus | null; settings: Record<string, string | boolean> | null; onUpdate: () => void }) {
   return (
     <div className="adm-system">
-      <div className="adm-toolbar"><button type="button" className="secondary-button" onClick={onPush}>Push Changes to GitHub</button><button type="button" className="secondary-button" onClick={onUpdate}>Pull, Build & Restart</button><button type="button" className="secondary-button" onClick={onGalileoUpdate}>Update Galileo</button></div>
+      <div className="adm-toolbar"><button type="button" className="secondary-button" onClick={onUpdate}>Pull, Build & Restart</button></div>
       <div className="adm-system-grid">
         <section className="adm-panel">
           <span className="eyebrow">Database</span>
@@ -418,23 +407,3 @@ function SystemTab({ database, settings, onPush, onUpdate, onGalileoUpdate }: { 
   );
 }
 
-// ── Audit Tab ──
-
-function AuditTab({ events }: { events: AuditEvent[] }) {
-  return (
-    <div className="adm-audit">
-      {events.length === 0 && <div className="adm-empty">No audit events recorded yet.</div>}
-      <div className="adm-audit-list">
-        {events.map((e) => (
-          <div className="adm-audit-row" key={e.id}>
-            <span className="adm-audit-time">{timeAgo(e.created_at)}</span>
-            <span className="adm-audit-actor">{e.actor_name || 'System'}</span>
-            <span className="adm-audit-action">{e.action}</span>
-            <span className="adm-audit-target">{e.target_type}: {e.target_id}</span>
-            {e.detail && <span className="adm-audit-detail">{e.detail}</span>}
-          </div>
-        ))}
-      </div>
-    </div>
-  );
-}

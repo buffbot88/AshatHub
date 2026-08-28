@@ -1110,7 +1110,8 @@ pub(crate) async fn enforce_csrf(
             | "/api/oauth/token" | "/api/oauth/authorize"
             // Admin endpoints still require the AdminUser extractor; this action
             // is exempt because the admin session may be legacy and lack CSRF.
-            | "/api/admin/github/push"
+            | "/api/admin/github/push" | "/api/admin/github/galileo-push"
+            | "/api/admin/system/update" | "/api/admin/galileo/update" | "/api/admin/coding-agents/update" | "/api/admin/coding-agents/push"
             | "/api/admin/users/role" | "/api/admin/users/status" | "/api/admin/users/ban"
             | "/api/admin/users" | "/api/admin/telemetry/refresh" | "/api/admin/telemetry/clear"
         )) && !path.starts_with("/api/admin/users/")

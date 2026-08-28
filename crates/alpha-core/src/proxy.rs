@@ -19,13 +19,15 @@ pub async fn text_worker_completions(
     let payload = serde_json::json!({
         "model": "local",
         "messages": request.messages,
-        "max_tokens": request.max_tokens.min(4096),
+        // The 350M worker has a 4096-token context; leave room for Galileo's
+        // system prompt and conversation instead of requesting the full context.
+        "max_tokens": request.max_tokens.min(1024),
         "temperature": request.temperature,
         "stream": false,
     });
 
     let client = reqwest::Client::builder()
-        .timeout(Duration::from_secs(30))
+        .timeout(Duration::from_secs(120))
         .build()?;
 
     let resp = client.post(&url).json(&payload).send().await?;

@@ -57,7 +57,33 @@ pub(crate) fn routes() -> Router<AppState> {
         .route("/api/admin/database/status", get(database_status))
         .route("/api/admin/settings", get(settings))
         .route("/api/admin/github/push", post(github_push))
+        .route("/api/admin/system/update", post(system_update))
         .route("/api/admin/support", get(support))
+}
+
+async fn system_update(
+    State(state): State<AppState>,
+    auth::AdminUser(admin): auth::AdminUser,
+) -> Response {
+    let Some(pool) = state.db.as_ref() else { return error_response(StatusCode::SERVICE_UNAVAILABLE, "database_unavailable"); };
+    let token = match sqlx::query_scalar::<_, Option<String>>("SELECT github_access_token FROM users WHERE id=?").bind(&admin.id).fetch_one(pool).await { Ok(Some(token)) if !token.is_empty() => token, _ => return error_response(StatusCode::BAD_REQUEST, "github_account_not_linked") };
+    let script = r#"set -e
+ask=$(mktemp); trap 'rm -f "$ask" "$backup"' EXIT
+printf '%s\n' '#!/bin/sh' 'case "$1" in *Username*) printf "%s\\n" "x-access-token" ;; *) printf "%s\\n" "$GITHUB_TOKEN" ;; esac' > "$ask"
+chmod 700 "$ask"
+backup=$(mktemp)
+cp crates/alpha-server/config.toml "$backup"
+GIT_ASKPASS="$ask" GIT_TERMINAL_PROMPT=0 git fetch "https://github.com/$GITHUB_REPOSITORY.git" main
+GIT_ASKPASS="$ask" GIT_TERMINAL_PROMPT=0 git reset --hard FETCH_HEAD
+cp "$backup" crates/alpha-server/config.toml
+npm run build --prefix apps/ashat-hub-web
+cargo build -p ashat-hub --release
+sudo -n install -m 755 target/release/ashat-hub /usr/local/libexec/ashat-hub/ashat-hub
+sudo -n systemctl restart ashat-hub-rust.service
+git rev-parse HEAD
+"#;
+    let result = Command::new("bash").arg("-c").arg(script).current_dir("/var/oled/data/AshatHub").env("GITHUB_TOKEN", token).env("GITHUB_REPOSITORY", "buffbot88/AshatHub").output().await;
+    match result { Ok(output) if output.status.success() => { let stdout = String::from_utf8_lossy(&output.stdout); let sha = stdout.lines().last().unwrap_or("unknown"); Json(serde_json::json!({"ok":true,"commit":sha})).into_response() }, Ok(output) => { tracing::error!(status=?output.status, stderr=%String::from_utf8_lossy(&output.stderr), "system update failed"); error_response(StatusCode::BAD_GATEWAY, "system_update_failed") }, Err(error) => { tracing::error!(?error, "system update process failed"); error_response(StatusCode::BAD_GATEWAY, "system_update_failed") } }
 }
 
 async fn github_push(

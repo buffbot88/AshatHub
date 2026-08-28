@@ -111,6 +111,7 @@ export function AdminSurface({ user }: { user: User | null }) {
   useEffect(() => { if (tab === 'telemetry') void loadTelemetry(); }, [tab, loadTelemetry]);
   async function telemetryAction(action: 'refresh' | 'clear') { setBusy(true); setError(null); try { await request(`${API}/admin/telemetry/${action}`, { method: 'POST' }); await loadTelemetry(); } catch (reason) { setError(reason instanceof Error ? reason.message : `Telemetry ${action} failed`); } finally { setBusy(false); } }
   async function pushGithub() { if (!window.confirm('Push committed Ashat Hub changes to GitHub main?')) return; setBusy(true); setError(null); try { await request(`${API}/admin/github/push`, { method: 'POST' }); } catch (reason) { setError(reason instanceof Error ? reason.message : 'GitHub push failed'); } finally { setBusy(false); } }
+  async function systemUpdate() { if (!window.confirm('Pull main, rebuild Ashat Hub, and restart the live service?')) return; setBusy(true); setError(null); try { const result = await request<{ commit: string }>(`${API}/admin/system/update`, { method: 'POST' }); window.alert(`System updated to ${result.commit}`); } catch (reason) { setError(reason instanceof Error ? reason.message : 'System update failed'); } finally { setBusy(false); } }
 
   async function updateUser(userId: string, body: { role?: string; is_active?: boolean }) {
     setBusy(true); setError(null);
@@ -193,7 +194,7 @@ export function AdminSurface({ user }: { user: User | null }) {
       {tab === 'users' && <UsersTab users={users} query={query} onQueryChange={setQuery} onSearch={load} onSelectUser={setSelectedUser} selectedUser={selectedUser} busy={busy} currentUser={user} onUpdateUser={updateUser} onBanUser={banUser} onDeleteUser={deleteUser} />}
       {tab === 'deployments' && <DeploymentsTab deployments={deployments} filter={deployFilter} onFilterChange={setDeployFilter} onRefresh={loadDeployments} onSelectDeploy={setSelectedDeploy} selectedDeploy={selectedDeploy} busy={busy} onUndeploy={adminUndeploy} />}
       {tab === 'telemetry' && <TelemetryTab telemetry={telemetry} busy={busy} onAction={telemetryAction} />}
-      {tab === 'system' && <SystemTab database={database} settings={settings} onPush={pushGithub} />}
+      {tab === 'system' && <SystemTab database={database} settings={settings} onPush={pushGithub} onUpdate={systemUpdate} />}
       {tab === 'audit' && <AuditTab events={auditEvents} />}
     </section>
   );
@@ -382,10 +383,10 @@ function DeployDetailPanel({ deployment: d, busy, onUndeploy, onClose }: {
 
 // ── System Tab ──
 
-function SystemTab({ database, settings, onPush }: { database: DatabaseStatus | null; settings: Record<string, string | boolean> | null; onPush: () => void }) {
+function SystemTab({ database, settings, onPush, onUpdate }: { database: DatabaseStatus | null; settings: Record<string, string | boolean> | null; onPush: () => void; onUpdate: () => void }) {
   return (
     <div className="adm-system">
-      <div className="adm-toolbar"><button type="button" className="secondary-button" onClick={onPush}>Push committed changes to GitHub</button></div>
+      <div className="adm-toolbar"><button type="button" className="secondary-button" onClick={onPush}>Push committed changes to GitHub</button><button type="button" className="secondary-button" onClick={onUpdate}>Pull, rebuild, and restart</button></div>
       <div className="adm-system-grid">
         <section className="adm-panel">
           <span className="eyebrow">Database</span>

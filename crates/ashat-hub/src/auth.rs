@@ -284,6 +284,8 @@ struct GithubCallback { code: String, state: String }
 struct GithubToken { access_token: String, refresh_token: Option<String>, expires_in: Option<i64> }
 #[derive(Debug, Deserialize)]
 struct GithubUser { id: i64, login: String, name: Option<String>, email: Option<String> }
+#[derive(Debug, Deserialize)]
+struct GithubEmail { email: String, primary: bool, verified: bool }
 
 async fn github_authorize(State(state): State<AppState>) -> Response {
     let Some(client_id) = std::env::var("GITHUB_CLIENT_ID").ok().filter(|v| !v.is_empty()) else {
@@ -305,7 +307,7 @@ async fn github_callback(State(state): State<AppState>, headers: HeaderMap, Quer
     let Some(pool) = state.db.as_ref() else { return error_response(StatusCode::SERVICE_UNAVAILABLE, "auth_unavailable"); };
     let current = current_auth(pool, &state, &headers).await.ok().flatten();
     let user_id = if let Some(current) = current { current.user.id } else if let Ok(Some(id)) = sqlx::query_scalar::<_, String>("SELECT id FROM users WHERE github_id=?").bind(profile.id.to_string()).fetch_optional(pool).await { id } else {
-        let email = match profile.email { Some(email) => email, None => return error_response(StatusCode::BAD_REQUEST, "github_email_unavailable") };
+        let email = match profile.email.filter(|email| !email.is_empty()) { Some(email) => email, None => match state.client.get("https://api.github.com/user/emails").header(header::USER_AGENT, "AshatHub").bearer_auth(&token.access_token).send().await.and_then(|r| r.error_for_status()) { Ok(response) => match response.json::<Vec<GithubEmail>>().await { Ok(emails) => match emails.iter().find(|email| email.primary && email.verified).or_else(|| emails.iter().find(|email| email.verified)) { Some(email) => email.email.clone(), None => return error_response(StatusCode::BAD_REQUEST, "github_email_unavailable") }, Err(_) => return error_response(StatusCode::BAD_GATEWAY, "github_email_failed") }, Err(_) => return error_response(StatusCode::BAD_GATEWAY, "github_email_failed") } };
         if let Ok(Some(id)) = sqlx::query_scalar::<_, String>("SELECT id FROM users WHERE email=?").bind(&email).fetch_optional(pool).await { id } else {
             let id = Uuid::new_v4().to_string(); let username = format!("{}-{}", profile.login, &id[..8]); let password = hash(new_token(), DEFAULT_COST).unwrap(); let display = profile.name.unwrap_or_else(|| profile.login.clone());
             if sqlx::query("INSERT INTO users (id,username,email,password_hash,display_name,role,is_active,email_verified_at,github_id,github_login) VALUES (?,?,?,? ,?,'member',1,UTC_TIMESTAMP(),?,?)").bind(&id).bind(&username).bind(&email).bind(&password).bind(&display).bind(profile.id.to_string()).bind(&profile.login).execute(pool).await.is_err() { return error_response(StatusCode::CONFLICT, "github_account_failed"); } id

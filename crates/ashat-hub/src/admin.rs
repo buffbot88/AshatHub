@@ -457,12 +457,9 @@ async fn settings(
     auth::AdminUser(_admin): auth::AdminUser,
 ) -> Response {
     Json(serde_json::json!({
-        "runtime": "rust",
-        "frontend": "vite",
         "email_verification_enabled": state.auth.email_verification_enabled,
         "secure_cookie": state.auth.secure_cookie,
         "trusted_proxy_headers": state.auth.trust_proxy_headers,
-        "arbitrary_database_manager": "retired",
     }))
     .into_response()
 }

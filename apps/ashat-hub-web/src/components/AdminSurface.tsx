@@ -398,7 +398,7 @@ function SystemTab({ database, settings, onPush, onUpdate }: { database: Databas
           <div className="adm-field"><span className="adm-field-label">Direct SQL Console</span><span className="adm-field-value">Disabled</span></div>
           {database?.migrations && database.migrations.length > 0 && (<>
             <span className="eyebrow">Recent Schema Updates</span><div className="adm-migration-list">
-              {database.migrations.slice(-5).map((m) => (
+              {database.migrations.slice(-5).reverse().map((m) => (
                 <span key={m[0]} className={m[2] ? 'adm-migration-ok' : 'adm-migration-fail'}>v{m[0]} · {m[1]}</span>
               ))}
             </div>

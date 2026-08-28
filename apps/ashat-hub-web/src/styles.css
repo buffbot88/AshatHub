@@ -294,7 +294,10 @@ a { color: var(--accent); }
 /* Panel layout (list + detail) */
 .adm-panel-layout { display: grid; grid-template-columns: 1fr 320px; gap: 18px; align-items: start; }
 .adm-panel-list { min-width: 0; }
-.adm-toolbar { display: flex; gap: 8px; margin-bottom: 12px; }
+.adm-toolbar { display: flex; gap: 8px; margin-bottom: 12px; flex-wrap: wrap; }
+.adm-repo-status { display: flex; align-items: center; justify-content: space-between; gap: 14px; margin-bottom: 12px; padding: 12px 14px; color: var(--muted); background: var(--surface); border: 1px solid var(--line); border-radius: 8px; }
+.adm-repo-status strong { color: var(--text); font-size: 13px; }
+.adm-repo-status code { color: var(--accent); font: 11px 'JetBrains Mono', monospace; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .adm-toolbar input { flex: 1; min-width: 0; padding: 9px 12px; color: var(--text); background: var(--surface); border: 1px solid var(--line); border-radius: 6px; font-size: 13px; }
 .adm-toolbar select { padding: 8px 10px; color: var(--text); background: var(--surface-2); border: 1px solid var(--line); border-radius: 6px; font-size: 12px; }
 .adm-empty { padding: 32px; text-align: center; color: var(--dim); }

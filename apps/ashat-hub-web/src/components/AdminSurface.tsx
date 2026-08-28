@@ -314,8 +314,8 @@ function DeploymentsTab({ deployments, filter, onFilterChange, onRefresh, onSele
 }) {
   return (
     <div className="adm-panel-layout">
-      <div className="adm-repo-status"><strong>Galileo</strong><code>{status?.galileo || 'Loading…'}</code></div>
       <div className="adm-panel-list">
+        <div className="adm-repo-status"><strong>Galileo</strong><code>{status?.galileo || 'Loading…'}</code></div>
         <div className="adm-toolbar">
           <select value={filter} onChange={(e) => onFilterChange(e.target.value)}>
             <option value="">All status</option>

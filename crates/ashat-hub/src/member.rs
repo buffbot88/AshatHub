@@ -123,15 +123,6 @@ struct TicketReply {
     display_name: Option<String>,
     role: Option<String>,
 }
-#[derive(Debug, Serialize, FromRow)]
-struct Activity {
-    id: String,
-    project_id: Option<String>,
-    action: String,
-    metadata: Option<String>,
-    request_id: Option<String>,
-    created_at: i64,
-}
 #[derive(Debug, Deserialize)]
 struct TelemetryRestart {
     server: String,
@@ -159,9 +150,10 @@ pub(crate) fn routes() -> Router<AppState> {
         .route("/api/support", get(support_list).post(support_create))
         .route("/api/support/:id", get(support_show))
         .route("/api/support/:id/reply", post(support_reply))
-        .route("/api/galileo/activity", get(activity))
         .route("/api/account/summary", get(account_summary))
         .route("/api/admin/telemetry", get(admin_telemetry))
+        .route("/api/admin/telemetry/refresh", post(admin_telemetry_refresh))
+        .route("/api/admin/telemetry/clear", post(admin_telemetry_clear))
         .route("/api/admin/telemetry/restart", post(admin_restart))
 }
 
@@ -515,16 +507,6 @@ async fn support_reply(
     match sqlx::query("INSERT INTO support_ticket_replies (id,ticket_id,user_id,message,is_staff) VALUES (?,?,?,?,?)").bind(&reply_id).bind(&id).bind(&user.id).bind(input.message.trim()).bind(if is_admin {1} else {0}).execute(pool).await { Ok(_) => { let _ = sqlx::query("UPDATE support_tickets SET updated_at=UTC_TIMESTAMP() WHERE id=?").bind(&id).execute(pool).await; record_activity(pool, &user.id, None, "support.replied", &serde_json::json!({"ticket_id":id}), None).await; Json(serde_json::json!({"ok":true,"id":reply_id})).into_response() }, Err(_) => error_response(StatusCode::SERVICE_UNAVAILABLE, "support_unavailable") }
 }
 
-async fn activity(
-    State(state): State<AppState>,
-    auth::AuthenticatedUser(user): auth::AuthenticatedUser,
-) -> Response {
-    let Some(pool) = state.db.as_ref() else {
-        return error_response(StatusCode::SERVICE_UNAVAILABLE, "database_unavailable");
-    };
-    match sqlx::query_as::<_, Activity>("SELECT id,project_id,action,metadata,request_id,created_at FROM galileo_activity WHERE user_id=? ORDER BY created_at DESC LIMIT 100").bind(&user.id).fetch_all(pool).await { Ok(items) => Json(serde_json::json!({"activity":items})).into_response(), Err(_) => error_response(StatusCode::SERVICE_UNAVAILABLE, "activity_unavailable") }
-}
-
 async fn account_summary(
     State(state): State<AppState>,
     auth::AuthenticatedUser(user): auth::AuthenticatedUser,
@@ -560,11 +542,25 @@ async fn admin_telemetry(
     Json(serde_json::json!({
         "ok": true,
         "admin": user.username,
-        "gateway_metrics": state.metrics.snapshot(),
         "servers": telemetry.servers,
         "updated_at": telemetry.updated_at,
     }))
     .into_response()
+}
+
+async fn admin_telemetry_refresh(
+    State(state): State<AppState>,
+    auth::AdminUser(_admin): auth::AdminUser,
+) -> Response {
+    Json(serde_json::json!({"ok": true, "telemetry": crate::collect_telemetry(&state).await})).into_response()
+}
+
+async fn admin_telemetry_clear(
+    State(state): State<AppState>,
+    auth::AdminUser(_admin): auth::AdminUser,
+) -> Response {
+    // Telemetry is fetched with no-store and has no server-side cache.
+    Json(serde_json::json!({"ok": true, "telemetry": crate::collect_telemetry(&state).await})).into_response()
 }
 
 async fn admin_restart(

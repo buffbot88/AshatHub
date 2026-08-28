@@ -8,20 +8,18 @@ import { csrfToken } from './components/api';
 import './styles.css';
 
 type User = { id: string; display_name: string; username: string; email: string; role: string };
-interface ServerSnapshot { id: string; label: string; online: boolean; active_users: number; activity_total: number; tokens_per_second: number; total_tokens_generated: number }
-interface TelemetryResponse { servers: ServerSnapshot[]; slowest_tokens_per_second: number; fastest_tokens_per_second: number; total_tokens_generated: number; updated_at: number }
+interface ServerSnapshot { id: string; label: string; online: boolean; active_requests: number; requests_last_5m: number; generation_tokens_per_second: number; prompt_tokens_per_second: number; total_completion_tokens: number; avg_latency_ms: number; queue_depth: number; queue_limit: number }
+interface TelemetryResponse { servers: ServerSnapshot[]; updated_at: number }
 interface ShowcaseProject { id: string; name: string; description: string; category: string; status: string; updated: string }
-interface ShowcaseResponse { projects: ShowcaseProject[] }type View = 'home' | 'projects' | 'games' | 'community' | 'docs' | 'support' | 'account' | 'activity' | 'telemetry' | 'admin' | 'terms' | 'privacy' | 'vesper-auth' | 'verify-email' | 'reset-password' | 'error';
+interface ShowcaseResponse { projects: ShowcaseProject[] }type View = 'home' | 'projects' | 'games' | 'community' | 'support' | 'account' | 'telemetry' | 'admin' | 'terms' | 'privacy' | 'vesper-auth' | 'verify-email' | 'reset-password' | 'error';
 
 
 function viewForPath(path: string): View {
   if (path === '/projects') return 'projects';
   if (path === '/games') return 'games';
   if (path.startsWith('/community')) return 'community';
-  if (path.startsWith('/docs')) return 'docs';
   if (path.startsWith('/support')) return 'support';
   if (path.startsWith('/account')) return 'account';
-  if (path.startsWith('/activity')) return 'activity';
   if (path.startsWith('/telemetry')) return 'telemetry';
   if (path.startsWith('/admin')) return 'admin';
   if (path.startsWith('/terms')) return 'terms';
@@ -42,10 +40,12 @@ function ServerCard({ server }: { server: ServerSnapshot }) {
       </div>
       <div className="server-model">{server.online ? 'Telemetry gateway connected' : 'Unavailable'}</div>
       <div className="metrics-grid">
-        <Metric label="Active users" value={server.active_users.toLocaleString()} />
-        <Metric label="Activity" value={server.activity_total.toLocaleString()} />
-        <Metric label="Tokens / second" value={server.tokens_per_second.toFixed(1)} />
-        <Metric label="Tokens generated" value={server.total_tokens_generated.toLocaleString()} />
+        <Metric label="Active requests" value={server.active_requests.toLocaleString()} />
+        <Metric label="Requests · 5 min" value={server.requests_last_5m.toLocaleString()} />
+        <Metric label="Generation tok/s" value={server.generation_tokens_per_second.toFixed(1)} />
+        <Metric label="Prompt tok/s" value={server.prompt_tokens_per_second.toFixed(1)} />
+        <Metric label="Completion tokens" value={server.total_completion_tokens.toLocaleString()} />
+        <Metric label="Queue" value={`${server.queue_depth}/${server.queue_limit}`} />
       </div>
     </article>
   );
@@ -134,8 +134,8 @@ export default function App() {
   if (view === 'vesper-auth') return <VesperAuthPage />;
   if (view === 'verify-email') return <EmailVerificationPage />;
   if (view === 'reset-password') return <PasswordResetPage />;
-  const memberTab: MemberTab | undefined = ['community', 'docs', 'support', 'account', 'activity'].includes(view) ? view as MemberTab : undefined;
-  const showMemberSurface = ['community', 'docs', 'support', 'account', 'activity'].includes(view);
+  const memberTab: MemberTab | undefined = ['community', 'support', 'account'].includes(view) ? view as MemberTab : undefined;
+  const showMemberSurface = ['community', 'support', 'account'].includes(view);
 
   const studioProjects = showcase.filter(p => (p.category === 'studio' || p.category === 'project') && !['ashat', 'ashat-ai', 'ashat-hub'].includes(p.id));
   const gameProjects = showcase.filter(p => p.category === 'game');
@@ -153,8 +153,7 @@ export default function App() {
 
       {showHome && <>
         <section className="home-hero"><div className="hero-copy"><span className="eyebrow">Independent software studio</span><h1>Software, games, and tools built with purpose.</h1><p>AGP Studios builds practical software, games, and tools.</p><div className="hero-actions"><button type="button" className="primary-button" onClick={() => navigate('/projects')}>Explore Projects</button></div></div><div className="hero-ornament" aria-hidden="true"><span>AGP</span><i /><i /><i /></div></section>
-        <section className="home-section workspace-section"><div className="section-heading"><div><span className="eyebrow">Selected work</span><h2>Projects</h2></div><button type="button" className="text-button" onClick={() => navigate('/projects')}>View all →</button></div><div className="project-grid">{studioProjects.slice(0, 3).map(project => <ProjectCard key={project.id} project={project} />)}</div></section>
-        {gameProjects.length > 0 && <section className="home-section"><div className="section-heading"><div><span className="eyebrow">Other worlds</span><h2>Games</h2></div><button type="button" className="text-button" onClick={() => navigate('/games')}>Explore games →</button></div><div className="project-grid">{gameProjects.slice(0, 3).map(project => <ProjectCard key={project.id} project={project} />)}</div></section>}
+
       </>}
 
       {view === 'projects' && <>
@@ -182,7 +181,7 @@ export default function App() {
 
       {showMemberSurface && <MemberSurfaces user={user} initialTab={memberTab} />}
       {view === 'admin' && <AdminSurface user={user} />}
-      {view === 'telemetry' && <><MemberSurfaces user={user} initialTab="activity" /><TelemetrySection user={user} telemetry={telemetry} telemetryError={telemetryError} updatedAt={updatedAt} /></>}
+      {view === 'telemetry' && <TelemetrySection user={user} telemetry={telemetry} telemetryError={telemetryError} updatedAt={updatedAt} />}
       {view === 'terms' && <LegalPage kind="terms" />}
       {view === 'privacy' && <LegalPage kind="privacy" />}
       {view === 'error' && <section className="member-panel legal-panel"><span className="eyebrow">Ashat platform</span><h2>Page unavailable</h2><p>The requested page could not be found.</p></section>}
@@ -315,10 +314,10 @@ function VesperAuthPage() {
 }
 
 function StudioFooter({ navigate }: { navigate: (path: string) => void }) {
-  return <footer className="studio-footer"><div><strong className="footer-brand">AGP<span>Studios</span></strong><p>Independent software, games, and tools built with purpose.</p></div><div><span className="footer-label">Explore</span><button onClick={() => navigate('/projects')}>Projects</button><button onClick={() => navigate('/games')}>Games</button><button onClick={() => navigate('/community')}>Community</button></div>      <div><span className="footer-label">Resources</span><button onClick={() => navigate('/docs')}>Documentation</button><button onClick={() => navigate('/support')}>Support</button></div><div><span className="footer-label">AGP Studios</span><button onClick={() => navigate('/privacy')}>Privacy</button><button onClick={() => navigate('/terms')}>Terms</button></div><div className="footer-bottom">© {new Date().getFullYear()} AGP Studios</div></footer>;
+  return <footer className="studio-footer"><div><strong className="footer-brand">AGP<span>Studios</span></strong><p>Independent software, games, and tools built with purpose.</p></div><div><span className="footer-label">Explore</span><button onClick={() => navigate('/projects')}>Projects</button><button onClick={() => navigate('/games')}>Games</button><button onClick={() => navigate('/community')}>Community</button></div>      <div><span className="footer-label">Resources</span><button onClick={() => navigate('/support')}>Support</button></div><div><span className="footer-label">AGP Studios</span><button onClick={() => navigate('/privacy')}>Privacy</button><button onClick={() => navigate('/terms')}>Terms</button></div><div className="footer-bottom">© {new Date().getFullYear()} AGP Studios</div></footer>;
 }
 
 function TelemetrySection({ user, telemetry, telemetryError, updatedAt }: { user: User | null; telemetry: TelemetryResponse | null; telemetryError: string | null; updatedAt: Date | null }) {
   if (!user) return null;
-  return <section className="telemetry-section"><div className="section-heading"><div><span className="eyebrow">Live ecosystem</span><h2>Agent telemetry</h2></div><div className="refresh-state">{telemetryError ? telemetryError : updatedAt ? `Updated ${updatedAt.toLocaleTimeString()}` : 'Connecting...'}</div></div>{telemetry && <div className="telemetry-summary"><Metric label="Slowest tokens / second" value={telemetry.slowest_tokens_per_second.toFixed(1)} /><Metric label="Fastest tokens / second" value={telemetry.fastest_tokens_per_second.toFixed(1)} /><Metric label="Total tokens generated" value={telemetry.total_tokens_generated.toLocaleString()} /></div>}<div className="server-grid">{telemetry?.servers.map((server) => <ServerCard key={server.id} server={server} />)}{!telemetry && !telemetryError && <div className="loading-card">Connecting to AshatHub...</div>}{telemetryError && <div className="loading-card error-card">{telemetryError}</div>}</div></section>;
+  return <section className="telemetry-section"><div className="section-heading"><div><span className="eyebrow">Live ecosystem</span><h2>Agent telemetry</h2></div><div className="refresh-state">{telemetryError ? telemetryError : updatedAt ? `Updated ${updatedAt.toLocaleTimeString()}` : 'Connecting...'}</div></div>{telemetry && <div className="telemetry-summary"><Metric label="Active requests" value={telemetry.servers.reduce((total, server) => total + server.active_requests, 0).toLocaleString()} /><Metric label="Requests · 5 min" value={telemetry.servers.reduce((total, server) => total + server.requests_last_5m, 0).toLocaleString()} /><Metric label="Updated" value={new Date(telemetry.updated_at * 1000).toLocaleTimeString()} /></div>}<div className="server-grid">{telemetry?.servers.map((server) => <ServerCard key={server.id} server={server} />)}{!telemetry && !telemetryError && <div className="loading-card">Connecting to AshatHub...</div>}{telemetryError && <div className="loading-card error-card">{telemetryError}</div>}</div></section>;
 }

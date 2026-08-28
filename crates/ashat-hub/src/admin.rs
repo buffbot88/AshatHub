@@ -98,7 +98,6 @@ async fn summary(
         "open_tickets": open_tickets,
         "active_deploys": active_deploys,
         "active_projects": active_projects,
-        "gateway_metrics": state.metrics.snapshot(),
         "database_manager": "retired",
     }))
     .into_response()

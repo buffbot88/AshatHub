@@ -6,7 +6,7 @@ type AdminUser = { id: string; username: string; email: string; display_name: st
 type AdminSummary = {
   users: number; active_users: number; disabled_users: number;
   open_tickets: number; active_deploys: number; active_projects: number;
-  gateway_metrics: Record<string, number>; database_manager: string;
+  database_manager: string;
 };
 type DatabaseStatus = { version: string; migrations: [number, string, boolean][]; maintenance: string; arbitrary_sql: string };
 type AdminDeploymentRow = {
@@ -15,11 +15,12 @@ type AdminDeploymentRow = {
   file_count: number; message: string; created_at: number;
   username: string; display_name: string;
 };
+type AdminTelemetry = { servers: { id: string; label: string; online: boolean; active_requests: number; requests_last_5m: number; generation_tokens_per_second: number; prompt_tokens_per_second: number; total_completion_tokens: number; queue_depth: number; queue_limit: number }[]; updated_at: number };
 type AuditEvent = {
   id: number; actor_id: string; actor_name: string; action: string;
   target_type: string; target_id: string; detail: string | null; created_at: number;
 };
-type AdminTab = 'overview' | 'users' | 'deployments' | 'system' | 'audit';
+type AdminTab = 'overview' | 'users' | 'deployments' | 'telemetry' | 'system' | 'audit';
 
 // ── Helpers ──
 
@@ -58,6 +59,7 @@ export function AdminSurface({ user }: { user: User | null }) {
   const [deployments, setDeployments] = useState<AdminDeploymentRow[]>([]);
   const [auditEvents, setAuditEvents] = useState<AuditEvent[]>([]);
   const [database, setDatabase] = useState<DatabaseStatus | null>(null);
+  const [telemetry, setTelemetry] = useState<AdminTelemetry | null>(null);
   const [settings, setSettings] = useState<Record<string, string | boolean> | null>(null);
   const [query, setQuery] = useState('');
   const [deployFilter, setDeployFilter] = useState('');
@@ -105,6 +107,9 @@ export function AdminSurface({ user }: { user: User | null }) {
   useEffect(() => { void load(); }, [load]);
   useEffect(() => { if (tab === 'deployments') void loadDeployments(); }, [tab, loadDeployments]);
   useEffect(() => { if (tab === 'audit') void loadAudit(); }, [tab, loadAudit]);
+  const loadTelemetry = useCallback(async () => { try { setTelemetry(await request<AdminTelemetry>(`${API}/admin/telemetry`)); } catch (reason) { setError(reason instanceof Error ? reason.message : 'Telemetry unavailable'); } }, []);
+  useEffect(() => { if (tab === 'telemetry') void loadTelemetry(); }, [tab, loadTelemetry]);
+  async function telemetryAction(action: 'refresh' | 'clear') { setBusy(true); setError(null); try { await request(`${API}/admin/telemetry/${action}`, { method: 'POST' }); await loadTelemetry(); } catch (reason) { setError(reason instanceof Error ? reason.message : `Telemetry ${action} failed`); } finally { setBusy(false); } }
 
   async function updateUser(userId: string, body: { role?: string; is_active?: boolean }) {
     setBusy(true); setError(null);
@@ -164,6 +169,7 @@ export function AdminSurface({ user }: { user: User | null }) {
     { id: 'overview', label: 'Overview' },
     { id: 'users', label: 'Users' },
     { id: 'deployments', label: 'Deployments' },
+    { id: 'telemetry', label: 'Telemetry' },
     { id: 'system', label: 'System' },
     { id: 'audit', label: 'Audit' },
   ];
@@ -185,10 +191,15 @@ export function AdminSurface({ user }: { user: User | null }) {
       {tab === 'overview' && <OverviewTab summary={summary} onNavigate={setTab} />}
       {tab === 'users' && <UsersTab users={users} query={query} onQueryChange={setQuery} onSearch={load} onSelectUser={setSelectedUser} selectedUser={selectedUser} busy={busy} currentUser={user} onUpdateUser={updateUser} onBanUser={banUser} onDeleteUser={deleteUser} />}
       {tab === 'deployments' && <DeploymentsTab deployments={deployments} filter={deployFilter} onFilterChange={setDeployFilter} onRefresh={loadDeployments} onSelectDeploy={setSelectedDeploy} selectedDeploy={selectedDeploy} busy={busy} onUndeploy={adminUndeploy} />}
+      {tab === 'telemetry' && <TelemetryTab telemetry={telemetry} busy={busy} onAction={telemetryAction} />}
       {tab === 'system' && <SystemTab database={database} settings={settings} />}
       {tab === 'audit' && <AuditTab events={auditEvents} />}
     </section>
   );
+}
+
+function TelemetryTab({ telemetry, busy, onAction }: { telemetry: AdminTelemetry | null; busy: boolean; onAction: (action: 'refresh' | 'clear') => void }) {
+  return <div className="adm-telemetry-page"><div className="adm-toolbar"><button type="button" className="secondary-button" onClick={() => onAction('refresh')} disabled={busy}>Refresh now</button><button type="button" className="secondary-button" onClick={() => onAction('clear')} disabled={busy}>Clear server cache</button><span className="refresh-state">{telemetry ? `Updated ${new Date(telemetry.updated_at * 1000).toLocaleTimeString()}` : 'Loading…'}</span></div><div className="admin-telemetry-grid">{telemetry?.servers.map((server) => <div className="admin-server" key={server.id}><strong>{server.label}</strong><span>{server.online ? 'Online' : 'Offline'}</span><small>{server.active_requests} active requests · {server.requests_last_5m} in 5m</small><small>{server.generation_tokens_per_second.toFixed(1)} generation tok/s · {server.prompt_tokens_per_second.toFixed(1)} prompt tok/s</small><small>Queue {server.queue_depth}/{server.queue_limit}</small></div>)}</div></div>;
 }
 
 // ── Overview Tab ──
@@ -219,16 +230,7 @@ function OverviewTab({ summary, onNavigate }: { summary: AdminSummary | null; on
         <button type="button" className="adm-action-card" onClick={() => onNavigate('system')}><span className="adm-action-icon">⚙</span><span>System Health</span></button>
         <button type="button" className="adm-action-card" onClick={() => onNavigate('audit')}><span className="adm-action-icon">📋</span><span>Audit Log</span></button>
       </div>
-      {summary?.gateway_metrics && Object.keys(summary.gateway_metrics).length > 0 && (
-        <div className="adm-metrics-section">
-          <span className="eyebrow">Gateway Metrics</span>
-          <div className="adm-metrics-grid">
-            {Object.entries(summary.gateway_metrics).map(([key, value]) => (
-              <div className="adm-metric-sm" key={key}><span>{key.replace(/_/g, ' ')}</span><strong>{typeof value === 'number' ? value.toLocaleString() : String(value)}</strong></div>
-            ))}
-          </div>
-        </div>
-      )}
+
     </div>
   );
 }

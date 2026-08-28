@@ -27,8 +27,13 @@ pub(crate) struct LoginRequest {
 
 #[derive(Debug, Deserialize)]
 struct ProfileUpdate {
+    username: Option<String>,
+    tag_name: Option<String>,
     display_name: Option<String>,
     email: Option<String>,
+    discord_tag: Option<String>,
+    location: Option<String>,
+    interests: Option<String>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -85,6 +90,10 @@ pub(crate) struct PublicUser {
     pub username: String,
     pub email: String,
     pub display_name: String,
+    pub tag_name: Option<String>,
+    pub discord_tag: Option<String>,
+    pub location: Option<String>,
+    pub interests: Option<String>,
     pub role: String,
 }
 
@@ -202,6 +211,10 @@ struct UserWithPassword {
     email: String,
     password_hash: String,
     display_name: String,
+    tag_name: Option<String>,
+    discord_tag: Option<String>,
+    location: Option<String>,
+    interests: Option<String>,
     role: String,
     is_active: i8,
     email_verified_at: Option<String>,
@@ -213,6 +226,10 @@ struct RustSessionUser {
     username: String,
     email: String,
     display_name: String,
+    tag_name: Option<String>,
+    discord_tag: Option<String>,
+    location: Option<String>,
+    interests: Option<String>,
     role: String,
     email_verified_at: Option<String>,
     csrf_hash: String,
@@ -224,6 +241,10 @@ struct LegacySessionUser {
     username: String,
     email: String,
     display_name: String,
+    tag_name: Option<String>,
+    discord_tag: Option<String>,
+    location: Option<String>,
+    interests: Option<String>,
     role: String,
     email_verified_at: Option<String>,
 }
@@ -284,7 +305,7 @@ async fn login(
     }
 
     let user = match sqlx::query_as::<_, UserWithPassword>(
-        "SELECT id, username, email, password_hash, display_name, role, is_active,
+        "SELECT id, username, email, password_hash, display_name, tag_name, discord_tag, location, interests, role, is_active,
                 CAST(email_verified_at AS CHAR) AS email_verified_at
          FROM users WHERE username = ? OR email = ? LIMIT 1",
     )
@@ -911,32 +932,34 @@ async fn update_account(
     if !csrf_is_valid(&headers, &state, &current.kind) {
         return error_response(StatusCode::FORBIDDEN, "csrf_failed");
     }
-    let display_name = input
-        .display_name
-        .unwrap_or(current.user.display_name.clone());
+    let username = input.username.unwrap_or(current.user.username.clone());
+    let tag_name = input.tag_name.or(current.user.tag_name.clone());
+    let display_name = input.display_name.unwrap_or(current.user.display_name.clone());
     let email = input.email.unwrap_or(current.user.email.clone());
-    if display_name.trim().is_empty()
+    let discord_tag = input.discord_tag.or(current.user.discord_tag.clone());
+    let location = input.location.or(current.user.location.clone());
+    let interests = input.interests.or(current.user.interests.clone());
+    if username.trim().is_empty()
+        || username.len() > 80
+        || display_name.trim().is_empty()
         || display_name.chars().count() > 200
         || email.len() > 255
         || !email.contains('@')
+        || tag_name.as_ref().is_some_and(|v| v.chars().count() > 120)
+        || discord_tag.as_ref().is_some_and(|v| v.chars().count() > 120)
+        || location.as_ref().is_some_and(|v| v.chars().count() > 200)
+        || interests.as_ref().is_some_and(|v| v.chars().count() > 500)
     {
         return error_response(StatusCode::BAD_REQUEST, "invalid_profile");
     }
-    let duplicate =
-        sqlx::query_scalar::<_, i64>("SELECT COUNT(*) FROM users WHERE email=? AND id<>?")
-            .bind(&email)
-            .bind(&current.user.id)
-            .fetch_one(pool)
-            .await
-            .unwrap_or(1);
+    let duplicate = sqlx::query_scalar::<_, i64>("SELECT COUNT(*) FROM users WHERE (email=? OR username=?) AND id<>?")
+        .bind(&email).bind(&username).bind(&current.user.id).fetch_one(pool).await.unwrap_or(1);
     if duplicate != 0 {
-        return error_response(StatusCode::CONFLICT, "email_taken");
+        return error_response(StatusCode::CONFLICT, "username_or_email_taken");
     }
-    if let Err(error) =
-        sqlx::query("UPDATE users SET display_name=?,email=?,updated_at=UTC_TIMESTAMP() WHERE id=?")
-            .bind(display_name.trim())
-            .bind(email.trim())
-            .bind(&current.user.id)
+    if let Err(error) = sqlx::query("UPDATE users SET username=?,tag_name=?,display_name=?,email=?,discord_tag=?,location=?,interests=?,updated_at=UTC_TIMESTAMP() WHERE id=?")
+            .bind(username.trim()).bind(tag_name.as_deref()).bind(display_name.trim()).bind(email.trim())
+            .bind(discord_tag.as_deref()).bind(location.as_deref()).bind(interests.as_deref()).bind(&current.user.id)
             .execute(pool)
             .await
     {
@@ -944,7 +967,7 @@ async fn update_account(
         return error_response(StatusCode::SERVICE_UNAVAILABLE, "profile_unavailable");
     }
     match sqlx::query_as::<_, UserWithPassword>(
-        "SELECT id,username,email,password_hash,display_name,role,is_active,
+        "SELECT id,username,email,password_hash,display_name,tag_name,discord_tag,location,interests,role,is_active,
                 CAST(email_verified_at AS CHAR) AS email_verified_at
          FROM users WHERE id=?",
     )
@@ -1088,7 +1111,8 @@ async fn current_auth(
 ) -> Result<Option<CurrentAuth>, sqlx::Error> {
     if let Some(token) = cookie_value(headers, &state.auth.cookie_name) {
         let row = sqlx::query_as::<_, RustSessionUser>(
-            "SELECT u.id, u.username, u.email, u.display_name, u.role,
+            "SELECT u.id, u.username, u.email, u.display_name, u.tag_name,
+                    u.discord_tag, u.location, u.interests, u.role,
                     CAST(u.email_verified_at AS CHAR) AS email_verified_at, s.csrf_hash
              FROM rust_sessions s
              INNER JOIN users u ON u.id = s.user_id
@@ -1114,6 +1138,10 @@ async fn current_auth(
                     username: row.username,
                     email: row.email,
                     display_name: row.display_name,
+                    tag_name: row.tag_name,
+                    discord_tag: row.discord_tag,
+                    location: row.location,
+                    interests: row.interests,
                     role: row.role,
                 },
                 kind: SessionKind::Rust {
@@ -1128,7 +1156,8 @@ async fn current_auth(
     // the same browser without reading PHP's serialized session files.
     if let Some(token) = cookie_value(headers, &state.auth.legacy_cookie_name) {
         let row = sqlx::query_as::<_, LegacySessionUser>(
-            "SELECT u.id, u.username, u.email, u.display_name, u.role,
+            "SELECT u.id, u.username, u.email, u.display_name, u.tag_name,
+                    u.discord_tag, u.location, u.interests, u.role,
                     CAST(u.email_verified_at AS CHAR) AS email_verified_at
              FROM sessions s
              INNER JOIN users u ON u.id = s.user_id
@@ -1148,6 +1177,10 @@ async fn current_auth(
                     username: row.username,
                     email: row.email,
                     display_name: row.display_name,
+                    tag_name: row.tag_name,
+                    discord_tag: row.discord_tag,
+                    location: row.location,
+                    interests: row.interests,
                     role: row.role,
                 },
                 kind: SessionKind::Legacy,
@@ -1204,6 +1237,10 @@ fn public_user(user: &UserWithPassword) -> PublicUser {
         username: user.username.clone(),
         email: user.email.clone(),
         display_name: user.display_name.clone(),
+        tag_name: user.tag_name.clone(),
+        discord_tag: user.discord_tag.clone(),
+        location: user.location.clone(),
+        interests: user.interests.clone(),
         role: user.role.clone(),
     }
 }

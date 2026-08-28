@@ -206,9 +206,6 @@ struct HealthResponse {
 #[derive(Debug, Serialize)]
 struct TelemetryResponse {
     servers: Vec<ServerSnapshot>,
-    slowest_tokens_per_second: f64,
-    fastest_tokens_per_second: f64,
-    total_tokens_generated: u64,
     updated_at: u64,
 }
 
@@ -217,10 +214,14 @@ struct ServerSnapshot {
     id: &'static str,
     label: &'static str,
     online: bool,
-    active_users: u64,
-    activity_total: u64,
-    tokens_per_second: f64,
-    total_tokens_generated: u64,
+    active_requests: u64,
+    requests_last_5m: u64,
+    generation_tokens_per_second: f64,
+    prompt_tokens_per_second: f64,
+    total_completion_tokens: u64,
+    avg_latency_ms: f64,
+    queue_depth: u64,
+    queue_limit: u64,
 }
 
 pub async fn start_galileo_worker(
@@ -545,20 +546,7 @@ pub(crate) async fn collect_telemetry(state: &AppState) -> TelemetryResponse {
     let (omega, beta, delta) = tokio::join!(omega, beta, delta);
 
     let servers = vec![omega, beta, delta];
-    let speeds: Vec<f64> = servers
-        .iter()
-        .map(|server| server.tokens_per_second)
-        .filter(|speed| *speed > 0.0)
-        .collect();
-    let slowest_tokens_per_second = speeds.iter().copied().fold(f64::INFINITY, f64::min);
     TelemetryResponse {
-        slowest_tokens_per_second: if slowest_tokens_per_second.is_finite() {
-            slowest_tokens_per_second
-        } else {
-            0.0
-        },
-        fastest_tokens_per_second: speeds.iter().copied().fold(0.0, f64::max),
-        total_tokens_generated: servers.iter().map(|server| server.total_tokens_generated).sum(),
         servers,
         updated_at: SystemTime::now()
             .duration_since(UNIX_EPOCH)
@@ -586,25 +574,20 @@ async fn snapshot(client: &reqwest::Client, target: &TelemetryTarget) -> ServerS
                 .and_then(Value::as_bool)
                 .unwrap_or(false)
     });
-    let summary = metrics
-        .as_ref()
-        .and_then(|value| value.get("summaries"))
-        .and_then(|value| value.get("omega"));
-
+    let summary = metrics.as_ref().and_then(|value| value.get("summaries")).and_then(|value| value.get("omega"));
+    let status_queue = status.as_ref().and_then(|value| value.get("queue"));
     ServerSnapshot {
         id: target.id,
         label: target.label,
         online,
-        active_users: summary
-            .and_then(|value| value.get("active_users"))
-            .and_then(Value::as_u64)
-            .unwrap_or_default(),
-        activity_total: summary
-            .and_then(|value| value.get("total_requests"))
-            .and_then(Value::as_u64)
-            .unwrap_or_default(),
-        tokens_per_second: metric_f64(summary, &["tokens_per_second", "generation_tps", "tps"]),
-        total_tokens_generated: metric_u64(summary, &["total_tokens_generated", "tokens_generated", "total_tokens"]),
+        active_requests: metrics.as_ref().and_then(|v| v.get("active_requests")).and_then(Value::as_u64).unwrap_or_default(),
+        requests_last_5m: metrics.as_ref().and_then(|v| v.get("requests_last_5m")).and_then(Value::as_u64).unwrap_or_default(),
+        generation_tokens_per_second: metric_f64(summary, &["latest_generation_tokens_per_second", "avg_generation_tokens_per_second"]),
+        prompt_tokens_per_second: metric_f64(summary, &["avg_prompt_tokens_per_second"]),
+        total_completion_tokens: metric_u64(summary, &["total_completion_tokens"]),
+        avg_latency_ms: metric_f64(summary, &["avg_total_latency_ms"]),
+        queue_depth: status_queue.and_then(|v| v.get("depth")).and_then(Value::as_u64).unwrap_or_default(),
+        queue_limit: status_queue.and_then(|v| v.get("limit")).and_then(Value::as_u64).unwrap_or_default(),
     }
 }
 

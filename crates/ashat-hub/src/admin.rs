@@ -7,7 +7,7 @@ use axum::{
 };
 use serde::{Deserialize, Serialize};
 use sqlx::FromRow;
-use tokio::{fs, process::Command};
+use tokio::{fs, process::Command, time::{timeout, Duration}};
 use uuid::Uuid;
 
 use crate::{auth, response::error_response, AppState};
@@ -58,7 +58,23 @@ pub(crate) fn routes() -> Router<AppState> {
         .route("/api/admin/settings", get(settings))
         .route("/api/admin/github/push", post(github_push))
         .route("/api/admin/system/update", post(system_update))
+        .route("/api/admin/coding-agents/update", post(coding_agents_update))
         .route("/api/admin/support", get(support))
+}
+
+async fn coding_agents_update(
+    State(_state): State<AppState>,
+    auth::AdminUser(_admin): auth::AdminUser,
+) -> Response {
+    let command = Command::new("ssh")
+        .args(["-i", "/var/oled/data/oraclehost_id_rsa", "-o", "IdentitiesOnly=yes", "-o", "BatchMode=yes", "-o", "StrictHostKeyChecking=accept-new", "opc@129.213.94.124", "/var/oled/data/AshatCodingAgent/scripts/github_sync.sh", "pull", "--json", "--yes", "--restart-service", "--force"])
+        .output();
+    match timeout(Duration::from_secs(1800), command).await {
+        Ok(Ok(output)) if output.status.success() => match serde_json::from_slice::<serde_json::Value>(&output.stdout) { Ok(report) => Json(report).into_response(), Err(_) => error_response(StatusCode::BAD_GATEWAY, "coding_agents_invalid_report") },
+        Ok(Ok(output)) => { tracing::error!(status=?output.status, stderr=%String::from_utf8_lossy(&output.stderr), "coding agents update failed"); error_response(StatusCode::BAD_GATEWAY, "coding_agents_update_failed") },
+        Ok(Err(error)) => { tracing::error!(?error, "coding agents update process failed"); error_response(StatusCode::BAD_GATEWAY, "coding_agents_update_failed") },
+        Err(_) => error_response(StatusCode::GATEWAY_TIMEOUT, "coding_agents_update_timeout"),
+    }
 }
 
 async fn system_update(

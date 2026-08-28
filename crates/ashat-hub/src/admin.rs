@@ -146,7 +146,7 @@ cp "$backup" crates/alpha-server/config.toml
 npm run build --prefix apps/ashat-hub-web
 /home/opc/.cargo/bin/cargo build -p ashat-hub --release
 sudo -n install -m 755 target/release/ashat-hub /usr/local/libexec/ashat-hub/ashat-hub
-sudo -n systemctl restart ashat-hub-rust.service
+nohup sh -c 'sleep 2; sudo -n systemctl restart ashat-hub-rust.service' >/dev/null 2>&1 &
 git rev-parse HEAD
 "#;
     let result = Command::new("bash").arg("-c").arg(script).current_dir("/var/oled/data/AshatHub").env("GITHUB_TOKEN", token).env("GITHUB_REPOSITORY", "buffbot88/AshatHub").output().await;

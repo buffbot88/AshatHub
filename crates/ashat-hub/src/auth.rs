@@ -292,7 +292,7 @@ async fn github_authorize(State(state): State<AppState>) -> Response {
     let state_token = new_token();
     let url = format!("https://github.com/login/oauth/authorize?client_id={client_id}&redirect_uri=https%3A%2F%2Fagpstudios.org%2Fapi%2Fgithub%2Fcallback&scope=user%3Aemail%20repo&state={state_token}");
     let mut response = Redirect::to(&url).into_response();
-    response.headers_mut().append(header::SET_COOKIE, HeaderValue::from_str(&format!("ashat_github_state={state_token}; Path=/; Max-Age=600; HttpOnly; SameSite=Lax{}", if state.auth.secure_cookie { "; Secure" } else { "" })).unwrap());
+    response.headers_mut().append(header::SET_COOKIE, HeaderValue::from_str(&format!("ashat_github_state={state_token}; Domain=agpstudios.org; Path=/; Max-Age=600; HttpOnly; SameSite=Lax{}", if state.auth.secure_cookie { "; Secure" } else { "" })).unwrap());
     response
 }
 
@@ -315,7 +315,7 @@ async fn github_callback(State(state): State<AppState>, headers: HeaderMap, Quer
     let _ = sqlx::query("UPDATE users SET github_id=?,github_login=?,github_access_token=?,github_refresh_token=?,github_token_expires_at=DATE_ADD(UTC_TIMESTAMP(), INTERVAL ? SECOND),email_verified_at=COALESCE(email_verified_at,UTC_TIMESTAMP()) WHERE id=?").bind(profile.id.to_string()).bind(&profile.login).bind(&token.access_token).bind(token.refresh_token.as_deref()).bind(expires).bind(&user_id).execute(pool).await;
     let session = new_token(); let csrf = new_token(); let lifetime = state.auth.session_lifetime_seconds;
     if sqlx::query("INSERT INTO rust_sessions (session_hash,user_id,csrf_hash,created_at,last_seen,expires_at) VALUES (?,?,?,UTC_TIMESTAMP(),UTC_TIMESTAMP(),DATE_ADD(UTC_TIMESTAMP(),INTERVAL ? SECOND))").bind(hash_token(&session)).bind(&user_id).bind(hash_token(&csrf)).bind(lifetime).execute(pool).await.is_err() { return error_response(StatusCode::SERVICE_UNAVAILABLE, "session_unavailable"); }
-    let mut response = Redirect::to("/").into_response(); response.headers_mut().append(header::SET_COOKIE, HeaderValue::from_str("ashat_github_state=; Path=/; Max-Age=0; HttpOnly; SameSite=Lax").unwrap()); with_auth_cookies(response, &state, &session, &csrf, lifetime)
+    let mut response = Redirect::to("/").into_response(); response.headers_mut().append(header::SET_COOKIE, HeaderValue::from_str("ashat_github_state=; Domain=agpstudios.org; Path=/; Max-Age=0; HttpOnly; SameSite=Lax").unwrap()); with_auth_cookies(response, &state, &session, &csrf, lifetime)
 }
 
 async fn login(

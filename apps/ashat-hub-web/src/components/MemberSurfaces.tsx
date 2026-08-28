@@ -24,7 +24,7 @@ type CommunityProject = {
 type TicketSummary = { id: string; subject: string; status: string; priority: string; category: string; preview: string; created_at: string; updated_at: string };
 type TicketReply = { id: string; ticket_id: string; user_id: string; message: string; is_staff: number; created_at: string; username?: string; display_name?: string; role?: string };
 type Ticket = { id: string; user_id: string; subject: string; status: string; priority: string; category: string; message: string; created_at: string; updated_at: string };
-type AccountSummary = { user: User; stats: { projects: number; deployments: number; conversation_messages: number } };
+type AccountSummary = { user: User; github_linked?: boolean; stats: { projects: number; deployments: number; conversation_messages: number } };
 
 
 const categories = ['all', 'tools', 'ai', 'pipeline', 'games', 'general'];
@@ -203,18 +203,31 @@ export function MemberSurfaces({ user, initialTab = 'community' }: { user: User 
 
       {tab === 'support' && <div className="member-panel support-layout">{!user ? <div className="tool-empty"><p>Sign in to create and view support tickets.</p></div> : <><div className="support-sidebar"><div className="member-toolbar"><span className="eyebrow">Your tickets</span><button type="button" className="secondary-button" onClick={() => setSelectedTicket(null)}>New</button></div>{tickets.map((ticket) => <button type="button" className={selectedTicket?.ticket.id === ticket.id ? 'ticket-row selected' : 'ticket-row'} key={ticket.id} onClick={() => void showTicket(ticket.id)}><strong>{ticket.subject}</strong><small>{ticket.status} · {ticket.priority}</small></button>)}{!tickets.length && <p className="muted">No tickets yet.</p>}</div><div className="support-detail">{selectedTicket ? <><button type="button" className="back-button" onClick={() => setSelectedTicket(null)}>← New ticket</button><span className="eyebrow">{selectedTicket.ticket.status} · {selectedTicket.ticket.priority}</span><h3>{selectedTicket.ticket.subject}</h3><p className="ticket-message">{selectedTicket.ticket.message}</p><div className="ticket-replies">{selectedTicket.replies.map((item) => <article className={item.is_staff ? 'ticket-reply staff' : 'ticket-reply'} key={item.id}><small>{item.display_name || item.username || 'Member'} · {formatDate(item.created_at)}</small><p>{item.message}</p></article>)}</div><form className="member-form" onSubmit={(event) => void sendReply(event)}><textarea value={reply} onChange={(event) => setReply(event.target.value)} placeholder="Reply to this ticket" rows={3} required /><button type="submit" disabled={busy}>Reply</button></form></> : <form className="member-form" onSubmit={(event) => void createTicket(event)}><span className="eyebrow">New support ticket</span><input value={supportSubject} onChange={(event) => setSupportSubject(event.target.value)} placeholder="Subject" required /><div className="form-row"><select value={supportCategory} onChange={(event) => setSupportCategory(event.target.value)}><option value="bug">Bug</option><option value="feature">Feature</option><option value="account">Account</option><option value="billing">Billing</option><option value="other">Other</option></select><select value={supportPriority} onChange={(event) => setSupportPriority(event.target.value)}><option value="low">Low</option><option value="normal">Normal</option><option value="high">High</option><option value="urgent">Urgent</option></select></div><textarea value={supportMessage} onChange={(event) => setSupportMessage(event.target.value)} placeholder="Describe the issue or request" rows={7} required /><button type="submit" disabled={busy}>Create ticket</button></form>}</div></>}</div>}
 
-      {tab === 'account' && <div className="member-panel account-grid">{!user ? <div className="tool-empty"><p>Sign in to view your account.</p></div> : account ? <><AccountForm user={account.user} onSaved={(next) => setAccount({ ...account, user: next })} /><div className="account-stats"><Metric label="Projects" value={account.stats.projects} /><Metric label="Deployments" value={account.stats.deployments} /><Metric label="Messages" value={account.stats.conversation_messages} /></div></> : <div className="tool-empty"><p>Loading account...</p></div>}</div>}
+      {tab === 'account' && <div className="member-panel account-grid">{!user ? <div className="tool-empty"><p>Sign in to view your account.</p></div> : account ? <><AccountForm user={account.user} githubLinked={!!account.github_linked} onSaved={(next) => setAccount({ ...account, user: next })} onGithubChange={(linked) => setAccount({ ...account, github_linked: linked })} onDeleted={() => window.location.reload()} /><div className="account-stats"><Metric label="Projects" value={account.stats.projects} /><Metric label="Deployments" value={account.stats.deployments} /><Metric label="Messages" value={account.stats.conversation_messages} /></div></> : <div className="tool-empty"><p>Loading account...</p></div>}</div>}
 
 
     </section>
   );
 }
 
-function AccountForm({ user, onSaved }: { user: User; onSaved: (user: User) => void }) {
+function AccountForm({ user, githubLinked, onSaved, onGithubChange, onDeleted }: { user: User; githubLinked: boolean; onSaved: (user: User) => void; onGithubChange: (linked: boolean) => void; onDeleted: () => void }) {
   const [form, setForm] = useState({ username: user.username, tag_name: user.tag_name || user.display_name, email: user.email, discord_tag: user.discord_tag || '', location: user.location || '', interests: user.interests || '' });
   const [message, setMessage] = useState('');
   const [error, setError] = useState('');
   const [busy, setBusy] = useState(false);
+  async function unlinkGithub() {
+    setBusy(true); setError('');
+    try { await request(`${API}/account/github`, { method: 'POST' }); onGithubChange(false); setMessage('GitHub account unlinked.'); }
+    catch (reason) { setError(reason instanceof Error ? reason.message : 'Unable to unlink GitHub'); }
+    finally { setBusy(false); }
+  }
+  async function deleteAccount() {
+    if (!window.confirm('Are you sure you want to permanently delete your Ashat account and all associated data? This cannot be undone.')) return;
+    setBusy(true); setError('');
+    try { await request(`${API}/account`, { method: 'DELETE' }); onDeleted(); }
+    catch (reason) { setError(reason instanceof Error ? reason.message : 'Unable to delete account'); }
+    finally { setBusy(false); }
+  }
   async function save(event: FormEvent) {
     event.preventDefault(); setBusy(true); setMessage(''); setError('');
     try {
@@ -223,7 +236,7 @@ function AccountForm({ user, onSaved }: { user: User; onSaved: (user: User) => v
     } catch (reason) { setError(reason instanceof Error ? reason.message : 'Account update failed'); }
     finally { setBusy(false); }
   }
-  return <form className="member-form account-form" onSubmit={(event) => void save(event)}><span className="eyebrow">Account details</span><div className="form-row"><input value={form.username} onChange={(e) => setForm({ ...form, username: e.target.value })} placeholder="Username" required /><input value={form.tag_name} onChange={(e) => setForm({ ...form, tag_name: e.target.value })} placeholder="Tag name" required /></div><input value={form.email} onChange={(e) => setForm({ ...form, email: e.target.value })} placeholder="Email" type="email" required /><div className="form-row"><input value={form.discord_tag} onChange={(e) => setForm({ ...form, discord_tag: e.target.value })} placeholder="Discord tag (optional)" /><input value={form.location} onChange={(e) => setForm({ ...form, location: e.target.value })} placeholder="Location (optional)" /></div><textarea value={form.interests} onChange={(e) => setForm({ ...form, interests: e.target.value })} placeholder="Interests (optional)" rows={3} /><button type="submit" disabled={busy}>{busy ? 'Saving…' : 'Save account'}</button>{message && <small className="auth-success">{message}</small>}{error && <small className="auth-error">{error}</small>}</form>;
+  return <form className="member-form account-form" onSubmit={(event) => void save(event)}><span className="eyebrow">Account details</span><div className="form-row"><input value={form.username} onChange={(e) => setForm({ ...form, username: e.target.value })} placeholder="Username" required /><input value={form.tag_name} onChange={(e) => setForm({ ...form, tag_name: e.target.value })} placeholder="Tag name" required /></div><input value={form.email} onChange={(e) => setForm({ ...form, email: e.target.value })} placeholder="Email" type="email" required /><div className="form-row"><input value={form.discord_tag} onChange={(e) => setForm({ ...form, discord_tag: e.target.value })} placeholder="Discord tag (optional)" /><input value={form.location} onChange={(e) => setForm({ ...form, location: e.target.value })} placeholder="Location (optional)" /></div><textarea value={form.interests} onChange={(e) => setForm({ ...form, interests: e.target.value })} placeholder="Interests (optional)" rows={3} /><button type="submit" disabled={busy}>{busy ? 'Saving…' : 'Save account'}</button><div className="account-danger"><strong>GitHub connection</strong><span>{githubLinked ? 'GitHub account linked.' : 'No GitHub account linked.'}</span>{githubLinked ? <button type="button" className="secondary-button" onClick={() => void unlinkGithub()} disabled={busy}>Unlink GitHub</button> : <a className="secondary-button" href={`${API}/auth/github`}>Link GitHub account</a>}</div><button type="button" className="delete-account-button" onClick={() => void deleteAccount()} disabled={busy}>Delete account and all data</button>{message && <small className="auth-success">{message}</small>}{error && <small className="auth-error">{error}</small>}</form>;
 }
 
 function Metric({ label, value }: { label: string; value: number }) {

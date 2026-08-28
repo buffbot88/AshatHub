@@ -8,7 +8,7 @@ use axum::{
     extract::{Path as AxumPath, Query, State},
     http::StatusCode,
     response::{IntoResponse, Response},
-    routing::{get, post},
+    routing::{delete, get, post},
     Json, Router,
 };
 use serde::{Deserialize, Serialize};
@@ -151,6 +151,8 @@ pub(crate) fn routes() -> Router<AppState> {
         .route("/api/support/:id", get(support_show))
         .route("/api/support/:id/reply", post(support_reply))
         .route("/api/account/summary", get(account_summary))
+        .route("/api/account/github", post(account_github_unlink))
+        .route("/api/account", delete(account_delete))
         .route("/api/admin/telemetry", get(admin_telemetry))
         .route("/api/admin/telemetry/refresh", post(admin_telemetry_refresh))
         .route("/api/admin/telemetry/clear", post(admin_telemetry_clear))
@@ -531,7 +533,31 @@ async fn account_summary(
     .await
     .unwrap_or(0);
     let files = sqlx::query_scalar::<_, i64>("SELECT COUNT(*) FROM conversation_messages cm JOIN conversations c ON c.id=cm.conversation_id WHERE c.user_id=?").bind(&user.id).fetch_one(pool).await.unwrap_or(0);
-    Json(serde_json::json!({"user":user,"stats":{"projects":projects,"deployments":deployments,"conversation_messages":files}})).into_response()
+    let github_linked = sqlx::query_scalar::<_, Option<String>>("SELECT github_login FROM users WHERE id=?").bind(&user.id).fetch_one(pool).await.unwrap_or(None).is_some();
+    Json(serde_json::json!({"user":user,"github_linked":github_linked,"stats":{"projects":projects,"deployments":deployments,"conversation_messages":files}})).into_response()
+}
+
+async fn account_github_unlink(
+    State(state): State<AppState>,
+    auth::AuthenticatedUser(user): auth::AuthenticatedUser,
+) -> Response {
+    let Some(pool) = state.db.as_ref() else { return error_response(StatusCode::SERVICE_UNAVAILABLE, "database_unavailable"); };
+    match sqlx::query("UPDATE users SET github_id=NULL,github_login=NULL,github_access_token=NULL,github_refresh_token=NULL,github_token_expires_at=NULL WHERE id=?").bind(&user.id).execute(pool).await {
+        Ok(_) => Json(serde_json::json!({"ok":true,"github_linked":false})).into_response(),
+        Err(_) => error_response(StatusCode::SERVICE_UNAVAILABLE, "github_unlink_failed"),
+    }
+}
+
+async fn account_delete(
+    State(state): State<AppState>,
+    auth::AuthenticatedUser(user): auth::AuthenticatedUser,
+) -> Response {
+    let Some(pool) = state.db.as_ref() else { return error_response(StatusCode::SERVICE_UNAVAILABLE, "database_unavailable"); };
+    let tables = ["conversation_messages", "conversations", "galileo_job_events", "galileo_job_changes", "galileo_jobs", "galileo_plans", "galileo_deployment_history", "galileo_deployments", "galileo_activity", "galileo_community_links", "support_ticket_replies", "support_tickets", "password_resets", "email_verifications", "rust_sessions", "google_accounts", "icarus_devices", "admin_audit_events"];
+    for table in tables { let _ = sqlx::query(&format!("DELETE FROM {table} WHERE user_id=?")).bind(&user.id).execute(pool).await; }
+    let _ = sqlx::query("DELETE FROM users WHERE id=?").bind(&user.id).execute(pool).await;
+    let _ = tokio::fs::remove_dir_all(state.projects_root.join(&user.id)).await;
+    Json(serde_json::json!({"ok":true})).into_response()
 }
 
 async fn admin_telemetry(

@@ -1370,7 +1370,7 @@ fn append_cookie(
     http_only: bool,
     secure: bool,
 ) {
-    let mut cookie = format!("{}={}; Path=/; SameSite=Lax", name, value);
+    let mut cookie = format!("{}={}; Domain=agpstudios.org; Path=/; SameSite=Lax", name, value);
     if max_age != 0 {
         cookie.push_str(&format!("; Max-Age={}", max_age));
     }

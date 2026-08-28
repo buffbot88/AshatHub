@@ -134,7 +134,14 @@ chmod 700 "$ask"
 backup=$(mktemp)
 cp crates/alpha-server/config.toml "$backup"
 GIT_ASKPASS="$ask" GIT_TERMINAL_PROMPT=0 git fetch "https://github.com/$GITHUB_REPOSITORY.git" main
-GIT_ASKPASS="$ask" GIT_TERMINAL_PROMPT=0 git reset --hard FETCH_HEAD
+if git merge-base --is-ancestor HEAD FETCH_HEAD; then
+  GIT_ASKPASS="$ask" GIT_TERMINAL_PROMPT=0 git merge --ff-only FETCH_HEAD
+elif git merge-base --is-ancestor FETCH_HEAD HEAD; then
+  : # local committed changes are already ahead; never discard them
+else
+  echo 'local and GitHub histories diverged; push or reconcile before updating' >&2
+  exit 1
+fi
 cp "$backup" crates/alpha-server/config.toml
 npm run build --prefix apps/ashat-hub-web
 /home/opc/.cargo/bin/cargo build -p ashat-hub --release

@@ -186,7 +186,7 @@ export default function App() {
       {view === 'privacy' && <LegalPage kind="privacy" />}
       {view === 'error' && <section className="member-panel legal-panel"><span className="eyebrow">Ashat platform</span><h2>Page unavailable</h2><p>The requested page could not be found.</p></section>}
       {showHome && <TelemetrySection user={user} telemetry={telemetry} telemetryError={telemetryError} updatedAt={updatedAt} />}
-      <StudioFooter navigate={navigate} />
+      {view !== 'admin' && <StudioFooter navigate={navigate} />}
     </main>
   );
 }

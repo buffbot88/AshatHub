@@ -386,27 +386,29 @@ function DeployDetailPanel({ deployment: d, busy, onUndeploy, onClose }: {
 function SystemTab({ database, settings, onPush, onUpdate }: { database: DatabaseStatus | null; settings: Record<string, string | boolean> | null; onPush: () => void; onUpdate: () => void }) {
   return (
     <div className="adm-system">
-      <div className="adm-toolbar"><button type="button" className="secondary-button" onClick={onPush}>Push committed changes to GitHub</button><button type="button" className="secondary-button" onClick={onUpdate}>Pull, rebuild, and restart</button></div>
+      <div className="adm-toolbar"><button type="button" className="secondary-button" onClick={onPush}>Push Changes to GitHub</button><button type="button" className="secondary-button" onClick={onUpdate}>Pull, Build & Restart</button></div>
       <div className="adm-system-grid">
         <section className="adm-panel">
           <span className="eyebrow">Database</span>
-          <h3>{database?.version || 'Loading...'}</h3>
-          <div className="adm-field"><span className="adm-field-label">Migration</span><span className="adm-field-value">{database?.migrations?.length ?? 0} applied</span></div>
-          <div className="adm-field"><span className="adm-field-label">Maintenance</span><span className="adm-field-value">{database?.maintenance || 'migration-driven'}</span></div>
-          <div className="adm-field"><span className="adm-field-label">Arbitrary SQL</span><span className="adm-field-value">{database?.arbitrary_sql || 'retired'}</span></div>
-          {database?.migrations && database.migrations.length > 0 && (
-            <div className="adm-migration-list">
+          <h3>{database?.version || 'Loading...'}</h3><p className="system-status-ok">● Connected</p>
+          <span className="eyebrow">Database Management</span>
+          <div className="adm-field"><span className="adm-field-label">Schema Revision</span><span className="adm-field-value">v{database?.migrations?.at(-1)?.[0] ?? '—'}</span></div>
+          <div className="adm-field"><span className="adm-field-label">Schema Updates</span><span className="adm-field-value">{database?.migrations?.length ?? 0} applied</span></div>
+          <div className="adm-field"><span className="adm-field-label">Update Method</span><span className="adm-field-value">Versioned</span></div>
+          <div className="adm-field"><span className="adm-field-label">Direct SQL Console</span><span className="adm-field-value">Disabled</span></div>
+          {database?.migrations && database.migrations.length > 0 && (<>
+            <span className="eyebrow">Recent Schema Updates</span><div className="adm-migration-list">
               {database.migrations.slice(-5).map((m) => (
                 <span key={m[0]} className={m[2] ? 'adm-migration-ok' : 'adm-migration-fail'}>v{m[0]} · {m[1]}</span>
               ))}
             </div>
-          )}
+          </>)}
         </section>
         <section className="adm-panel">
-          <span className="eyebrow">Runtime</span>
-          <h3>Services</h3>
+          <span className="eyebrow">Application Runtime</span>
+          <h3>Services</h3><div className="adm-field"><span className="adm-field-label">Backend</span><span className="adm-field-value">Rust · <b className="system-status-ok">● Running</b></span></div><div className="adm-field"><span className="adm-field-label">Frontend</span><span className="adm-field-value">Vite · <b className="system-status-ok">● Available</b></span></div><span className="eyebrow">Security & Configuration</span>
           {settings && Object.entries(settings).map(([key, value]) => (
-            <div className="adm-setting-row" key={key}><span>{key.replace(/_/g, ' ')}</span><strong>{String(value)}</strong></div>
+            <div className="adm-setting-row" key={key}><span>{key.replace(/_/g, ' ')}</span><strong>{typeof value === 'boolean' ? (value ? '✓ Enabled' : '○ Disabled') : String(value)}</strong></div>
           ))}
         </section>
       </div>

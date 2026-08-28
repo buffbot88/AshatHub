@@ -71,7 +71,7 @@ async fn github_push(
     };
     let repo = std::env::var("GITHUB_REPOSITORY").unwrap_or_else(|_| "buffbot88/AshatHostingPlatform".to_owned());
     let askpass = std::env::temp_dir().join(format!("ashat-github-askpass-{}", Uuid::new_v4()));
-    if fs::write(&askpass, format!("#!/bin/sh\nprintf '%s\\n' '{}'\n", token.replace('\'', "'\\''"))).await.is_err() { return error_response(StatusCode::SERVICE_UNAVAILABLE, "github_push_unavailable"); }
+    if fs::write(&askpass, format!("#!/bin/sh\ncase \"$1\" in *Username*) printf '%s\\n' 'x-access-token' ;; *) printf '%s\\n' '{}' ;; esac\n", token.replace('\'', "'\\''"))).await.is_err() { return error_response(StatusCode::SERVICE_UNAVAILABLE, "github_push_unavailable"); }
     let _ = Command::new("chmod").arg("700").arg(&askpass).status().await;
     let result = Command::new("git").current_dir("/var/oled/data/AshatHub").arg("push").arg(format!("https://github.com/{repo}.git")).arg("HEAD:main").env("GIT_ASKPASS", &askpass).env("GIT_TERMINAL_PROMPT", "0").output().await;
     let _ = fs::remove_file(&askpass).await;

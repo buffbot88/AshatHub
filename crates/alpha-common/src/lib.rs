@@ -171,6 +171,8 @@ pub struct ChatRequest {
     pub stream: bool,
     #[serde(default)]
     pub model: Option<String>,
+    #[serde(default)]
+    pub mode: Option<String>,
     #[serde(default = "default_max_tokens")]
     pub max_tokens: u32,
     #[serde(default = "default_temperature")]

@@ -40,10 +40,17 @@ impl IntentRouter {
     }
 
     /// Classify the intent of an incoming request.
-    pub fn classify(&self, messages: &[ChatMessage], _is_stream: bool) -> Intent {
+    pub fn classify(&self, messages: &[ChatMessage], _is_stream: bool, mode: Option<&str>) -> Intent {
         // Image detection takes priority — always route to vision pool.
         if Self::has_images(messages) {
             return Intent::Vision;
+        }
+
+        if mode == Some("chat") {
+            return Intent::LocalInference;
+        }
+        if mode == Some("build") {
+            return Intent::FileGeneration;
         }
 
         // Analyze message content for intent. Streaming is transport, not intent:

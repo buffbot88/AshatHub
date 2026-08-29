@@ -50,7 +50,7 @@ async fn chat_completions(
         // "model": "local" from AshatHub — check for images.
         IntentRouter::classify_local(&request.messages)
     } else {
-        state.router.classify(&request.messages, request.stream)
+        state.router.classify(&request.messages, request.stream, request.mode.as_deref())
     };
 
     tracing::info!(

@@ -5,7 +5,7 @@ port = 3000
 [models]
 local_model = "../../models/LFM2.5-VL-450M-Q8_0.gguf"
 mmproj = "../../models/mmproj-LFM2.5-VL-450m-Q8_0.gguf"
-max_instances = 1
+max_instances = 3
 cpu_cap = 90
 
 [omega]
@@ -48,3 +48,6 @@ always_on = true
 [vision]
 idle_timeout_secs = 300
 on_demand = true
+
+[public]
+api_key = "030d526563cb73ee9cb4ea19eb2bbd60224cd270ebf5c43fcb170abf8c0a053d"

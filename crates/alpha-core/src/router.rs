@@ -47,7 +47,7 @@ impl IntentRouter {
         }
 
         if mode == Some("chat") {
-            return Intent::LocalInference;
+            return Intent::Vision;
         }
         if mode == Some("build") {
             return Intent::FileGeneration;

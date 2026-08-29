@@ -16,11 +16,17 @@ pub async fn text_worker_completions(
     request: &ChatRequest,
 ) -> anyhow::Result<serde_json::Value> {
     let url = worker.completions_url();
+    let messages: Vec<_> = request
+        .messages
+        .iter()
+        .filter(|message| message.role != "system")
+        .cloned()
+        .collect();
     let payload = serde_json::json!({
         "model": "local",
-        "messages": request.messages,
-        // The 350M worker has a 4096-token context; leave room for Galileo's
-        // system prompt and conversation instead of requesting the full context.
+        "messages": messages,
+        // The 350M worker has a 4096-token context; keep local chat small and
+        // leave room for the conversation instead of the coding system prompt.
         "max_tokens": request.max_tokens.min(1024),
         "temperature": request.temperature,
         "stream": false,

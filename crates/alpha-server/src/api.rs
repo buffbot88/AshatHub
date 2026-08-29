@@ -1,6 +1,6 @@
 use axum::{
     extract::State,
-    http::{header, StatusCode},
+    http::{header, HeaderMap, StatusCode},
     response::{IntoResponse, Response},
     routing::{get, post},
     Json, Router,
@@ -23,8 +23,15 @@ pub fn create_router(state: AppState) -> Router {
 
 async fn chat_completions(
     State(state): State<AppState>,
-    Json(request): Json<ChatRequest>,
+    headers: HeaderMap,
+    Json(mut request): Json<ChatRequest>,
 ) -> Response {
+    if request.mode.is_none() {
+        request.mode = headers
+            .get("x-ashat-mode")
+            .and_then(|value| value.to_str().ok())
+            .map(str::to_owned);
+    }
     // Wire the wait queue: full -> 429, else enqueue and wait for a concurrency slot.
     let request_id = format!(
         "req-{}",

@@ -64,6 +64,10 @@ async fn main() -> Result<()> {
     // Initialize the on-demand vision pool (450M VL).
     // min_instances = 0: VL instances are only started when images arrive.
     let vision_pool = Arc::new(VisionPool::new(config.clone()));
+    for _ in 0..config.pool.min_instances {
+        let port = vision_pool.acquire().await?;
+        vision_pool.release(port).await;
+    }
 
     // Start supervision: text worker health + VL idle shutdown.
     alpha_core::supervision::spawn(

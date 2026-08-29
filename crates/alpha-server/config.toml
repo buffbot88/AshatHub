@@ -32,7 +32,7 @@ max_concurrent = 9
 # Vision pool (450M VL) — on-demand only, no minimum instances.
 # Instances are spawned when an image arrives, shut down after idle timeout.
 [pool]
-min_instances = 0
+min_instances = 1
 port_base = 3001
 
 # Always-on text worker (350M) — handles intent classification,

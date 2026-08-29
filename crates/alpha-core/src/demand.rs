@@ -249,8 +249,8 @@ impl VisionPool {
         {
             let mut inner = self.inner.lock().await;
             for i in 0..self.max() {
-                if inner.in_use[i] {
-                    continue; // Still serving a request.
+                if inner.in_use[i] || i < self.config.pool.min_instances as usize {
+                    continue; // Keep baseline VL lanes hot.
                 }
                 if let Some(inst) = &mut inner.slots[i] {
                     if !inst.alive() {
@@ -293,7 +293,7 @@ impl VisionPool {
 
     /// Health + respawn pass for supervision.
     pub async fn supervise(&self) {
-        // First, shutdown any idle instances.
+        // First, shutdown idle burst instances; baseline lanes stay hot.
         self.shutdown_idle().await;
 
         // Then check for dead instances that are in-use and need respawning.

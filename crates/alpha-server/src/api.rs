@@ -202,6 +202,8 @@ struct StatusResponse {
     available_text_slots: usize,
     available_agent_slots: usize,
     available_vision_slots: usize,
+    running_vision_instances: usize,
+    max_vision_instances: usize,
 }
 
 async fn status(State(state): State<AppState>) -> impl IntoResponse {
@@ -218,6 +220,8 @@ async fn status(State(state): State<AppState>) -> impl IntoResponse {
         available_text_slots: text_available,
         available_agent_slots: agent_available,
         available_vision_slots: vision_available,
+        running_vision_instances: state.vision_pool.running_count().await,
+        max_vision_instances: state.config.models.max_instances as usize,
     })
 }
 

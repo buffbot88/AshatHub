@@ -228,10 +228,14 @@ impl VisionPool {
         }
     }
 
-    /// Check if any VL instance is currently running.
-    pub async fn has_running(&self) -> bool {
+    /// Count currently running VL instances.
+    pub async fn running_count(&self) -> usize {
         let inner = self.inner.lock().await;
-        inner.slots.iter().any(|s| s.is_some())
+        inner.slots.iter().filter(|slot| slot.is_some()).count()
+    }
+
+    pub async fn has_running(&self) -> bool {
+        self.running_count().await > 0
     }
 
     /// Shutdown idle VL instances that have exceeded the idle timeout.

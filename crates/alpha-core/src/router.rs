@@ -126,6 +126,22 @@ mod tests {
     }
 
     #[test]
+    fn explicit_modes_use_expected_workers() {
+        let router = IntentRouter::new(alpha_common::Config {
+            server: alpha_common::ServerConfig { host: "127.0.0.1".into(), port: 3000 },
+            models: alpha_common::ModelsConfig { local_model: "local".into(), mmproj: "mmproj".into(), max_instances: 3, cpu_cap: 90 },
+            omega: alpha_common::OmegaConfig { url: "http://omega".into(), api_key: "key".into(), auth_header: "X-Key".into(), model: "model".into() },
+            agents: Default::default(),
+            queue: alpha_common::QueueConfig { max_requests: 1, max_concurrent: 1 },
+            pool: alpha_common::PoolConfig { min_instances: 0, port_base: 3001 },
+            text_worker: Default::default(),
+            vision: Default::default(),
+        });
+        assert_eq!(router.classify(&[text_message()], true, Some("chat")), Intent::Vision);
+        assert_eq!(router.classify(&[text_message()], true, Some("build")), Intent::FileGeneration);
+    }
+
+    #[test]
     fn local_image_uses_vision_worker() {
         let message = ChatMessage {
             role: "user".into(),

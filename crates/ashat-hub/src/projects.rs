@@ -61,6 +61,11 @@ struct FileWrite {
     content: String,
 }
 
+#[derive(Debug, Deserialize)]
+struct SnapshotRequest {
+    files: std::collections::HashMap<String, String>,
+}
+
 #[derive(Debug, Serialize)]
 struct FileContent {
     path: String,
@@ -82,6 +87,7 @@ pub(crate) fn routes() -> Router<AppState> {
     Router::new()
         .route("/api/galileo/projects", get(list).post(create))
         .route("/api/galileo/projects/:project_id/files", get(files))
+        .route("/api/galileo/projects/:project_id/files/snapshot", post(snapshot))
         .route(
             "/api/galileo/projects/:project_id/files/export",
             get(export_zip),
@@ -216,6 +222,54 @@ async fn files(
             )
         }
     }
+}
+
+async fn snapshot(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    AxumPath(project_id): AxumPath<String>,
+    Json(input): Json<SnapshotRequest>,
+) -> Response {
+    let Some(pool) = state.db.as_ref() else {
+        return error_response(StatusCode::SERVICE_UNAVAILABLE, "auth_unavailable");
+    };
+    let Some(user) = authenticated(pool, &state, &headers).await else {
+        return error_response(StatusCode::UNAUTHORIZED, "unauthenticated");
+    };
+    let Some(root) = project_root(&state, &user.id, &project_id) else {
+        return error_response(StatusCode::BAD_REQUEST, "invalid_project_id");
+    };
+    let total = input.files.iter().try_fold(0u64, |total, (path, content)| {
+        let target = file_path(&state, &user.id, &project_id, path)
+            .ok_or(StatusCode::BAD_REQUEST)?;
+        if content.len() > 2_000_000 {
+            return Err(StatusCode::PAYLOAD_TOO_LARGE);
+        }
+        let next = total.saturating_add(content.len() as u64);
+        if next > MAX_PROJECT_BYTES { Err(StatusCode::PAYLOAD_TOO_LARGE) } else { let _ = target; Ok(next) }
+    });
+    if total.is_err() {
+        return error_response(total.unwrap_err(), "invalid_project_snapshot");
+    }
+    let file_count = input.files.len();
+    if let Err(error) = fs::create_dir_all(&root) {
+        tracing::error!(?error, "project snapshot directory creation failed");
+        return error_response(StatusCode::INTERNAL_SERVER_ERROR, "project_storage_unavailable");
+    }
+    for (path, content) in input.files {
+        let Some(target) = file_path(&state, &user.id, &project_id, &path) else {
+            return error_response(StatusCode::BAD_REQUEST, "invalid_path");
+        };
+        if let Some(parent) = target.parent() {
+            if fs::create_dir_all(parent).is_err() {
+                return error_response(StatusCode::INTERNAL_SERVER_ERROR, "project_storage_unavailable");
+            }
+        }
+        if fs::write(target, content).is_err() {
+            return error_response(StatusCode::INTERNAL_SERVER_ERROR, "project_storage_unavailable");
+        }
+    }
+    Json(serde_json::json!({"ok": true, "files": file_count})).into_response()
 }
 
 async fn read_file(

@@ -2,7 +2,7 @@ use axum::{
     extract::{Query, State},
     http::{header, HeaderMap, HeaderValue, StatusCode},
     response::{IntoResponse, Redirect, Response},
-    routing::get,
+    routing::{get, post},
     Json, Router,
 };
 use base64::{engine::general_purpose::URL_SAFE_NO_PAD, Engine};
@@ -15,6 +15,12 @@ use uuid::Uuid;
 use crate::{auth, response::error_response, AppState};
 
 const INSTALL_URL: &str = "https://github.com/apps/ashat-hub/installations/new";
+
+#[derive(Debug, Deserialize)]
+struct ImportRequest {
+    repository: String,
+    name: Option<String>,
+}
 
 #[derive(Debug, Deserialize)]
 struct CallbackQuery {
@@ -46,6 +52,7 @@ pub(crate) fn routes() -> Router<AppState> {
         .route("/api/github/app/install", get(install))
         .route("/api/github/app/callback", get(callback))
         .route("/api/github/app/repositories", get(repositories))
+        .route("/api/github/app/import", post(import))
 }
 
 async fn install(State(state): State<AppState>, auth::AuthenticatedUser(_user): auth::AuthenticatedUser) -> Response {
@@ -74,6 +81,30 @@ async fn callback(
     let mut response = Redirect::temporary("/").into_response();
     response.headers_mut().append(header::SET_COOKIE, HeaderValue::from_static("ashat_github_app_state=; Path=/; Max-Age=0; HttpOnly; SameSite=Lax"));
     response
+}
+
+async fn import(State(state): State<AppState>, auth::AuthenticatedUser(user): auth::AuthenticatedUser, Json(input): Json<ImportRequest>) -> Response {
+    let Some(pool) = state.db.as_ref() else { return error_response(StatusCode::SERVICE_UNAVAILABLE, "database_unavailable"); };
+    let Some(captures) = input.repository.strip_prefix("https://github.com/").and_then(|value| value.trim_end_matches('/').strip_suffix(".git").unwrap_or(value).split_once('/')) else { return error_response(StatusCode::BAD_REQUEST, "github_repository_invalid"); };
+    let owner = captures.0;
+    let repo = captures.1;
+    if owner.is_empty() || repo.is_empty() || owner.contains(|c: char| !c.is_ascii_alphanumeric() && c != '-' && c != '_') || repo.contains(|c: char| !c.is_ascii_alphanumeric() && c != '-' && c != '_' && c != '.') { return error_response(StatusCode::BAD_REQUEST, "github_repository_invalid"); }
+    let installation_id = match sqlx::query_scalar::<_, Option<u64>>("SELECT github_app_installation_id FROM users WHERE id=?").bind(&user.id).fetch_one(pool).await {
+        Ok(Some(id)) => id,
+        _ => return error_response(StatusCode::NOT_FOUND, "github_app_not_connected"),
+    };
+    let token = match installation_token(&state, installation_id).await { Ok(token) => token, Err(_) => return error_response(StatusCode::BAD_GATEWAY, "github_installation_token_failed") };
+    let project = input.name.filter(|name| !name.trim().is_empty()).unwrap_or_else(|| repo.to_string()).chars().map(|c| if c.is_ascii_alphanumeric() || c == '-' || c == '_' { c } else { '_' }).take(80).collect::<String>();
+    let root = std::path::PathBuf::from("/var/oled/data/users_projects").join(&user.username).join(&project);
+    let temporary = std::env::temp_dir().join(format!("ashat-github-{}", Uuid::new_v4()));
+    let clone_url = format!("https://x-access-token:{}@github.com/{owner}/{repo}.git", urlencoding::encode(&token));
+    let result = tokio::process::Command::new("git").args(["clone", "--depth", "1", &clone_url, temporary.to_str().unwrap_or("")]).output().await;
+    if result.as_ref().map(|output| !output.status.success()).unwrap_or(true) { let _ = tokio::fs::remove_dir_all(&temporary).await; return error_response(StatusCode::BAD_GATEWAY, "github_import_failed"); }
+    let _ = tokio::fs::remove_dir_all(root.join(".git")).await;
+    if tokio::fs::remove_dir_all(&root).await.is_err() && tokio::fs::metadata(&root).await.is_ok() { let _ = tokio::fs::remove_dir_all(&temporary).await; return error_response(StatusCode::INTERNAL_SERVER_ERROR, "github_import_failed"); }
+    if tokio::fs::create_dir_all(root.parent().unwrap_or(std::path::Path::new("/var/oled/data/users_projects"))).await.is_err() || tokio::fs::rename(&temporary, &root).await.is_err() { let _ = tokio::fs::remove_dir_all(&temporary).await; return error_response(StatusCode::INTERNAL_SERVER_ERROR, "github_import_failed"); }
+    let _ = tokio::fs::remove_dir_all(root.join(".git")).await;
+    Json(serde_json::json!({"ok": true, "project": project})).into_response()
 }
 
 async fn repositories(State(state): State<AppState>, auth::AuthenticatedUser(user): auth::AuthenticatedUser) -> Response {

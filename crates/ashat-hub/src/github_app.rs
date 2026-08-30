@@ -105,11 +105,32 @@ async fn import(State(state): State<AppState>, auth::AuthenticatedUser(user): au
     let temporary = std::env::temp_dir().join(format!("ashat-github-{}", Uuid::new_v4()));
     let clone_url = format!("https://x-access-token:{}@github.com/{owner}/{repo}.git", urlencoding::encode(&token));
     let result = tokio::process::Command::new("git").args(["clone", "--depth", "1", &clone_url, temporary.to_str().unwrap_or("")]).output().await;
-    if result.as_ref().map(|output| !output.status.success()).unwrap_or(true) { let _ = tokio::fs::remove_dir_all(&temporary).await; return error_response(StatusCode::BAD_GATEWAY, "github_import_failed"); }
-    let _ = tokio::fs::remove_dir_all(root.join(".git")).await;
-    if tokio::fs::remove_dir_all(&root).await.is_err() && tokio::fs::metadata(&root).await.is_ok() { let _ = tokio::fs::remove_dir_all(&temporary).await; return error_response(StatusCode::INTERNAL_SERVER_ERROR, "github_import_failed"); }
-    if tokio::fs::create_dir_all(root.parent().unwrap_or(std::path::Path::new("/var/oled/data/users_projects"))).await.is_err() || tokio::fs::rename(&temporary, &root).await.is_err() { let _ = tokio::fs::remove_dir_all(&temporary).await; return error_response(StatusCode::INTERNAL_SERVER_ERROR, "github_import_failed"); }
-    let _ = tokio::fs::remove_dir_all(root.join(".git")).await;
+    let output = match result { Ok(output) => output, Err(error) => { tracing::error!(?error, "GitHub import could not start git"); let _ = tokio::fs::remove_dir_all(&temporary).await; return error_response(StatusCode::BAD_GATEWAY, "github_import_failed"); } };
+    if !output.status.success() {
+        tracing::error!(status = ?output.status.code(), stderr = %String::from_utf8_lossy(&output.stderr), "GitHub clone failed");
+        let _ = tokio::fs::remove_dir_all(&temporary).await;
+        return error_response(StatusCode::BAD_GATEWAY, "github_import_failed");
+    }
+    if tokio::fs::remove_dir_all(temporary.join(".git")).await.is_err() {
+        tracing::error!(path = ?temporary, "GitHub import could not remove git metadata");
+        let _ = tokio::fs::remove_dir_all(&temporary).await;
+        return error_response(StatusCode::INTERNAL_SERVER_ERROR, "github_import_failed");
+    }
+    if tokio::fs::write(temporary.join(".project-meta.json"), serde_json::json!({"name": project, "source": input.repository, "created_at": chrono::Utc::now().to_rfc3339() }).to_string()).await.is_err() {
+        tracing::error!(path = ?temporary, "GitHub import could not write project metadata");
+        let _ = tokio::fs::remove_dir_all(&temporary).await;
+        return error_response(StatusCode::INTERNAL_SERVER_ERROR, "github_import_failed");
+    }
+    if tokio::fs::remove_dir_all(&root).await.is_err() && tokio::fs::metadata(&root).await.is_ok() {
+        tracing::error!(path = ?root, "GitHub import could not replace existing project");
+        let _ = tokio::fs::remove_dir_all(&temporary).await;
+        return error_response(StatusCode::INTERNAL_SERVER_ERROR, "github_import_failed");
+    }
+    if tokio::fs::create_dir_all(root.parent().unwrap_or(std::path::Path::new("/var/oled/data/users_projects"))).await.is_err() || tokio::fs::rename(&temporary, &root).await.is_err() {
+        tracing::error!(path = ?root, "GitHub import could not install project");
+        let _ = tokio::fs::remove_dir_all(&temporary).await;
+        return error_response(StatusCode::INTERNAL_SERVER_ERROR, "github_import_failed");
+    }
     Json(serde_json::json!({"ok": true, "project": project})).into_response()
 }
 

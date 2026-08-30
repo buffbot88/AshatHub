@@ -174,6 +174,10 @@ async fn galileo_github_push(
 ask=$(mktemp); trap 'rm -f "$ask"' EXIT
 printf '%s\n' '#!/bin/sh' 'case "$1" in *Username*) printf "%s\\n" "x-access-token" ;; *) printf "%s\\n" "$GITHUB_TOKEN" ;; esac' > "$ask"
 chmod 700 "$ask"
+GIT_ASKPASS="$ask" GIT_TERMINAL_PROMPT=0 git fetch "https://github.com/buffbot88/Galileo.git" main
+if ! git merge-base --is-ancestor FETCH_HEAD HEAD; then
+  git merge --no-edit FETCH_HEAD
+fi
 GIT_ASKPASS="$ask" GIT_TERMINAL_PROMPT=0 git push "https://github.com/buffbot88/Galileo.git" HEAD:main
 "#;
     match Command::new("bash").arg("-c").arg(script).current_dir("/var/oled/data/Galileo").env("GITHUB_TOKEN", token).output().await {

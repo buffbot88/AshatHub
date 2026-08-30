@@ -126,9 +126,16 @@ async fn import(State(state): State<AppState>, auth::AuthenticatedUser(user): au
         let _ = tokio::fs::remove_dir_all(&temporary).await;
         return error_response(StatusCode::INTERNAL_SERVER_ERROR, "github_import_failed");
     }
-    if tokio::fs::create_dir_all(root.parent().unwrap_or(std::path::Path::new("/var/oled/data/users_projects"))).await.is_err() || tokio::fs::rename(&temporary, &root).await.is_err() {
-        tracing::error!(path = ?root, "GitHub import could not install project");
+    if tokio::fs::create_dir_all(root.parent().unwrap_or(std::path::Path::new("/var/oled/data/users_projects"))).await.is_err() {
+        tracing::error!(path = ?root, "GitHub import could not create project parent");
         let _ = tokio::fs::remove_dir_all(&temporary).await;
+        return error_response(StatusCode::INTERNAL_SERVER_ERROR, "github_import_failed");
+    }
+    let installed = tokio::process::Command::new("cp").args(["-a", temporary.to_str().unwrap_or(""), root.to_str().unwrap_or("")]).output().await.map(|output| output.status.success()).unwrap_or(false);
+    let _ = tokio::fs::remove_dir_all(&temporary).await;
+    if !installed {
+        tracing::error!(path = ?root, "GitHub import could not copy project across filesystems");
+        let _ = tokio::fs::remove_dir_all(&root).await;
         return error_response(StatusCode::INTERNAL_SERVER_ERROR, "github_import_failed");
     }
     Json(serde_json::json!({"ok": true, "project": project})).into_response()

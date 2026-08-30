@@ -89,11 +89,17 @@ async fn import(State(state): State<AppState>, auth::AuthenticatedUser(user): au
     let owner = captures.0;
     let repo = captures.1;
     if owner.is_empty() || repo.is_empty() || owner.contains(|c: char| !c.is_ascii_alphanumeric() && c != '-' && c != '_') || repo.contains(|c: char| !c.is_ascii_alphanumeric() && c != '-' && c != '_' && c != '.') { return error_response(StatusCode::BAD_REQUEST, "github_repository_invalid"); }
-    let installation_id = match sqlx::query_scalar::<_, Option<u64>>("SELECT github_app_installation_id FROM users WHERE id=?").bind(&user.id).fetch_one(pool).await {
-        Ok(Some(id)) => id,
-        _ => return error_response(StatusCode::NOT_FOUND, "github_app_not_connected"),
+    let (installation_id, oauth_token) = match sqlx::query_as::<_, (Option<u64>, Option<String>)>("SELECT github_app_installation_id,github_access_token FROM users WHERE id=?").bind(&user.id).fetch_one(pool).await {
+        Ok(values) => values,
+        Err(_) => return error_response(StatusCode::NOT_FOUND, "github_not_connected"),
     };
-    let token = match installation_token(&state, installation_id).await { Ok(token) => token, Err(_) => return error_response(StatusCode::BAD_GATEWAY, "github_installation_token_failed") };
+    let token = if let Some(installation_id) = installation_id {
+        match installation_token(&state, installation_id).await { Ok(token) => token, Err(_) => return error_response(StatusCode::BAD_GATEWAY, "github_installation_token_failed") }
+    } else if let Some(token) = oauth_token {
+        token
+    } else {
+        return error_response(StatusCode::NOT_FOUND, "github_not_connected");
+    };
     let project = input.name.filter(|name| !name.trim().is_empty()).unwrap_or_else(|| repo.to_string()).chars().map(|c| if c.is_ascii_alphanumeric() || c == '-' || c == '_' { c } else { '_' }).take(80).collect::<String>();
     let root = std::path::PathBuf::from("/var/oled/data/users_projects").join(&user.username).join(&project);
     let temporary = std::env::temp_dir().join(format!("ashat-github-{}", Uuid::new_v4()));

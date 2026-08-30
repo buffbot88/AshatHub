@@ -34,6 +34,7 @@ mod compat;
 mod conversations;
 mod deployment;
 mod galileo_jobs;
+mod github_app;
 mod icarus_auth;
 mod mail;
 mod member;
@@ -252,6 +253,7 @@ pub fn app(state: AppState) -> Router {
         .merge(chat::routes())
         .merge(compat::routes())
         .merge(galileo_jobs::routes())
+        .merge(github_app::routes())
         .merge(preview::routes())
         .merge(changes::routes())
         .merge(deployment::routes())

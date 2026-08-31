@@ -2,7 +2,7 @@ use alpha_common::{ChatMessage, Config};
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum Intent {
-    /// Text-only: route to always-on 350M text worker.
+    /// Text-only helper/router work on the local 350M worker.
     LocalInference,
     /// Has images: route to on-demand 450M VL vision pool.
     Vision,
@@ -30,13 +30,9 @@ impl IntentRouter {
         messages.iter().any(|m| m.has_image())
     }
 
-    /// Route a gateway-local request without allowing text to enter the VL path.
-    pub fn classify_local(messages: &[ChatMessage]) -> Intent {
-        if Self::has_images(messages) {
-            Intent::Vision
-        } else {
-            Intent::LocalInference
-        }
+    /// Route local chat and vision through the 450M VL worker.
+    pub fn classify_local(_messages: &[ChatMessage]) -> Intent {
+        Intent::Vision
     }
 
     /// Classify the intent of an incoming request.
@@ -47,15 +43,14 @@ impl IntentRouter {
         }
 
         match mode {
-            Some("chat") | Some("plan") => return Intent::LocalInference,
+            Some("chat") | Some("plan") => return Intent::Vision,
             Some("vision") => return Intent::Vision,
             Some("build") => return Intent::FileGeneration,
             Some("debug") => return Intent::ChatStudio,
             _ => {}
         }
 
-        // Analyze message content for intent. Streaming is transport, not intent:
-        // normal chat must remain on the always-on 350M worker.
+        // Analyze message content for intent. Streaming is transport, not intent.
         if let Some(last_msg) = messages.last() {
             let content = last_msg.text().to_lowercase();
 
@@ -72,8 +67,8 @@ impl IntentRouter {
 
         }
 
-        // Default to local text inference.
-        Intent::LocalInference
+        // Default chat uses the 450M VL worker.
+        Intent::Vision
     }
 
     /// Get the appropriate endpoint for the given intent.
@@ -122,7 +117,7 @@ mod tests {
     fn local_text_uses_text_worker() {
         assert_eq!(
             IntentRouter::classify_local(&[text_message()]),
-            Intent::LocalInference
+            Intent::Vision
         );
     }
 
@@ -138,8 +133,8 @@ mod tests {
             text_worker: Default::default(),
             vision: Default::default(),
         });
-        assert_eq!(router.classify(&[text_message()], true, Some("chat")), Intent::LocalInference);
-        assert_eq!(router.classify(&[text_message()], true, Some("plan")), Intent::LocalInference);
+        assert_eq!(router.classify(&[text_message()], true, Some("chat")), Intent::Vision);
+        assert_eq!(router.classify(&[text_message()], true, Some("plan")), Intent::Vision);
         assert_eq!(router.classify(&[text_message()], true, Some("vision")), Intent::Vision);
         assert_eq!(router.classify(&[text_message()], true, Some("build")), Intent::FileGeneration);
         assert_eq!(router.classify(&[text_message()], true, Some("debug")), Intent::ChatStudio);

@@ -88,6 +88,8 @@ pub(crate) fn routes() -> Router<AppState> {
         .route("/api/galileo/projects", get(list).post(create))
         .route("/api/galileo/projects/:project_id/files", get(files))
         .route("/api/galileo/projects/:project_id/files/snapshot", post(snapshot))
+        .route("/api/galileo/projects/:project_id/checkpoints", post(create_checkpoint).get(list_checkpoints))
+        .route("/api/galileo/projects/:project_id/checkpoints/:checkpoint_id", get(read_checkpoint))
         .route(
             "/api/galileo/projects/:project_id/files/export",
             get(export_zip),
@@ -270,6 +272,55 @@ async fn snapshot(
         }
     }
     Json(serde_json::json!({"ok": true, "files": file_count})).into_response()
+}
+
+async fn create_checkpoint(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    AxumPath(project_id): AxumPath<String>,
+    Json(input): Json<SnapshotRequest>,
+) -> Response {
+    let Some(pool) = state.db.as_ref() else { return error_response(StatusCode::SERVICE_UNAVAILABLE, "auth_unavailable"); };
+    let Some(user) = authenticated(pool, &state, &headers).await else { return error_response(StatusCode::UNAUTHORIZED, "unauthenticated"); };
+    let Some(root) = project_root(&state, &user.id, &project_id) else { return error_response(StatusCode::BAD_REQUEST, "invalid_project_id"); };
+    let total: usize = input.files.values().map(String::len).sum();
+    if total > MAX_PROJECT_BYTES as usize { return error_response(StatusCode::PAYLOAD_TOO_LARGE, "project_quota_exceeded"); }
+    let id = format!("cp_{}", Uuid::new_v4().simple());
+    let checkpoints = root.join(".checkpoints");
+    let stage = checkpoints.join(format!(".stage-{}", id));
+    if fs::create_dir_all(&stage).is_err() { return error_response(StatusCode::SERVICE_UNAVAILABLE, "project_storage_unavailable"); }
+    for (path, content) in input.files {
+        let Some(target) = safe_path(&path).map(|path| stage.join(path)) else { let _ = fs::remove_dir_all(&stage); return error_response(StatusCode::BAD_REQUEST, "invalid_path"); };
+        if let Some(parent) = target.parent() { if fs::create_dir_all(parent).is_err() { let _ = fs::remove_dir_all(&stage); return error_response(StatusCode::SERVICE_UNAVAILABLE, "project_storage_unavailable"); } }
+        if fs::write(target, content).is_err() { let _ = fs::remove_dir_all(&stage); return error_response(StatusCode::SERVICE_UNAVAILABLE, "project_storage_unavailable"); }
+    }
+    let metadata = serde_json::json!({"id": id, "created_at": chrono_like_now(), "file_count": collect_file_paths(&stage, &stage).map(|files| files.len()).unwrap_or(0)});
+    if fs::write(stage.join(".checkpoint.json"), serde_json::to_vec(&metadata).unwrap_or_default()).is_err() || fs::rename(&stage, checkpoints.join(&id)).is_err() { let _ = fs::remove_dir_all(&stage); return error_response(StatusCode::SERVICE_UNAVAILABLE, "project_storage_unavailable"); }
+    Json(serde_json::json!({"ok": true, "checkpoint": metadata})).into_response()
+}
+
+async fn list_checkpoints(
+    State(state): State<AppState>, headers: HeaderMap, AxumPath(project_id): AxumPath<String>,
+) -> Response {
+    let Some(pool) = state.db.as_ref() else { return error_response(StatusCode::SERVICE_UNAVAILABLE, "auth_unavailable"); };
+    let Some(user) = authenticated(pool, &state, &headers).await else { return error_response(StatusCode::UNAUTHORIZED, "unauthenticated"); };
+    let Some(root) = project_root(&state, &user.id, &project_id) else { return error_response(StatusCode::BAD_REQUEST, "invalid_project_id"); };
+    let checkpoints = root.join(".checkpoints");
+    let list = fs::read_dir(checkpoints).map(|entries| entries.filter_map(Result::ok).filter_map(|entry| serde_json::from_slice(&fs::read(entry.path().join(".checkpoint.json")).ok()?).ok()).collect::<Vec<serde_json::Value>>()).unwrap_or_default();
+    Json(serde_json::json!({"checkpoints": list})).into_response()
+}
+
+async fn read_checkpoint(
+    State(state): State<AppState>, headers: HeaderMap, AxumPath((project_id, checkpoint_id)): AxumPath<(String, String)>,
+) -> Response {
+    let Some(pool) = state.db.as_ref() else { return error_response(StatusCode::SERVICE_UNAVAILABLE, "auth_unavailable"); };
+    let Some(user) = authenticated(pool, &state, &headers).await else { return error_response(StatusCode::UNAUTHORIZED, "unauthenticated"); };
+    if !safe_segment(&checkpoint_id) { return error_response(StatusCode::BAD_REQUEST, "invalid_checkpoint_id"); }
+    let Some(root) = project_root(&state, &user.id, &project_id) else { return error_response(StatusCode::BAD_REQUEST, "invalid_project_id"); };
+    let checkpoint = root.join(".checkpoints").join(&checkpoint_id);
+    if !checkpoint.is_dir() { return error_response(StatusCode::NOT_FOUND, "checkpoint_not_found"); }
+    let files = collect_file_paths(&checkpoint, &checkpoint).ok().unwrap_or_default().into_iter().filter_map(|(path, file)| Some((path, fs::read_to_string(file).ok()?))).collect::<std::collections::HashMap<_, _>>();
+    Json(serde_json::json!({"checkpoint_id": checkpoint_id, "files": files})).into_response()
 }
 
 async fn read_file(
@@ -760,7 +811,7 @@ fn collect_files_with_size(root: &Path) -> std::io::Result<u64> {
     let mut total = 0u64;
     for entry in fs::read_dir(root)? {
         let entry = entry?;
-        if entry.file_name() == ".meta.json" || entry.file_type()?.is_symlink() {
+        if matches!(entry.file_name().to_str(), Some(".meta.json" | ".checkpoints")) || entry.file_type()?.is_symlink() {
             continue;
         }
         let path = entry.path();
@@ -800,8 +851,7 @@ fn collect_file_paths(root: &Path, current: &Path) -> std::io::Result<Vec<(Strin
     for entry in fs::read_dir(current)? {
         let entry = entry?;
         let path = entry.path();
-        if entry.file_name() == ".meta.json"
-            || entry.file_name() == ".preview.log"
+        if matches!(entry.file_name().to_str(), Some(".meta.json" | ".checkpoints" | ".preview.log" | ".checkpoint.json"))
             || entry.file_type()?.is_symlink()
         {
             continue;
@@ -829,7 +879,7 @@ fn collect_files(root: &Path, current: &Path) -> std::io::Result<Vec<FileEntry>>
     for entry in fs::read_dir(current)? {
         let entry = entry?;
         let path = entry.path();
-        if entry.file_name() == ".meta.json" || entry.file_type()?.is_symlink() {
+        if matches!(entry.file_name().to_str(), Some(".meta.json" | ".checkpoints")) || entry.file_type()?.is_symlink() {
             continue;
         }
         if path.is_dir() {
@@ -909,7 +959,7 @@ fn count_files(root: &Path) -> usize {
         .filter_map(Result::ok)
         .map(|entry| {
             let path = entry.path();
-            if entry.file_name() == ".meta.json"
+            if matches!(entry.file_name().to_str(), Some(".meta.json" | ".checkpoints"))
                 || entry.file_type().map(|t| t.is_symlink()).unwrap_or(true)
             {
                 return 0;

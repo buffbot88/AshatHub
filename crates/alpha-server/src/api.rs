@@ -6,6 +6,7 @@ use axum::{
     Json, Router,
 };
 use serde::Serialize;
+use tokio::time::{timeout, Duration};
 
 use crate::AppState;
 use alpha_common::ChatRequest;
@@ -70,17 +71,31 @@ async fn chat_completions(
         Intent::Vision => state.vision_slots.clone(),
         Intent::LocalInference => state.text_slots.clone(),
         Intent::ChatStudio | Intent::FileGeneration => state.agent_slots.clone(),
-        Intent::Unknown => return completion_response(request.stream, StatusCode::BAD_REQUEST, serde_json::json!({
-            "error": "Unknown intent",
-            "message": "Could not classify the request"
-        })),
+        Intent::Unknown => {
+            let mut queue = state.queue.write().await;
+            queue.dequeue();
+            return completion_response(request.stream, StatusCode::BAD_REQUEST, serde_json::json!({
+                "error": "Unknown intent",
+                "message": "Could not classify the request"
+            }));
+        }
     };
-    let _permit = match capacity.acquire_owned().await {
-        Ok(permit) => permit,
-        Err(error) => {
+    let _permit = match timeout(Duration::from_secs(30), capacity.acquire_owned()).await {
+        Ok(Ok(permit)) => permit,
+        Ok(Err(error)) => {
+            let mut queue = state.queue.write().await;
+            queue.dequeue();
             tracing::error!(?error, "inference capacity unavailable");
             return completion_response(request.stream, StatusCode::SERVICE_UNAVAILABLE, serde_json::json!({
                 "error": "Inference capacity unavailable"
+            }));
+        }
+        Err(_) => {
+            let mut queue = state.queue.write().await;
+            queue.dequeue();
+            return completion_response(request.stream, StatusCode::TOO_MANY_REQUESTS, serde_json::json!({
+                "error": "Inference queue wait expired",
+                "message": "Capacity is busy; retry shortly"
             }));
         }
     };

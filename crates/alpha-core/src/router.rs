@@ -46,11 +46,12 @@ impl IntentRouter {
             return Intent::Vision;
         }
 
-        if mode == Some("chat") {
-            return Intent::Vision;
-        }
-        if mode == Some("build") {
-            return Intent::FileGeneration;
+        match mode {
+            Some("chat") | Some("plan") => return Intent::LocalInference,
+            Some("vision") => return Intent::Vision,
+            Some("build") => return Intent::FileGeneration,
+            Some("debug") => return Intent::ChatStudio,
+            _ => {}
         }
 
         // Analyze message content for intent. Streaming is transport, not intent:
@@ -137,8 +138,11 @@ mod tests {
             text_worker: Default::default(),
             vision: Default::default(),
         });
-        assert_eq!(router.classify(&[text_message()], true, Some("chat")), Intent::Vision);
+        assert_eq!(router.classify(&[text_message()], true, Some("chat")), Intent::LocalInference);
+        assert_eq!(router.classify(&[text_message()], true, Some("plan")), Intent::LocalInference);
+        assert_eq!(router.classify(&[text_message()], true, Some("vision")), Intent::Vision);
         assert_eq!(router.classify(&[text_message()], true, Some("build")), Intent::FileGeneration);
+        assert_eq!(router.classify(&[text_message()], true, Some("debug")), Intent::ChatStudio);
     }
 
     #[test]

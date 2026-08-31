@@ -46,6 +46,19 @@ pub struct Usage {
     pub total_tokens: u32,
 }
 
+#[derive(Debug, Deserialize)]
+struct HealthResponse {
+    coding_agent_capacity: Option<Capacity>,
+}
+
+#[derive(Debug, Deserialize)]
+struct Capacity {
+    ports_active: usize,
+    ports_total: usize,
+    queue_depth: usize,
+    queue_limit: usize,
+}
+
 impl RemoteInference {
     pub fn new(config: Config) -> Self {
         let client = Client::builder()
@@ -85,9 +98,10 @@ impl RemoteInference {
             return Err(anyhow::anyhow!("No coding agent endpoints configured"));
         }
         let start = NEXT_ENDPOINT.fetch_add(1, Ordering::Relaxed) % endpoints.len();
+        let order = self.endpoint_order(&endpoints, start).await;
 
-        for offset in 0..endpoints.len() {
-            let endpoint_config = &endpoints[(start + offset) % endpoints.len()];
+        for index in order {
+            let endpoint_config = &endpoints[index];
             let endpoint = format!(
                 "{}/v1/chat/completions",
                 endpoint_config.url.trim_end_matches('/')
@@ -155,6 +169,40 @@ impl RemoteInference {
             "All coding agent endpoints failed: {}",
             errors.join("; ")
         ))
+    }
+
+    async fn endpoint_order(&self, endpoints: &[AgentEndpoint], start: usize) -> Vec<usize> {
+        let mut tasks = tokio::task::JoinSet::new();
+        for (index, endpoint) in endpoints.iter().enumerate() {
+            let client = self.client.clone();
+            let url = format!("{}/health", endpoint.url.trim_end_matches('/'));
+            let auth_header = self.config.omega.auth_header.clone();
+            let api_key = self.config.omega.api_key.clone();
+            tasks.spawn(async move {
+                let capacity = match client.get(url).header(auth_header, api_key).send().await {
+                    Ok(response) if response.status().is_success() => response
+                        .json::<HealthResponse>()
+                        .await
+                        .ok()
+                        .and_then(|health| health.coding_agent_capacity)
+                        .map(|capacity| {
+                            let total = (capacity.ports_total + capacity.queue_limit).max(1) as f64;
+                            (capacity.ports_active + capacity.queue_depth) as f64 / total
+                        }),
+                    _ => None,
+                };
+                (index, capacity)
+            });
+        }
+        let mut ranked = Vec::new();
+        while let Some(result) = tasks.join_next().await {
+            if let Ok((index, Some(load))) = result { ranked.push((load, (index + endpoints.len() - start) % endpoints.len(), index)); }
+        }
+        if ranked.is_empty() {
+            return (0..endpoints.len()).map(|offset| (start + offset) % endpoints.len()).collect();
+        }
+        ranked.sort_by(|a, b| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal));
+        ranked.into_iter().map(|(_, _, index)| index).collect()
     }
 
     /// Get the legacy primary URL for diagnostics.

@@ -114,7 +114,7 @@ mod tests {
     }
 
     #[test]
-    fn local_text_uses_text_worker() {
+    fn local_text_uses_vl_worker() {
         assert_eq!(
             IntentRouter::classify_local(&[text_message()]),
             Intent::Vision

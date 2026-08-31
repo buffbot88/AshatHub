@@ -6,7 +6,8 @@ use axum::{
     Json, Router,
 };
 use serde::Serialize;
-use tokio::time::{timeout, Duration};
+use std::sync::Arc;
+use tokio::{sync::Semaphore, time::{timeout, Duration}};
 
 use crate::AppState;
 use alpha_common::ChatRequest;
@@ -66,6 +67,24 @@ async fn chat_completions(
         intent,
         request.messages.len()
     );
+
+    let _account_permit = if let Some(account) = headers.get("x-ashat-account").and_then(|value| value.to_str().ok()).filter(|value| !value.is_empty()) {
+        let slots = {
+            let mut accounts = state.account_slots.lock().await;
+            accounts.entry(account.to_owned()).or_insert_with(|| Arc::new(Semaphore::new(2))).clone()
+        };
+        match timeout(Duration::from_secs(30), slots.acquire_owned()).await {
+            Ok(Ok(permit)) => Some(permit),
+            _ => {
+                let mut queue = state.queue.write().await;
+                queue.dequeue();
+                return completion_response(request.stream, StatusCode::TOO_MANY_REQUESTS, serde_json::json!({
+                    "error": "Account inference limit reached",
+                    "message": "This account has too many active requests; retry shortly"
+                }));
+            }
+        }
+    } else { None };
 
     let capacity = match intent {
         Intent::Vision => state.vision_slots.clone(),

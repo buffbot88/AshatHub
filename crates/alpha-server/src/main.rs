@@ -7,7 +7,7 @@ use alpha_core::router::IntentRouter;
 use alpha_core::text_worker::TextWorker;
 use anyhow::Result;
 use axum::extract::DefaultBodyLimit;
-use std::sync::Arc;
+use std::{collections::HashMap, sync::Arc};
 use tokio::sync::{RwLock, Semaphore};
 use tower_http::cors::{Any, CorsLayer};
 use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
@@ -21,6 +21,7 @@ pub struct AppState {
     pub text_slots: Arc<Semaphore>,
     pub vision_slots: Arc<Semaphore>,
     pub agent_slots: Arc<Semaphore>,
+    pub account_slots: Arc<tokio::sync::Mutex<HashMap<String, Arc<Semaphore>>>>,
     pub config: Config,
 }
 
@@ -86,6 +87,7 @@ async fn main() -> Result<()> {
         text_slots: Arc::new(Semaphore::new(1)),
         vision_slots: Arc::new(Semaphore::new(config.models.max_instances.max(1) as usize)),
         agent_slots: Arc::new(Semaphore::new(config.agents.endpoints.len().max(1))),
+        account_slots: Arc::new(tokio::sync::Mutex::new(HashMap::new())),
         config: config.clone(),
     };
 

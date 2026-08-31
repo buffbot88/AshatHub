@@ -538,10 +538,19 @@ async fn authenticated(
 
 async fn recover_stale(pool: &MySqlPool) -> Result<(), sqlx::Error> {
     let cutoff = now() - 900;
-    let rows = sqlx::query("UPDATE galileo_jobs SET status='queued',claimed_at=NULL,updated_at=? WHERE status='running' AND claimed_at < ?")
-        .bind(now()).bind(cutoff).execute(pool).await?.rows_affected();
-    if rows > 0 {
-        tracing::warn!(jobs = rows, "requeued stale Galileo jobs");
+    let jobs = sqlx::query_scalar::<_, String>(
+        "SELECT id FROM galileo_jobs WHERE status='running' AND claimed_at < ?",
+    )
+    .bind(cutoff)
+    .fetch_all(pool)
+    .await?;
+    for id in &jobs {
+        sqlx::query("UPDATE galileo_jobs SET status='recoverable',claimed_at=NULL,error='worker_host_lost',updated_at=? WHERE id=? AND status='running'")
+            .bind(now()).bind(id).execute(pool).await?;
+        add_event(pool, id, "recoverable", &serde_json::json!({"reason":"worker_host_lost"}).to_string()).await?;
+    }
+    if !jobs.is_empty() {
+        tracing::warn!(jobs = jobs.len(), "marked stale Galileo jobs recoverable");
     }
     Ok(())
 }

@@ -27,6 +27,7 @@ use crate::{
 #[derive(Debug, Deserialize)]
 struct CreateJob {
     project_id: String,
+    checkpoint_id: Option<String>,
     request: String,
     plan_id: String,
 }
@@ -36,6 +37,7 @@ struct Job {
     id: String,
     user_id: String,
     project_id: String,
+    checkpoint_id: Option<String>,
     request: String,
     status: String,
     result: Option<String>,
@@ -126,6 +128,7 @@ async fn create(
     if request.is_empty()
         || request.len() > 50_000
         || !safe_segment(&input.project_id)
+        || input.checkpoint_id.as_deref().is_some_and(|id| !safe_segment(id))
         || !safe_segment(&input.plan_id)
     {
         return error_response(StatusCode::BAD_REQUEST, "invalid_job");
@@ -155,6 +158,7 @@ async fn create(
         id: format!("job_{}", Uuid::new_v4().simple()),
         user_id: user.id,
         project_id: input.project_id,
+        checkpoint_id: input.checkpoint_id,
         request: request.to_owned(),
         status: "queued".into(),
         result: None,
@@ -163,8 +167,8 @@ async fn create(
         updated_at: now,
         approval_payload: Some(approval_payload.clone()),
     };
-    if let Err(error) = sqlx::query("INSERT INTO galileo_jobs (id,user_id,project_id,request,status,created_at,updated_at,approval_payload) VALUES (?,?,?,?,?,?,?,?)")
-        .bind(&job.id).bind(&job.user_id).bind(&job.project_id).bind(&job.request).bind(&job.status).bind(now).bind(now).bind(&job.approval_payload).execute(pool).await { tracing::error!(?error, "Galileo job insert failed"); return error_response(StatusCode::SERVICE_UNAVAILABLE, "job_unavailable"); }
+    if let Err(error) = sqlx::query("INSERT INTO galileo_jobs (id,user_id,project_id,checkpoint_id,request,status,created_at,updated_at,approval_payload) VALUES (?,?,?,?,?,?,?,?,?)")
+        .bind(&job.id).bind(&job.user_id).bind(&job.project_id).bind(&job.checkpoint_id).bind(&job.request).bind(&job.status).bind(now).bind(now).bind(&job.approval_payload).execute(pool).await { tracing::error!(?error, "Galileo job insert failed"); return error_response(StatusCode::SERVICE_UNAVAILABLE, "job_unavailable"); }
     add_event(pool, &job.id, "queued", "{}").await.ok();
     tracing::info!(
         event = "galileo.job.queued",
@@ -186,7 +190,7 @@ async fn status(
     let Some(user) = authenticated(pool, &state, &headers).await else {
         return error_response(StatusCode::UNAUTHORIZED, "unauthenticated");
     };
-    match sqlx::query_as::<_, Job>("SELECT id,user_id,project_id,request,status,result,error,created_at,updated_at,approval_payload FROM galileo_jobs WHERE id=? AND user_id=?")
+    match sqlx::query_as::<_, Job>("SELECT id,user_id,project_id,checkpoint_id,request,status,result,error,created_at,updated_at,approval_payload FROM galileo_jobs WHERE id=? AND user_id=?")
         .bind(id).bind(user.id).fetch_optional(pool).await {
         Ok(Some(job)) => Json(JobResponse { job }).into_response(),
         Ok(None) => error_response(StatusCode::NOT_FOUND, "job_not_found"),
@@ -254,7 +258,7 @@ async fn work_once(
     state: &AppState,
     pool: &MySqlPool,
 ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
-    let Some(job) = sqlx::query_as::<_, Job>("SELECT id,user_id,project_id,request,status,result,error,created_at,updated_at,approval_payload FROM galileo_jobs WHERE status='queued' ORDER BY created_at LIMIT 1")
+    let Some(job) = sqlx::query_as::<_, Job>("SELECT id,user_id,project_id,checkpoint_id,request,status,result,error,created_at,updated_at,approval_payload FROM galileo_jobs WHERE status='queued' ORDER BY created_at LIMIT 1")
         .fetch_optional(pool).await? else { return Ok(()); };
     let claimed = sqlx::query("UPDATE galileo_jobs SET status='running',claimed_at=?,updated_at=? WHERE id=? AND status='queued'")
         .bind(now()).bind(now()).bind(&job.id).execute(pool).await?;

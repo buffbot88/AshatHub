@@ -19,6 +19,7 @@ use crate::{auth, response::error_response, AppState};
 struct ProjectRequest {
     project_id: String,
     subdomain: Option<String>,
+    checkpoint_id: Option<String>,
 }
 #[derive(Debug, Deserialize)]
 struct ProjectQuery {
@@ -51,7 +52,7 @@ async fn deploy(
     auth::AuthenticatedUser(user): auth::AuthenticatedUser,
     Json(input): Json<ProjectRequest>,
 ) -> Response {
-    publish(&state, &user.id, &input.project_id, input.subdomain.as_deref()).await
+    publish(&state, &user.id, &input.project_id, input.subdomain.as_deref(), input.checkpoint_id.as_deref()).await
 }
 
 async fn status(
@@ -242,6 +243,7 @@ async fn publish(
     user_id: &str,
     project_id: &str,
     requested_subdomain: Option<&str>,
+    checkpoint_id: Option<&str>,
 ) -> Response {
     if !safe_segment(project_id) || !safe_segment(user_id) {
         return error_response(StatusCode::BAD_REQUEST, "invalid_project_id");
@@ -253,7 +255,12 @@ async fn publish(
         },
         None => None,
     };
-    let source = state.projects_root.join(user_id).join(project_id);
+    let project_root = state.projects_root.join(user_id).join(project_id);
+    let source = match checkpoint_id {
+        Some(id) if safe_segment(id) => project_root.join(".checkpoints").join(id),
+        Some(_) => return error_response(StatusCode::BAD_REQUEST, "invalid_checkpoint_id"),
+        None => project_root.clone(),
+    };
     let metadata = match fs::symlink_metadata(&source) {
         Ok(metadata) => metadata,
         Err(_) => return error_response(StatusCode::NOT_FOUND, "project_not_found"),
@@ -395,6 +402,8 @@ fn copy_project(source: &Path, target: &Path) -> io::Result<usize> {
         if file_type.is_symlink()
             || entry.file_name() == ".meta.json"
             || entry.file_name() == ".preview.log"
+            || entry.file_name() == ".checkpoint.json"
+            || entry.file_name() == ".checkpoints"
         {
             continue;
         }

@@ -57,6 +57,10 @@ struct Capacity {
     ports_total: usize,
     queue_depth: usize,
     queue_limit: usize,
+    memory_pressure: Option<f64>,
+    worker_startup_latency_ms: Option<f64>,
+    recent_failure_rate: Option<f64>,
+    estimated_request_cost: Option<f64>,
 }
 
 impl RemoteInference {
@@ -187,7 +191,12 @@ impl RemoteInference {
                         .and_then(|health| health.coding_agent_capacity)
                         .map(|capacity| {
                             let total = (capacity.ports_total + capacity.queue_limit).max(1) as f64;
-                            (capacity.ports_active + capacity.queue_depth) as f64 / total
+                            let queue_load = (capacity.ports_active + capacity.queue_depth) as f64 / total;
+                            let memory = capacity.memory_pressure.unwrap_or(0.5).clamp(0.0, 1.0);
+                            let failures = capacity.recent_failure_rate.unwrap_or(0.0).clamp(0.0, 1.0);
+                            let startup = (capacity.worker_startup_latency_ms.unwrap_or(0.0) / 30_000.0).clamp(0.0, 1.0);
+                            let cost = (capacity.estimated_request_cost.unwrap_or(0.0) / 30_000.0).clamp(0.0, 1.0);
+                            queue_load + memory * 0.25 + failures * 0.5 + startup * 0.1 + cost * 0.1
                         }),
                     _ => None,
                 };

@@ -36,6 +36,7 @@ version = "0.1.0"
 dependencies = [
  "alpha-common",
  "anyhow",
+ "futures-util",
  "reqwest",
  "serde",
  "serde_json",
@@ -51,6 +52,7 @@ dependencies = [
  "alpha-core",
  "anyhow",
  "axum",
+ "futures-util",
  "reqwest",
  "serde",
  "serde_json",

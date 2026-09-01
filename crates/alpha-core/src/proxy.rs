@@ -10,6 +10,20 @@ use alpha_common::ChatRequest;
 use crate::demand::VisionPool;
 use crate::text_worker::TextWorker;
 
+async fn stream_request(url: &str, payload: serde_json::Value) -> anyhow::Result<reqwest::Response> {
+    let response = reqwest::Client::builder()
+        .timeout(Duration::from_secs(120))
+        .build()?
+        .post(url)
+        .json(&payload)
+        .send()
+        .await?;
+    if !response.status().is_success() {
+        return Err(anyhow::anyhow!("worker returned {}", response.status()));
+    }
+    Ok(response)
+}
+
 /// Send a text-only chat completion to the always-on 350M text worker.
 pub async fn text_worker_completions(
     worker: &TextWorker,
@@ -60,8 +74,37 @@ pub async fn text_worker_completions(
     ))
 }
 
+pub async fn text_worker_stream(
+    worker: &TextWorker,
+    request: &ChatRequest,
+) -> anyhow::Result<reqwest::Response> {
+    let messages: Vec<_> = request.messages.iter().filter(|message| message.role != "system").cloned().collect();
+    stream_request(&worker.completions_url(), serde_json::json!({
+        "model": "local", "messages": messages, "max_tokens": request.max_tokens.min(1024),
+        "temperature": request.temperature, "stream": true,
+    })).await
+}
+
 /// Send a vision chat completion to the on-demand VL pool.
 /// The pool auto-starts a VL instance if none is running.
+pub async fn vision_stream(
+    pool: &VisionPool,
+    request: &ChatRequest,
+) -> anyhow::Result<(u16, reqwest::Response)> {
+    let port = pool.acquire().await?;
+    let response = stream_request(&format!("http://127.0.0.1:{}/v1/chat/completions", port), serde_json::json!({
+        "model": "local", "messages": request.messages, "max_tokens": request.max_tokens.min(4096),
+        "temperature": request.temperature, "stream": true,
+    })).await;
+    match response {
+        Ok(response) => Ok((port, response)),
+        Err(error) => {
+            pool.release(port).await;
+            Err(error)
+        }
+    }
+}
+
 pub async fn vision_completions(
     pool: &VisionPool,
     request: &ChatRequest,

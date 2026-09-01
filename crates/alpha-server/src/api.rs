@@ -1,4 +1,5 @@
 use axum::{
+    body::Body,
     extract::State,
     http::{header, HeaderMap, StatusCode},
     response::{IntoResponse, Response},
@@ -6,6 +7,7 @@ use axum::{
     Json, Router,
 };
 use serde::Serialize;
+use futures_util::StreamExt;
 use std::sync::Arc;
 use tokio::{sync::Semaphore, time::{timeout, Duration}};
 
@@ -123,6 +125,20 @@ async fn chat_completions(
         queue.dequeue();
     }
 
+    if request.stream {
+        match intent {
+            Intent::LocalInference => return match alpha_core::proxy::text_worker_stream(&state.text_worker, &request).await {
+                Ok(response) => upstream_stream_response(response),
+                Err(error) => completion_response(true, StatusCode::BAD_GATEWAY, serde_json::json!({"error": error.to_string()})),
+            },
+            Intent::Vision => return match alpha_core::proxy::vision_stream(&state.vision_pool, &request).await {
+                Ok((port, response)) => vision_stream_response(state.vision_pool.clone(), port, response),
+                Err(error) => completion_response(true, StatusCode::BAD_GATEWAY, serde_json::json!({"error": error.to_string()})),
+            },
+            _ => {}
+        }
+    }
+
     match intent {
         // ── Vision: on-demand 450M VL ──────────────────────────
         Intent::Vision => {
@@ -206,6 +222,24 @@ fn completion_response(stream: bool, status: StatusCode, body: serde_json::Value
         [(header::CONTENT_TYPE, "text/event-stream"), (header::CACHE_CONTROL, "no-cache")],
         payload,
     ).into_response()
+}
+
+fn upstream_stream_response(response: reqwest::Response) -> Response {
+    let stream = response.bytes_stream().map(|chunk| chunk.map_err(axum::Error::new));
+    (StatusCode::OK, [(header::CONTENT_TYPE, "text/event-stream"), (header::CACHE_CONTROL, "no-cache")], Body::from_stream(stream)).into_response()
+}
+
+fn vision_stream_response(pool: Arc<alpha_core::demand::VisionPool>, port: u16, response: reqwest::Response) -> Response {
+    let stream = futures_util::stream::unfold((response.bytes_stream(), Some((pool, port))), |(mut input, release)| async move {
+        match input.next().await {
+            Some(chunk) => Some((chunk.map_err(axum::Error::new), (input, release))),
+            None => {
+                if let Some((pool, port)) = release { pool.release(port).await; }
+                None
+            }
+        }
+    });
+    (StatusCode::OK, [(header::CONTENT_TYPE, "text/event-stream"), (header::CACHE_CONTROL, "no-cache")], Body::from_stream(stream)).into_response()
 }
 
 async fn models() -> impl IntoResponse {

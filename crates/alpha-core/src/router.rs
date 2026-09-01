@@ -30,9 +30,13 @@ impl IntentRouter {
         messages.iter().any(|m| m.has_image())
     }
 
-    /// Route local chat and vision through the 450M VL worker.
-    pub fn classify_local(_messages: &[ChatMessage]) -> Intent {
-        Intent::Vision
+    /// Route explicit local requests to the hot 350M text worker unless they contain images.
+    pub fn classify_local(messages: &[ChatMessage]) -> Intent {
+        if Self::has_images(messages) {
+            Intent::Vision
+        } else {
+            Intent::LocalInference
+        }
     }
 
     /// Classify the intent of an incoming request.
@@ -43,7 +47,7 @@ impl IntentRouter {
         }
 
         match mode {
-            Some("chat") | Some("plan") => return Intent::Vision,
+            Some("chat") | Some("plan") => return Intent::LocalInference,
             Some("vision") => return Intent::Vision,
             Some("build") => return Intent::FileGeneration,
             Some("debug") => return Intent::ChatStudio,
@@ -67,8 +71,8 @@ impl IntentRouter {
 
         }
 
-        // Default chat uses the 450M VL worker.
-        Intent::Vision
+        // Default text chat uses the hot 350M worker.
+        Intent::LocalInference
     }
 
     /// Get the appropriate endpoint for the given intent.
@@ -114,10 +118,10 @@ mod tests {
     }
 
     #[test]
-    fn local_text_uses_vl_worker() {
+    fn local_text_uses_text_worker() {
         assert_eq!(
             IntentRouter::classify_local(&[text_message()]),
-            Intent::Vision
+            Intent::LocalInference
         );
     }
 
@@ -133,8 +137,8 @@ mod tests {
             text_worker: Default::default(),
             vision: Default::default(),
         });
-        assert_eq!(router.classify(&[text_message()], true, Some("chat")), Intent::Vision);
-        assert_eq!(router.classify(&[text_message()], true, Some("plan")), Intent::Vision);
+        assert_eq!(router.classify(&[text_message()], true, Some("chat")), Intent::LocalInference);
+        assert_eq!(router.classify(&[text_message()], true, Some("plan")), Intent::LocalInference);
         assert_eq!(router.classify(&[text_message()], true, Some("vision")), Intent::Vision);
         assert_eq!(router.classify(&[text_message()], true, Some("build")), Intent::FileGeneration);
         assert_eq!(router.classify(&[text_message()], true, Some("debug")), Intent::ChatStudio);

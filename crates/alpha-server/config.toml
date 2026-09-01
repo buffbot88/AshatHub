@@ -46,7 +46,7 @@ always_on = true
 # Vision on-demand settings.
 # VL instances auto-shutdown after idle_timeout_secs to free RAM.
 [vision]
-idle_timeout_secs = 300
+idle_timeout_secs = 1800
 on_demand = true
 
 [public]

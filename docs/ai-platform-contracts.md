@@ -2,6 +2,12 @@
 
 Status: Phase 0 contract baseline. These are target contracts for later implementation; current endpoints are not assumed to satisfy them yet.
 
+## Canonical agent contract
+
+All four runtime layers migrate toward `AgentRequest` with `conversation_id`, optional `project_id`, `messages`, optional `operation` (`chat`, `agent`, or `vision`), and `capabilities` (`tools`, `vision`). Chat/Plan/Build modes are excluded.
+
+The canonical stream events are `response.start`, `text.delta`, `tool.start`, `tool.arguments`, `tool.result`, `status`, `error`, and `response.complete`. Tool identity and arguments are structured event data. No Galileo consumer may parse assistant text, JSON in message content, prefixes, or regular expressions to detect tool calls.
+
 ## Communication boundary
 
 ```text

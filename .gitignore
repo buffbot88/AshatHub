@@ -10,6 +10,7 @@ google*.json
 *_rsa
 id_rsa
 modules/AshatHub/config/server_config.json
+crates/alpha-server/config.toml
 
 # Runtime data
 storage/

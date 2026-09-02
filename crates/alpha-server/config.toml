@@ -35,13 +35,10 @@ max_concurrent = 9
 min_instances = 0
 port_base = 3001
 
-# Always-on text worker (350M) — handles intent classification,
-# build planning, conversation, brainstorming.
-[text_worker]
-model = "../../models/LFM2.5-350M-Q4_K_M.gguf"
-port = 3005
-ctx_size = 4096
-always_on = true
+# Liquid chat/tool backend. Set this to the deployed Liquid runtime.
+[liquid]
+endpoint = ""
+model = "liquid"
 
 # Vision on-demand settings.
 # VL instances auto-shutdown after idle_timeout_secs to free RAM.

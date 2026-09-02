@@ -10,8 +10,7 @@ pub struct Config {
     pub agents: AgentPoolConfig,
     pub queue: QueueConfig,
     pub pool: PoolConfig,
-    #[serde(default)]
-    pub text_worker: TextWorkerConfig,
+    pub liquid: LiquidConfig,
     #[serde(default)]
     pub vision: VisionConfig,
 }
@@ -30,32 +29,12 @@ pub struct ModelsConfig {
     pub cpu_cap: u32,
 }
 
-/// Always-on text worker (350M). Handles intent classification,
-/// build planning, conversation, brainstorming.
 #[derive(serde::Deserialize, Clone)]
-pub struct TextWorkerConfig {
+pub struct LiquidConfig {
+    pub endpoint: String,
     pub model: String,
-    pub port: u16,
-    #[serde(default = "default_ctx_size")]
-    pub ctx_size: u32,
-    #[serde(default = "default_true")]
-    pub always_on: bool,
 }
 
-impl Default for TextWorkerConfig {
-    fn default() -> Self {
-        Self {
-            model: "../../models/LFM2.5-350M-Q4_K_M.gguf".into(),
-            port: 3005,
-            ctx_size: 4096,
-            always_on: true,
-        }
-    }
-}
-
-fn default_ctx_size() -> u32 {
-    4096
-}
 fn default_true() -> bool {
     true
 }

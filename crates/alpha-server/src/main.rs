@@ -4,7 +4,7 @@ use alpha_common::Config;
 use alpha_core::demand::VisionPool;
 use alpha_core::queue::RequestQueue;
 use alpha_core::router::IntentRouter;
-use alpha_core::text_worker::TextWorker;
+use alpha_core::backend::LiquidBackend;
 use anyhow::Result;
 use axum::extract::DefaultBodyLimit;
 use std::{collections::HashMap, sync::Arc};
@@ -16,9 +16,8 @@ use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
 pub struct AppState {
     pub queue: Arc<RwLock<RequestQueue>>,
     pub router: Arc<IntentRouter>,
-    pub text_worker: Arc<TextWorker>,
+    pub liquid: Arc<LiquidBackend>,
     pub vision_pool: Arc<VisionPool>,
-    pub text_slots: Arc<Semaphore>,
     pub vision_slots: Arc<Semaphore>,
     pub agent_slots: Arc<Semaphore>,
     pub account_slots: Arc<tokio::sync::Mutex<HashMap<String, Arc<Semaphore>>>>,
@@ -39,9 +38,9 @@ async fn main() -> Result<()> {
     // Load config
     let config = load_config().await?;
     tracing::info!(
-        "Loaded config - server port: {}, text worker port: {}, VL idle timeout: {}s",
+        "Loaded config - server port: {}, Liquid endpoint: {}, VL idle timeout: {}s",
         config.server.port,
-        config.text_worker.port,
+        config.liquid.endpoint,
         config.vision.idle_timeout_secs
     );
 
@@ -51,16 +50,7 @@ async fn main() -> Result<()> {
     // Initialize request queue
     let queue = RequestQueue::new(config.queue.max_requests, config.queue.max_concurrent);
 
-    // Initialize the always-on text worker (350M).
-    let text_worker = Arc::new(TextWorker::new(config.clone()));
-    if config.text_worker.always_on {
-        if let Err(e) = text_worker.ensure_running().await {
-            tracing::warn!(
-                "text worker initial start failed: {} (supervisor will retry)",
-                e
-            );
-        }
-    }
+    let liquid = Arc::new(LiquidBackend::new(config.liquid.clone())?);
 
     // Initialize the on-demand vision pool (450M VL).
     // min_instances = 0: VL instances are only started when images arrive.
@@ -70,21 +60,14 @@ async fn main() -> Result<()> {
         vision_pool.release(port).await;
     }
 
-    // Start supervision: text worker health + VL idle shutdown.
-    alpha_core::supervision::spawn(
-        text_worker.clone(),
-        vision_pool.clone(),
-        std::time::Duration::from_secs(10),
-    );
+    alpha_core::supervision::spawn(vision_pool.clone(), std::time::Duration::from_secs(10));
 
     // Create shared state
     let state = AppState {
         queue: Arc::new(RwLock::new(queue)),
         router: Arc::new(intent_router),
-        text_worker,
+        liquid,
         vision_pool,
-        // One local 350M process; three independent remote coding agents.
-        text_slots: Arc::new(Semaphore::new(1)),
         vision_slots: Arc::new(Semaphore::new(config.models.max_instances.max(1) as usize)),
         agent_slots: Arc::new(Semaphore::new(config.agents.endpoints.len().max(1))),
         account_slots: Arc::new(tokio::sync::Mutex::new(HashMap::new())),

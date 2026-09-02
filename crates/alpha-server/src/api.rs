@@ -13,7 +13,8 @@ use tokio::{sync::Semaphore, time::{timeout, Duration}};
 
 use crate::AppState;
 use alpha_common::{AgentEvent, ChatRequest};
-use alpha_core::router::{Intent, IntentRouter};
+use alpha_core::backend::ChatBackend;
+use alpha_core::router::Intent;
 
 pub fn create_router(state: AppState) -> Router {
     Router::new()
@@ -56,13 +57,7 @@ async fn chat_completions(
             ).into_response();
         }
     }
-    // Classify intent — image detection + "model": "local" bypass.
-    let intent = if request.model.as_deref() == Some("local") {
-        // "model": "local" from AshatHub — check for images.
-        IntentRouter::classify_local(&request.messages)
-    } else {
-        state.router.classify(&request.messages, request.stream, request.mode.as_deref())
-    };
+    let intent = state.router.classify(&request.messages, request.stream, request.mode.as_deref());
 
     tracing::info!(
         "Classified intent: {:?} ({} messages)",
@@ -90,16 +85,8 @@ async fn chat_completions(
 
     let capacity = match intent {
         Intent::Vision => state.vision_slots.clone(),
-        Intent::LocalInference => state.text_slots.clone(),
-        Intent::ChatStudio | Intent::FileGeneration => state.agent_slots.clone(),
-        Intent::Unknown => {
-            let mut queue = state.queue.write().await;
-            queue.dequeue();
-            return completion_response(request.stream, StatusCode::BAD_REQUEST, serde_json::json!({
-                "error": "Unknown intent",
-                "message": "Could not classify the request"
-            }));
-        }
+        Intent::Liquid => state.agent_slots.clone(),
+        Intent::RemoteExecution => state.agent_slots.clone(),
     };
     let _permit = match timeout(Duration::from_secs(30), capacity.acquire_owned()).await {
         Ok(Ok(permit)) => permit,
@@ -127,7 +114,7 @@ async fn chat_completions(
 
     if request.stream {
         match intent {
-            Intent::LocalInference => return match alpha_core::proxy::text_worker_stream(&state.text_worker, &request).await {
+            Intent::Liquid => return match state.liquid.stream(&request).await {
                 Ok(response) => {
                     if headers.get("x-galileo-protocol").and_then(|value| value.to_str().ok()) == Some("events") {
                         canonical_stream_response(response)
@@ -166,22 +153,8 @@ async fn chat_completions(
             }
         }
 
-        // ── Text: always-on 350M text worker ───────────────────
-        Intent::LocalInference => {
-            match alpha_core::proxy::text_worker_completions(&state.text_worker, &request).await {
-                Ok(body) => completion_response(request.stream, StatusCode::OK, body),
-                Err(e) => {
-                    tracing::error!("Text worker inference failed: {}", e);
-                    completion_response(request.stream, StatusCode::BAD_GATEWAY, serde_json::json!({
-                        "error": "Text worker inference failed",
-                        "message": e.to_string()
-                    }))
-                }
-            }
-        }
-
         // ── Coding: Omega/Beta/Delta ───────────────────────────
-        Intent::ChatStudio | Intent::FileGeneration => {
+        Intent::RemoteExecution => {
             let remote = alpha_core::inference::RemoteInference::new(state.router.config().clone());
             match remote.infer(&request).await {
                 Ok(response) => completion_response(request.stream, StatusCode::OK, serde_json::to_value(response).unwrap_or_default()),
@@ -195,10 +168,10 @@ async fn chat_completions(
             }
         }
 
-        Intent::Unknown => completion_response(request.stream, StatusCode::BAD_REQUEST, serde_json::json!({
-            "error": "Unknown intent",
-            "message": "Could not classify the request"
-        })),
+        Intent::Liquid => match state.liquid.stream(&request).await {
+            Ok(response) => completion_response(request.stream, StatusCode::OK, response.json().await.unwrap_or_default()),
+            Err(error) => completion_response(request.stream, StatusCode::BAD_GATEWAY, serde_json::json!({"error": error.to_string()})),
+        },
     }
 }
 
@@ -350,7 +323,7 @@ struct StatusResponse {
     queued_requests: usize,
     max_queue: usize,
     active_requests: usize,
-    available_text_slots: usize,
+    available_liquid_slots: usize,
     available_agent_slots: usize,
     available_vision_slots: usize,
     running_vision_instances: usize,
@@ -359,7 +332,7 @@ struct StatusResponse {
 
 async fn status(State(state): State<AppState>) -> impl IntoResponse {
     let queue = state.queue.read().await;
-    let text_available = state.text_slots.available_permits();
+    let text_available = state.agent_slots.available_permits();
     let agent_available = state.agent_slots.available_permits();
     let vision_available = state.vision_slots.available_permits();
     Json(StatusResponse {
@@ -368,7 +341,7 @@ async fn status(State(state): State<AppState>) -> impl IntoResponse {
         active_requests: text_available.max(1) - text_available
             + agent_available.max(1) - agent_available
             + vision_available.max(1) - vision_available,
-        available_text_slots: text_available,
+        available_liquid_slots: text_available,
         available_agent_slots: agent_available,
         available_vision_slots: vision_available,
         running_vision_instances: state.vision_pool.running_count().await,
@@ -378,13 +351,13 @@ async fn status(State(state): State<AppState>) -> impl IntoResponse {
 
 #[derive(Serialize)]
 struct WorkersResponse {
-    text_worker_healthy: bool,
+    liquid_backend_configured: bool,
     vision_worker_active: bool,
 }
 
 async fn workers(State(state): State<AppState>) -> impl IntoResponse {
     Json(WorkersResponse {
-        text_worker_healthy: state.text_worker.is_alive().await,
+        liquid_backend_configured: !state.router.config().liquid.endpoint.is_empty(),
         vision_worker_active: state.vision_pool.has_running().await,
     })
 }

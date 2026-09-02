@@ -2,14 +2,9 @@ use alpha_common::{ChatMessage, Config};
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum Intent {
-    /// Text-only helper/router work on the local 350M worker.
-    LocalInference,
-    /// Has images: route to on-demand 450M VL vision pool.
+    Liquid,
     Vision,
-    /// Route to Omega/Beta/Delta coding agents.
-    ChatStudio,
-    FileGeneration,
-    Unknown,
+    RemoteExecution,
 }
 
 pub struct IntentRouter {
@@ -17,143 +12,29 @@ pub struct IntentRouter {
 }
 
 impl IntentRouter {
-    pub fn new(config: Config) -> Self {
-        Self { config }
-    }
+    pub fn new(config: Config) -> Self { Self { config } }
+    pub fn config(&self) -> &Config { &self.config }
 
-    pub fn config(&self) -> &Config {
-        &self.config
-    }
-
-    /// Check if any message in the request contains images.
     pub fn has_images(messages: &[ChatMessage]) -> bool {
-        messages.iter().any(|m| m.has_image())
+        messages.iter().any(ChatMessage::has_image)
     }
 
-    /// Route explicit local requests to the hot 350M text worker unless they contain images.
-    pub fn classify_local(messages: &[ChatMessage]) -> Intent {
-        if Self::has_images(messages) {
-            Intent::Vision
-        } else {
-            Intent::LocalInference
-        }
+    /// Routing is based only on request capabilities. Text is Liquid; images use VL.
+    pub fn classify(&self, messages: &[ChatMessage], _is_stream: bool, _operation: Option<&str>) -> Intent {
+        if Self::has_images(messages) { Intent::Vision } else { Intent::Liquid }
     }
 
-    /// Classify the intent of an incoming request.
-    pub fn classify(&self, messages: &[ChatMessage], _is_stream: bool, mode: Option<&str>) -> Intent {
-        // Image detection takes priority — always route to vision pool.
-        if Self::has_images(messages) {
-            return Intent::Vision;
-        }
-
-        match mode {
-            Some("chat") | Some("plan") => return Intent::LocalInference,
-            Some("vision") => return Intent::Vision,
-            Some("build") => return Intent::FileGeneration,
-            Some("debug") => return Intent::ChatStudio,
-            _ => {}
-        }
-
-        // Analyze message content for intent. Streaming is transport, not intent.
-        if let Some(last_msg) = messages.last() {
-            let content = last_msg.text().to_lowercase();
-
-            if content.contains("generate")
-                || content.contains("create file")
-                || content.contains("write code")
-                || content.contains("complete code")
-                || content.contains("implementation")
-                || content.contains("implement")
-                || content.contains("build")
-            {
-                return Intent::FileGeneration;
-            }
-
-        }
-
-        // Default text chat uses the hot 350M worker.
-        Intent::LocalInference
-    }
-
-    /// Get the appropriate endpoint for the given intent.
     pub fn get_endpoint(&self, intent: &Intent) -> String {
         match intent {
-            Intent::ChatStudio => {
-                let base = self
-                    .config
-                    .agents
-                    .endpoints
-                    .first()
-                    .map(|endpoint| endpoint.url.as_str())
-                    .unwrap_or(self.config.omega.url.as_str());
-                format!("{}/v1/chat/completions", base.trim_end_matches('/'))
-            }
-            Intent::LocalInference | Intent::FileGeneration | Intent::Vision => "local".to_string(),
-            Intent::Unknown => "local".to_string(),
+            Intent::RemoteExecution => self.config.agents.endpoints.first()
+                .map(|endpoint| format!("{}/v1/chat/completions", endpoint.url.trim_end_matches('/')))
+                .unwrap_or_else(|| format!("{}/v1/chat/completions", self.config.omega.url.trim_end_matches('/'))),
+            Intent::Liquid => format!("{}/v1/chat/completions", self.config.liquid.endpoint.trim_end_matches('/')),
+            Intent::Vision => "local".into(),
         }
     }
 
-    /// Get headers for remote requests.
     pub fn get_headers(&self) -> Vec<(String, String)> {
-        vec![
-            ("Content-Type".to_string(), "application/json".to_string()),
-            (
-                self.config.omega.auth_header.clone(),
-                self.config.omega.api_key.clone(),
-            ),
-        ]
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::{Intent, IntentRouter};
-    use alpha_common::{ChatMessage, ContentPart, ImageUrl, MessageContent};
-
-    fn text_message() -> ChatMessage {
-        ChatMessage {
-            role: "user".into(),
-            content: MessageContent::Text("hello".into()),
-        }
-    }
-
-    #[test]
-    fn local_text_uses_text_worker() {
-        assert_eq!(
-            IntentRouter::classify_local(&[text_message()]),
-            Intent::LocalInference
-        );
-    }
-
-    #[test]
-    fn explicit_modes_use_expected_workers() {
-        let router = IntentRouter::new(alpha_common::Config {
-            server: alpha_common::ServerConfig { host: "127.0.0.1".into(), port: 3000 },
-            models: alpha_common::ModelsConfig { local_model: "local".into(), mmproj: "mmproj".into(), max_instances: 3, cpu_cap: 90 },
-            omega: alpha_common::OmegaConfig { url: "http://omega".into(), api_key: "key".into(), auth_header: "X-Key".into(), model: "model".into() },
-            agents: Default::default(),
-            queue: alpha_common::QueueConfig { max_requests: 1, max_concurrent: 1 },
-            pool: alpha_common::PoolConfig { min_instances: 0, port_base: 3001 },
-            text_worker: Default::default(),
-            vision: Default::default(),
-        });
-        assert_eq!(router.classify(&[text_message()], true, Some("chat")), Intent::LocalInference);
-        assert_eq!(router.classify(&[text_message()], true, Some("plan")), Intent::LocalInference);
-        assert_eq!(router.classify(&[text_message()], true, Some("vision")), Intent::Vision);
-        assert_eq!(router.classify(&[text_message()], true, Some("build")), Intent::FileGeneration);
-        assert_eq!(router.classify(&[text_message()], true, Some("debug")), Intent::ChatStudio);
-    }
-
-    #[test]
-    fn local_image_uses_vision_worker() {
-        let message = ChatMessage {
-            role: "user".into(),
-            content: MessageContent::Parts(vec![ContentPart::ImageUrl {
-                image_url: ImageUrl {
-                    url: "data:image/png;base64,abc".into(),
-                },
-            }]),
-        };
-        assert_eq!(IntentRouter::classify_local(&[message]), Intent::Vision);
+        vec![("Content-Type".into(), "application/json".into())]
     }
 }

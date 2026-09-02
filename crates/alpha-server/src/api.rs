@@ -8,7 +8,7 @@ use axum::{
 };
 use serde::Serialize;
 use futures_util::StreamExt;
-use std::sync::Arc;
+use std::{collections::{HashMap, HashSet}, sync::Arc};
 use tokio::{sync::Semaphore, time::{timeout, Duration}};
 
 use crate::AppState;
@@ -222,21 +222,40 @@ fn normalized_stream_response(
     release: Option<(Arc<alpha_core::demand::VisionPool>, u16)>,
 ) -> Response {
     let response_id = format!("resp-{}", std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map(|value| value.as_nanos()).unwrap_or_default());
-    let stream = futures_util::stream::unfold((Box::pin(input), String::new(), false, false, response_id, release), |(mut input, mut buffer, mut started, complete, response_id, release)| async move {
+    let stream = futures_util::stream::unfold((Box::pin(input), String::new(), false, false, response_id, release, HashSet::<String>::new(), HashMap::<String, String>::new()), |(mut input, mut buffer, mut started, complete, response_id, release, mut tool_ids, mut tool_args)| async move {
         loop {
             if let Some(end) = buffer.find("\n\n") {
                 let record: String = buffer.drain(..end + 2).collect();
                 if let Some(data) = record.lines().find_map(|line| line.strip_prefix("data: ")).filter(|data| *data != "[DONE]") {
                     if let Ok(chunk) = serde_json::from_str::<serde_json::Value>(data) {
                         let content = chunk.pointer("/choices/0/delta/content").and_then(serde_json::Value::as_str).unwrap_or_default();
+                        let mut output = String::new();
                         if !content.is_empty() {
-                            let mut output = String::new();
                             if !started {
                                 started = true;
                                 output.push_str(&encode_event(&AgentEvent::ResponseStart { response_id: response_id.clone() }));
                             }
                             output.push_str(&encode_event(&AgentEvent::TextDelta { delta: content.to_owned() }));
-                            return Some((Ok::<bytes::Bytes, std::convert::Infallible>(bytes::Bytes::from(output)), (input, buffer, started, complete, response_id, release)));
+                        }
+                        if let Some(calls) = chunk.pointer("/choices/0/delta/tool_calls").and_then(serde_json::Value::as_array) {
+                            for call in calls {
+                                let id = call.get("id").and_then(serde_json::Value::as_str).unwrap_or_default().to_owned();
+                                if id.is_empty() { continue; }
+                                if tool_ids.insert(id.clone()) {
+                                    if let Some(name) = call.pointer("/function/name").and_then(serde_json::Value::as_str) {
+                                        output.push_str(&encode_event(&AgentEvent::ToolStart { id: id.clone(), name: name.to_owned() }));
+                                    }
+                                }
+                                if let Some(args) = call.pointer("/function/arguments").and_then(serde_json::Value::as_str) {
+                                    tool_args.entry(id.clone()).or_default().push_str(args);
+                                    if let Ok(arguments) = serde_json::from_str(&tool_args[&id]) {
+                                        output.push_str(&encode_event(&AgentEvent::ToolArguments { id, arguments }));
+                                    }
+                                }
+                            }
+                        }
+                        if !output.is_empty() {
+                            return Some((Ok::<bytes::Bytes, std::convert::Infallible>(bytes::Bytes::from(output)), (input, buffer, started, complete, response_id, release, tool_ids, tool_args)));
                         }
                     }
                 }
@@ -247,13 +266,13 @@ fn normalized_stream_response(
                 Some(Err(error)) => {
                     let output = encode_event(&AgentEvent::Error { code: "upstream_stream".into(), message: error.to_string(), retryable: true });
                     if let Some((pool, port)) = release { pool.release(port).await; }
-                    return Some((Ok::<bytes::Bytes, std::convert::Infallible>(bytes::Bytes::from(output)), (input, buffer, started, true, response_id, None)));
+                    return Some((Ok::<bytes::Bytes, std::convert::Infallible>(bytes::Bytes::from(output)), (input, buffer, started, true, response_id, None, tool_ids, tool_args)));
                 }
                 None => {
                     if !complete {
                         if let Some((pool, port)) = release { pool.release(port).await; }
                         let output = encode_event(&AgentEvent::ResponseComplete);
-                        return Some((Ok::<bytes::Bytes, std::convert::Infallible>(bytes::Bytes::from(output)), (input, buffer, started, true, response_id, None)));
+                        return Some((Ok::<bytes::Bytes, std::convert::Infallible>(bytes::Bytes::from(output)), (input, buffer, started, true, response_id, None, tool_ids, tool_args)));
                     }
                     return None;
                 }

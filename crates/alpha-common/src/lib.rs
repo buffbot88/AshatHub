@@ -186,13 +186,19 @@ pub enum AgentEvent {
     #[serde(rename = "tool.arguments")]
     ToolArguments { id: String, arguments: serde_json::Value },
     #[serde(rename = "tool.result")]
-    ToolResult { id: String, ok: bool, result: Option<serde_json::Value>, error: Option<String> },
+    ToolResult { id: String, ok: bool, result: Option<serde_json::Value>, error: Option<ToolError> },
     #[serde(rename = "status")]
     Status { state: String, message: Option<String> },
     #[serde(rename = "error")]
     Error { code: String, message: String, retryable: bool },
     #[serde(rename = "response.complete")]
     ResponseComplete,
+}
+
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+pub struct ToolError {
+    pub code: String,
+    pub message: String,
 }
 
 #[derive(Debug, Clone, serde::Deserialize)]
@@ -208,6 +214,8 @@ pub struct ChatRequest {
     pub max_tokens: u32,
     #[serde(default = "default_temperature")]
     pub temperature: f32,
+    #[serde(default)]
+    pub tools: Option<Vec<serde_json::Value>>,
 }
 
 fn default_max_tokens() -> u32 {

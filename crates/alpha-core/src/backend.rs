@@ -31,6 +31,8 @@ impl LiquidBackend {
                 "max_tokens": request.max_tokens,
                 "temperature": request.temperature,
                 "stream": true,
+                "tools": request.tools,
+                "tool_choice": "auto",
             }))
             .send()
             .await?;

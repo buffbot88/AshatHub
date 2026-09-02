@@ -7,8 +7,8 @@
 //!   - GET  /api/oauth/userinfo                           verify Bearer id_token
 //!   - GET  /api/oauth/.well-known/jwks.json              RSA public key set
 //!
-//! The signing key is persisted (default `storage/oidc-signing-key.pem`) so
-//! restarting the hub does not invalidate outstanding JWKS caches or id_tokens.
+//! The signing key is persisted at the runtime-managed path supplied by
+//! `ASHAT_OIDC_PRIVATE_KEY_FILE`; no signing material belongs in the repository.
 
 use std::{
     collections::HashMap,
@@ -667,8 +667,13 @@ fn error_html(message: &str) -> String {
 // ── Key management ─────────────────────────────────────────────────
 
 fn load_or_create_key() -> RsaPrivateKey {
-    let path = env::var("ASHAT_OIDC_KEY_FILE")
-        .unwrap_or_else(|_| "storage/oidc-signing-key.pem".to_owned());
+    let path = env::var("ASHAT_OIDC_PRIVATE_KEY_FILE").unwrap_or_else(|_| {
+        if cfg!(test) {
+            "/tmp/ashat-oidc-signing-key-test.pem".to_owned()
+        } else {
+            panic!("ASHAT_OIDC_PRIVATE_KEY_FILE must point outside the repository")
+        }
+    });
     if let Ok(pem) = std::fs::read_to_string(&path) {
         if let Ok(key) = RsaPrivateKey::from_pkcs8_pem(&pem) {
             return key;
@@ -681,6 +686,13 @@ fn load_or_create_key() -> RsaPrivateKey {
             let _ = std::fs::create_dir_all(parent);
         }
         let _ = std::fs::write(&path, pem.as_str());
+        #[cfg(unix)]
+        if let Ok(metadata) = std::fs::metadata(&path) {
+            use std::os::unix::fs::PermissionsExt;
+            let mut permissions = metadata.permissions();
+            permissions.set_mode(0o600);
+            let _ = std::fs::set_permissions(&path, permissions);
+        }
     }
     key
 }

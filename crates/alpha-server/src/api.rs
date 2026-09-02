@@ -12,7 +12,7 @@ use std::sync::Arc;
 use tokio::{sync::Semaphore, time::{timeout, Duration}};
 
 use crate::AppState;
-use alpha_common::ChatRequest;
+use alpha_common::{AgentEvent, ChatRequest};
 use alpha_core::router::{Intent, IntentRouter};
 
 pub fn create_router(state: AppState) -> Router {
@@ -128,11 +128,23 @@ async fn chat_completions(
     if request.stream {
         match intent {
             Intent::LocalInference => return match alpha_core::proxy::text_worker_stream(&state.text_worker, &request).await {
-                Ok(response) => upstream_stream_response(response),
+                Ok(response) => {
+                    if headers.get("x-galileo-protocol").and_then(|value| value.to_str().ok()) == Some("events") {
+                        canonical_stream_response(response)
+                    } else {
+                        upstream_stream_response(response)
+                    }
+                },
                 Err(error) => completion_response(true, StatusCode::BAD_GATEWAY, serde_json::json!({"error": error.to_string()})),
             },
             Intent::Vision => return match alpha_core::proxy::vision_stream(&state.vision_pool, &request).await {
-                Ok((port, response)) => vision_stream_response(state.vision_pool.clone(), port, response),
+                Ok((port, response)) => {
+                    if headers.get("x-galileo-protocol").and_then(|value| value.to_str().ok()) == Some("events") {
+                        canonical_vision_stream_response(state.vision_pool.clone(), port, response)
+                    } else {
+                        vision_stream_response(state.vision_pool.clone(), port, response)
+                    }
+                },
                 Err(error) => completion_response(true, StatusCode::BAD_GATEWAY, serde_json::json!({"error": error.to_string()})),
             },
             _ => {}
@@ -222,6 +234,77 @@ fn completion_response(stream: bool, status: StatusCode, body: serde_json::Value
         [(header::CONTENT_TYPE, "text/event-stream"), (header::CACHE_CONTROL, "no-cache")],
         payload,
     ).into_response()
+}
+
+fn canonical_stream_response(response: reqwest::Response) -> Response {
+    normalized_stream_response(response.bytes_stream(), None)
+}
+
+fn canonical_vision_stream_response(pool: Arc<alpha_core::demand::VisionPool>, port: u16, response: reqwest::Response) -> Response {
+    normalized_stream_response(response.bytes_stream(), Some((pool, port)))
+}
+
+fn normalized_stream_response(
+    input: impl futures_util::Stream<Item = Result<bytes::Bytes, reqwest::Error>> + Send + 'static,
+    release: Option<(Arc<alpha_core::demand::VisionPool>, u16)>,
+) -> Response {
+    let response_id = format!("resp-{}", std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map(|value| value.as_nanos()).unwrap_or_default());
+    let stream = futures_util::stream::unfold((Box::pin(input), String::new(), false, false, response_id, release), |(mut input, mut buffer, mut started, mut complete, response_id, release)| async move {
+        loop {
+            if let Some(end) = buffer.find("\\n\\n") {
+                let record: String = buffer.drain(..end + 2).collect();
+                if let Some(data) = record.lines().find_map(|line| line.strip_prefix("data: ")).filter(|data| *data != "[DONE]") {
+                    if let Ok(chunk) = serde_json::from_str::<serde_json::Value>(data) {
+                        let content = chunk.pointer("/choices/0/delta/content").and_then(serde_json::Value::as_str).unwrap_or_default();
+                        if !content.is_empty() {
+                            let mut output = String::new();
+                            if !started {
+                                started = true;
+                                output.push_str(&encode_event(&AgentEvent::ResponseStart { response_id: response_id.clone() }));
+                            }
+                            output.push_str(&encode_event(&AgentEvent::TextDelta { delta: content.to_owned() }));
+                            return Some((Ok(bytes::Bytes::from(output)), (input, buffer, started, complete, response_id, release)));
+                        }
+                    }
+                }
+                continue;
+            }
+            match input.as_mut().next().await {
+                Some(Ok(chunk)) => buffer.push_str(&String::from_utf8_lossy(&chunk)),
+                Some(Err(error)) => {
+                    let output = encode_event(&AgentEvent::Error { code: "upstream_stream".into(), message: error.to_string(), retryable: true });
+                    if let Some((pool, port)) = release { pool.release(port).await; }
+                    return Some((Ok(bytes::Bytes::from(output)), (input, buffer, started, true, response_id, None)));
+                }
+                None => {
+                    if !complete {
+                        if let Some((pool, port)) = release { pool.release(port).await; }
+                        let output = encode_event(&AgentEvent::ResponseComplete);
+                        return Some((Ok(bytes::Bytes::from(output)), (input, buffer, started, true, response_id, None)));
+                    }
+                    return None;
+                }
+            }
+        }
+    });
+    (StatusCode::OK, [(header::CONTENT_TYPE, "text/event-stream"), (header::CACHE_CONTROL, "no-cache")], Body::from_stream(stream)).into_response()
+}
+
+fn encode_event(event: &AgentEvent) -> String {
+    format!("event: {}\\ndata: {}\\n\\n", event_type(event), serde_json::to_string(event).unwrap_or_else(|_| "{}".into()))
+}
+
+fn event_type(event: &AgentEvent) -> &'static str {
+    match event {
+        AgentEvent::ResponseStart { .. } => "response.start",
+        AgentEvent::TextDelta { .. } => "text.delta",
+        AgentEvent::ToolStart { .. } => "tool.start",
+        AgentEvent::ToolArguments { .. } => "tool.arguments",
+        AgentEvent::ToolResult { .. } => "tool.result",
+        AgentEvent::Status { .. } => "status",
+        AgentEvent::Error { .. } => "error",
+        AgentEvent::ResponseComplete => "response.complete",
+    }
 }
 
 fn upstream_stream_response(response: reqwest::Response) -> Response {

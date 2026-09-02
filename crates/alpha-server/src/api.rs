@@ -249,9 +249,9 @@ fn normalized_stream_response(
     release: Option<(Arc<alpha_core::demand::VisionPool>, u16)>,
 ) -> Response {
     let response_id = format!("resp-{}", std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map(|value| value.as_nanos()).unwrap_or_default());
-    let stream = futures_util::stream::unfold((Box::pin(input), String::new(), false, false, response_id, release), |(mut input, mut buffer, mut started, mut complete, response_id, release)| async move {
+    let stream = futures_util::stream::unfold((Box::pin(input), String::new(), false, false, response_id, release), |(mut input, mut buffer, mut started, complete, response_id, release)| async move {
         loop {
-            if let Some(end) = buffer.find("\\n\\n") {
+            if let Some(end) = buffer.find("\n\n") {
                 let record: String = buffer.drain(..end + 2).collect();
                 if let Some(data) = record.lines().find_map(|line| line.strip_prefix("data: ")).filter(|data| *data != "[DONE]") {
                     if let Ok(chunk) = serde_json::from_str::<serde_json::Value>(data) {
@@ -263,7 +263,7 @@ fn normalized_stream_response(
                                 output.push_str(&encode_event(&AgentEvent::ResponseStart { response_id: response_id.clone() }));
                             }
                             output.push_str(&encode_event(&AgentEvent::TextDelta { delta: content.to_owned() }));
-                            return Some((Ok(bytes::Bytes::from(output)), (input, buffer, started, complete, response_id, release)));
+                            return Some((Ok::<bytes::Bytes, std::convert::Infallible>(bytes::Bytes::from(output)), (input, buffer, started, complete, response_id, release)));
                         }
                     }
                 }
@@ -274,13 +274,13 @@ fn normalized_stream_response(
                 Some(Err(error)) => {
                     let output = encode_event(&AgentEvent::Error { code: "upstream_stream".into(), message: error.to_string(), retryable: true });
                     if let Some((pool, port)) = release { pool.release(port).await; }
-                    return Some((Ok(bytes::Bytes::from(output)), (input, buffer, started, true, response_id, None)));
+                    return Some((Ok::<bytes::Bytes, std::convert::Infallible>(bytes::Bytes::from(output)), (input, buffer, started, true, response_id, None)));
                 }
                 None => {
                     if !complete {
                         if let Some((pool, port)) = release { pool.release(port).await; }
                         let output = encode_event(&AgentEvent::ResponseComplete);
-                        return Some((Ok(bytes::Bytes::from(output)), (input, buffer, started, true, response_id, None)));
+                        return Some((Ok::<bytes::Bytes, std::convert::Infallible>(bytes::Bytes::from(output)), (input, buffer, started, true, response_id, None)));
                     }
                     return None;
                 }
@@ -291,7 +291,7 @@ fn normalized_stream_response(
 }
 
 fn encode_event(event: &AgentEvent) -> String {
-    format!("event: {}\\ndata: {}\\n\\n", event_type(event), serde_json::to_string(event).unwrap_or_else(|_| "{}".into()))
+    format!("event: {}\ndata: {}\n\n", event_type(event), serde_json::to_string(event).unwrap_or_else(|_| "{}".into()))
 }
 
 fn event_type(event: &AgentEvent) -> &'static str {

@@ -9,6 +9,6 @@
 | Alpha runtime config | KEEP, deployment-managed | Contains local runtime settings and is excluded from Git. |
 | Omega JSON action protocol | REMOVED | Native structured tool calls are authoritative. |
 | Omega web/skill tools | REMOVED | Owned by Alpha/Galileo. |
-| Orchestrator/350M path | REMOVED | Execution peers are 1.2B-only. |
+| Retired model-router path | REMOVED | Execution peers are 1.2B-only. |
 
 Compatibility code must not create model requests, semantic routing, or an alternate agent controller.

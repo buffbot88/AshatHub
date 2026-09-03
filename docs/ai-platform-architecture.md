@@ -14,7 +14,7 @@ Galileo (:3200)
   └─ deployment request
         ↓
 Alpha / Ashat AI (:3000)
-  ├─ Chat / Plan → local 350M worker
+  ├─ Singular agent → Liquid 1.2B execution lane
   ├─ Vision → local 450M VL worker
   ├─ Build → Omega/Beta/Delta agent job
   └─ Debug → Omega/Beta/Delta validation job
@@ -80,10 +80,10 @@ Validation and debugging are agent jobs on Omega/Beta/Delta. Those hosts own the
 
 The local models are not validation authorities:
 
-- `LFM2.5-350M-Q4_K_M.gguf` is the always-on local text/router worker.
+- `LFM2.5-1.2B-Instruct` is the execution model; routing is deterministic Rust.
 - `LFM2.5-VL-450M-Q8_0.gguf` plus its `mmproj` is the multimodal local worker.
 
-No additional 350M validation worker is placed on the VL host.
+The 450M VL worker is demand-loaded only for image requests.
 
 ### AshatHub durable storage
 
@@ -110,8 +110,8 @@ During development, the WebContainer is authoritative. An explicit deployment cr
 
 | Mode | Primary path |
 |---|---|
-| Chat | Alpha → local 350M |
-| Plan | Alpha → local 350M |
+| Singular agent | Alpha → Liquid 1.2B |
+| Vision | Alpha → on-demand 450M VL |
 | Vision | Alpha → local 450M VL |
 | Build | Alpha → agent job |
 | Debug | Alpha → agent validation job |

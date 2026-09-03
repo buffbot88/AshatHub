@@ -4,7 +4,7 @@ Status: Phase 0 contract baseline. These are target contracts for later implemen
 
 ## Canonical agent contract
 
-All four runtime layers migrate toward `AgentRequest` with `conversation_id`, optional `project_id`, `messages`, optional `operation` (`chat`, `agent`, or `vision`), and `capabilities` (`tools`, `vision`). Chat/Plan/Build modes are excluded.
+All four runtime layers use `AgentRequest` with `conversation_id`, optional `project_id`, `messages`, optional `operation` (`chat`, `agent`, or `vision`), and `capabilities` (`tools`, `vision`). The singular agent contract has no conversational modes.
 
 The canonical stream events are `response.start`, `text.delta`, `tool.start`, `tool.arguments`, `tool.result`, `status`, `error`, and `response.complete`. Tool identity and arguments are structured event data. No Galileo consumer may parse assistant text, JSON in message content, prefixes, or regular expressions to detect tool calls.
 
@@ -33,14 +33,14 @@ Alpha owns mode routing. Explicit mode takes precedence over content heuristics.
 
 | Operation | Owner | Result |
 |---|---|---|
-| Chat | Alpha + local 350M | assistant response |
-| Plan | Alpha + local 350M | requirements/readiness response |
+| Chat | Alpha + Liquid 1.2B | assistant response |
+| Agent | Alpha + execution peers | structured tool execution |
 | Vision | Alpha + local 450M VL | multimodal response |
 | Build | Alpha + agent pool | job and structured workspace changes |
 | Debug | Alpha + agent pool | validation diagnosis or repair job |
 | Deploy | Galileo + deployment boundary | deployment record and snapshot |
 
-The local model assets are `LFM2.5-350M-Q4_K_M.gguf` and `LFM2.5-VL-450M-Q8_0.gguf` with its multimodal projector. The VL worker is the multimodal worker; it is not a host for a second 350M validation model.
+The local vision asset is `LFM2.5-VL-450M-Q8_0.gguf` with its multimodal projector. Text execution uses the Liquid 1.2B lane; vision is demand-loaded only for image requests.
 
 ## Build job
 

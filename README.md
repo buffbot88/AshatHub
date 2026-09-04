@@ -8,8 +8,6 @@ Workspace root for the Ashat Hosting Platform.
 - `modules/AshatHub/` — ASHAT Hub module
 - `models/` — local model assets
 - `scripts/` — helper scripts
-- `docs/storage-layout-build-plan.md` — root filesystem and `/var/oled/data` migration plan
-- `docs/ashat-hub-rust-migration.md` — Rust/Vite architecture and Alpha cutover record
 - `docs/ai-platform-architecture.md` — canonical Galileo/Alpha/Liquid ownership
 - `docs/ai-platform-contracts.md` — AI event, tool-execution, workspace, and deployment contracts
 

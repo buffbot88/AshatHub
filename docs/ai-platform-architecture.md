@@ -1,37 +1,35 @@
 # AGP Studios AI Platform Architecture
 
-Status: Phase 0 architecture baseline. This document defines ownership and communication boundaries; it does not by itself change runtime behavior.
+Status: current implementation baseline (post-Liquid cutover). Galileo speaks only to the
+Alpha gateway; the Omega/Beta/Delta coding-agent tier no longer sits in the inference path,
+and Galileo has no Chat/Plan/Build conversational modes.
 
 ## System boundary
 
 ```text
 User
   ↓
-Galileo (:3200)
-  ├─ conversation and planning UI
-  ├─ live WebContainer workspace
-  ├─ project preview and terminal
+Galileo
+  ├─ conversation UI and agent loop
+  ├─ live WebContainer workspace (files, editor, preview, terminal)
+  ├─ local tool execution inside the workspace (read-only tools + file/command actions)
   └─ deployment request
+        ↓  /v1/chat/completions  (OpenAI-compatible; canonical SSE with the events header)
+Alpha gateway (alpha-server, :3000)
+  ├─ deterministic intent routing: text → Liquid, image messages → VL
+  ├─ admission: request queue, Liquid slots, VL slots, per-account limits
+  ├─ Liquid lane  → LFM2.5-1.2B-Instruct (streamed)
+  └─ Vision lane  → demand-loaded LFM2.5-VL-450M worker (idle-unloaded)
         ↓
-Alpha / Ashat AI (:3000)
-  ├─ Singular agent → Liquid 1.2B execution lane
-  ├─ Vision → local 450M VL worker
-  ├─ Build → Omega/Beta/Delta agent job
-  └─ Debug → Omega/Beta/Delta validation job
-        ↓
-Omega / Beta / Delta
-  ├─ coding tools and execution environment
-  ├─ implementation
-  └─ validation/debugging
-        ↓
-workspace changes and structured job result
+structured event stream (text.delta / tool.start / tool.arguments / tool.result / status / error)
         ↓
 Galileo workspace
-        ↓ deploy
+        ↓ explicit deploy
 AshatHub durable snapshot and deployment record
 ```
 
-Galileo communicates with Alpha only for AI operations. Galileo must not select, probe, or call Omega, Beta, Delta, individual local model instances, or agent retry paths.
+Galileo communicates with Alpha only for AI operations. Galileo must not select, probe, or
+call Omega, Beta, Delta, individual local model instances, or remote agent retry paths.
 
 ## Ownership
 
@@ -39,62 +37,47 @@ Galileo communicates with Alpha only for AI operations. Galileo must not select,
 
 Owns the user experience:
 
-- conversation and explicit operation modes;
+- conversation and the agent loop;
 - project selection and workspace identity;
 - WebContainer filesystem, preview, editor, and terminal;
-- rendering job events, validation results, and structured file changes;
+- executing structured tool calls against its own workspace: `list`, `read`, `search`,
+  `refresh_context`, file writes, and commands (all abortable from the UI);
+- rendering structured events, tool results, and file changes;
 - requesting deployment;
 - local UI cache and recovery checkpoints, if added.
 
-Galileo is deliberately unaware of model instance selection, agent selection, retry policy, capacity calculations, and agent health internals.
+Galileo is deliberately unaware of model instance selection, retry policy, capacity
+calculations, or worker health internals.
 
 ### Alpha / Ashat AI
 
-Owns AI communication and orchestration:
+Owns AI communication and capacity:
 
-- mode and intent routing;
-- local worker selection;
-- VL capacity and supervision;
-- coding-agent job submission and failover;
-- validation/debug repair loops;
-- common AI job events;
-- bounded duration and repair limits.
+- deterministic intent routing (Liquid vs. Vision by request capabilities);
+- admission control: bounded request queue and per-lane slot semaphores;
+- Liquid backend streaming, health, and error translation;
+- VL demand loading, supervision, and idle unload;
+- the canonical structured event stream;
+- `/health`, `/status`, and `/workers` observability surfaces.
 
-Alpha is the only AI gateway used by Galileo.
+Alpha is the only AI gateway used by Galileo. Routing is plain Rust — no model-based
+classification and no second model tier.
 
-### Omega / Beta / Delta
+### AshatHub
 
-Own the coding-agent execution layer:
+Owns durable platform records and peer-fleet telemetry:
 
-- repository/workspace inspection;
-- implementation and code generation;
-- coding-agent reasoning;
-- agent-side testing and software-engineering work;
-- structured change and result reporting.
+- project metadata and deployment persistence;
+- immutable snapshots and deployment records/URLs;
+- durable jobs/checkpoints infrastructure;
+- telemetry for the Omega/Beta/Delta peer fleet, observed as infrastructure targets.
 
-Their internal distribution is not a Galileo concern.
+Omega/Beta/Delta remain peer fleet nodes (update/restart/telemetry owned by AshatHub
+operators). Distributed request routing and admission scoring across those peers is a later
+phase; current Galileo traffic never selects a peer.
 
-### Validation and debugging
-
-Validation and debugging are agent jobs on Omega/Beta/Delta. Those hosts own the coding tools, dependency environments, test runners, runtime inspection, and repair capability needed to validate real software. Alpha owns job orchestration and limits; Galileo displays the structured result.
-
-The local models are not validation authorities:
-
-- `LFM2.5-1.2B-Instruct` is the execution model; routing is deterministic Rust.
-- `LFM2.5-VL-450M-Q8_0.gguf` plus its `mmproj` is the multimodal local worker.
-
-The 450M VL worker is demand-loaded only for image requests.
-
-### AshatHub durable storage
-
-Owns deployment persistence:
-
-- project metadata;
-- immutable-ish filesystem snapshots;
-- deployment records and URLs;
-- recovery of deployed artifacts.
-
-AshatHub is not a continuous mirror of the live WebContainer workspace. Account-backed conversation history is a separate durable record and can be downloaded by the user.
+AshatHub is not a continuous mirror of the live WebContainer workspace. Account-backed
+conversation history is a separate durable record and can be downloaded by the user.
 
 ## Concepts
 
@@ -104,36 +87,34 @@ AshatHub is not a continuous mirror of the live WebContainer workspace. Account-
 - **Snapshot** — captured filesystem state.
 - **Deployment** — published snapshot plus build and runtime metadata.
 
-During development, the WebContainer is authoritative. An explicit deployment creates a snapshot; browser reload or close does not implicitly deploy.
+During development, the WebContainer is authoritative. An explicit deployment creates a
+snapshot; browser reload or close does not implicitly deploy.
 
-## Modes
+## Agent operation lanes
 
-| Mode | Primary path |
+| Request | Primary path |
 |---|---|
-| Singular agent | Alpha → Liquid 1.2B |
-| Vision | Alpha → on-demand 450M VL |
-| Vision | Alpha → local 450M VL |
-| Build | Alpha → agent job |
-| Debug | Alpha → agent validation job |
-| Build + image | Alpha agent job with multimodal context |
-| Debug + image | Alpha agent validation job with multimodal context |
+| Text (no images) | Alpha → Liquid 1.2B |
+| Image messages | Alpha → demand-loaded 450M VL |
+| Tool calls | typed calls in the event stream, executed locally by Galileo's workspace |
 
-Explicit mode takes precedence over heuristic classification. Images must not silently convert an explicit Build or Debug operation into a standalone Vision request.
+There is one agent loop with no conversational modes. Image messages must not silently
+convert a coding request into a standalone Vision-only reply: tool calls remain part of the
+same loop regardless of lane.
 
-## Build and validation lifecycle
+## Agent operation lifecycle (Galileo side)
 
 ```text
-Build request
-  → Alpha creates job
-  → agent pool executes against workspace
-  → structured file changes returned
-  → validation worker inspects workspace and outputs
-  → pass: job complete
-  → fail: bounded repair iteration
-  → limit reached: job failed with diagnosis
+User message
+  → Alpha streams text + typed tool calls
+  → Galileo executes tools against the live workspace
+  → structured results return to the same model turn
+  → repeat until the turn completes or the user stops the run
 ```
 
-Agent prose is for the user. File operations, validation, and job state are structured platform data. Galileo is the primary software-building surface; Alpha and the agents serve that workflow rather than competing with it.
+Agent prose is for the user. Tool identity and arguments are structured event data — never
+parsed from assistant text. Galileo is the software-building surface; Alpha supplies the
+inference lanes that drive it.
 
 ## Deployment lifecycle
 
@@ -142,42 +123,43 @@ Open project
   → hydrate workspace
   → develop in WebContainer
   → run and preview
-  → validate
   → explicit deploy
   → capture snapshot
   → build/publish
   → persist deployment record
 ```
 
-Deployments must reference immutable snapshots. A later workspace change produces a new deployment rather than mutating an earlier deployment.
+Deployments reference immutable snapshots. A later workspace change produces a new
+deployment rather than mutating an earlier one.
 
-## Common events
+## Events
 
-The platform uses one event vocabulary:
+The chat/agent path uses one canonical event vocabulary:
 
 ```text
-job.created
-job.queued
-job.started
-job.progress
-job.file_changed
-job.validation_started
-job.validation_failed
-job.repair_started
-job.completed
-job.failed
-job.cancelled
-deployment.started
-deployment.completed
-deployment.failed
+response.start
+text.delta
+tool.start
+tool.arguments
+tool.result
+status
+error
+response.complete
 ```
 
-Alpha generates or coordinates AI job events. AshatHub records durable deployment events. Galileo renders events and status.
+The `job.*` and `deployment.*` vocabularies belong to AshatHub's durable jobs and deployment
+records, not the chat path. Events never include prompts, credentials, or file contents in
+logs.
 
 ## Conversation history
 
-Conversation history belongs to the authenticated user account and should be available across sessions. Galileo may cache it locally, but account storage is authoritative for history. Users must be able to download their history in a documented format.
+Conversation history belongs to the authenticated user account and should be available
+across sessions. Galileo may cache it locally, but account storage is authoritative for
+history. Users must be able to download their history in a documented format.
 
 ## Non-goals
 
-This baseline does not redesign deployment APIs, implement account-history migration, or inspect the internal Omega/Beta/Delta implementations. Those require later approved phases and live contract verification.
+- Distributed multi-peer admission and latency scoring (future phase; peers currently run
+  the same Liquid stack and are monitored, not routed to).
+- Account-history migration and schema work.
+- Live Liquid/VL coexistence profiling (needs a deployed Liquid backend).

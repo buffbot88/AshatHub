@@ -19,7 +19,7 @@ pub struct AppState {
     pub liquid: Arc<LiquidBackend>,
     pub vision_pool: Arc<VisionPool>,
     pub vision_slots: Arc<Semaphore>,
-    pub agent_slots: Arc<Semaphore>,
+    pub liquid_slots: Arc<Semaphore>,
     pub account_slots: Arc<tokio::sync::Mutex<HashMap<String, Arc<Semaphore>>>>,
     pub config: Config,
 }
@@ -69,7 +69,7 @@ async fn main() -> Result<()> {
         liquid,
         vision_pool,
         vision_slots: Arc::new(Semaphore::new(config.models.max_instances.max(1) as usize)),
-        agent_slots: Arc::new(Semaphore::new(config.agents.endpoints.len().max(1))),
+        liquid_slots: Arc::new(Semaphore::new(config.queue.max_concurrent.max(1))),
         account_slots: Arc::new(tokio::sync::Mutex::new(HashMap::new())),
         config: config.clone(),
     };

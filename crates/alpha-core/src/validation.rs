@@ -1,1 +1,1 @@
-//! SVE validation — file exists in layout, implementation built during Omega phase.
+//! SVE validation — reserved module, implementation pending.

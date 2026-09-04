@@ -1,5 +1,11 @@
 # Project Galileo Studio
 
+> **ARCHIVED — describes the architecture prior to the Alpha Liquid cutover.**
+> This specification predates the current platform. Galileo no longer delegates coding to the
+> Omega/Beta/Delta agent ecosystem, and the Brainstorm/Build modes, System Validation Engine,
+> and 350M coding pass no longer exist. See `docs/ai-platform-architecture.md` and
+> `docs/ai-platform-contracts.md` for the current architecture.
+
 ## Complete Chat Studio Replacement Specification
 
 ### 1. Project Summary

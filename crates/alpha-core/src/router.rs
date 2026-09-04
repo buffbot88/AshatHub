@@ -4,7 +4,6 @@ use alpha_common::{ChatMessage, Config};
 pub enum Intent {
     Liquid,
     Vision,
-    RemoteExecution,
 }
 
 pub struct IntentRouter {
@@ -26,9 +25,6 @@ impl IntentRouter {
 
     pub fn get_endpoint(&self, intent: &Intent) -> String {
         match intent {
-            Intent::RemoteExecution => self.config.agents.endpoints.first()
-                .map(|endpoint| format!("{}/v1/chat/completions", endpoint.url.trim_end_matches('/')))
-                .unwrap_or_else(|| format!("{}/v1/chat/completions", self.config.omega.url.trim_end_matches('/'))),
             Intent::Liquid => format!("{}/v1/chat/completions", self.config.liquid.endpoint.trim_end_matches('/')),
             Intent::Vision => "local".into(),
         }

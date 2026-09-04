@@ -1,157 +1,118 @@
 # AGP Studios AI Platform Contracts
 
-Status: Phase 0 contract baseline. These are target contracts for later implementation; current endpoints are not assumed to satisfy them yet.
+Status: current contract baseline. Galileo's wire protocol matches `app/lib/runtime/galileo-stream.ts`
+and `alpha-server`'s canonical stream; the Alpha gateway is OpenAI-compatible at
+`/v1/chat/completions`.
 
-## Canonical agent contract
+## Agent request
 
-All four runtime layers use `AgentRequest` with `conversation_id`, optional `project_id`, `messages`, optional `operation` (`chat`, `agent`, or `vision`), and `capabilities` (`tools`, `vision`). The singular agent contract has no conversational modes.
+```ts
+type AgentRequest = {
+  conversation_id: string;
+  project_id?: string;
+  messages: AgentMessage[];
+  operation?: 'chat' | 'agent' | 'vision';
+  capabilities: { tools: boolean; vision: boolean };
+};
+```
 
-The canonical stream events are `response.start`, `text.delta`, `tool.start`, `tool.arguments`, `tool.result`, `status`, `error`, and `response.complete`. Tool identity and arguments are structured event data. No Galileo consumer may parse assistant text, JSON in message content, prefixes, or regular expressions to detect tool calls.
+There are no Chat/Plan/Build conversational modes. Text messages route to the Liquid lane;
+messages containing images route to the 450M VL lane.
+
+## Event stream
+
+When the caller sends `X-Galileo-Protocol: events`, the gateway emits canonical SSE events
+instead of OpenAI chunks:
+
+```text
+response.start     { response_id }
+text.delta         { delta }
+tool.start         { id, name }
+tool.arguments     { id, arguments }
+tool.result        { id, ok, result?, error? }
+status             { state, message? }
+error              { code, message, retryable }
+response.complete  {}
+```
+
+Tool identity and arguments are structured event data. No consumer may parse assistant
+text, JSON embedded in message content, prefixes, or regular expressions to detect tool
+calls. `alpha-common` carries structured `tool_calls` / `tool_call_id` on messages so the
+same protocol round-trips to and from the model backend.
 
 ## Communication boundary
 
 ```text
-Galileo → Alpha only
-Alpha → local workers or Omega/Beta/Delta
-AshatHub → durable account, snapshot, and deployment storage
+Galileo → Alpha only (OpenAI-compatible chat completions + canonical events)
+Alpha   → local workers (Liquid 1.2B text, demand-loaded 450M VL)
+AshatHub → durable account, snapshot, deployment, and peer-fleet telemetry storage
 ```
 
-Galileo must not call or select an individual model instance or coding agent.
+Galileo must not call or select an individual model instance or remote coding agent. The
+Omega/Beta/Delta nodes are peer fleet infrastructure observed by AshatHub telemetry;
+distributed request routing across them is a future phase.
 
-## Operation modes
+## Tool execution
+
+Tools arrive as typed calls in the event stream. Execution is local to the workspace owner:
+
+- Read-only tools (`list`, `read`, `search`, `refresh_context`) run inside Galileo's
+  WebContainer; long-running processes are killed when the user stops the run.
+- File writes and shell commands run through Galileo's action runner, which owns per-action
+  abort signals.
+- The legacy Omega JSON action protocol is removed; structured calls are authoritative.
+
+Every long-running tool either accepts an abort token or owns a killable process handle.
+Results are bounded (output truncation) and repeated-call protection and iteration limits
+live in the agent loop.
+
+## Vision
+
+Image messages are demand-routed to the VL lane (`LFM2.5-VL-450M-Q8_0.gguf` plus its
+multimodal projector). The VL worker loads on first image request and unloads after its idle
+timeout. Vision slots are separate from Liquid slots so an image request cannot starve text.
+
+## Deployment
 
 ```text
-chat
-plan
-vision
-build
-debug
-deploy
+Galileo deployment boundary → capture workspace snapshot → AshatHub durable record
 ```
 
-Alpha owns mode routing. Explicit mode takes precedence over content heuristics.
-
-| Operation | Owner | Result |
-|---|---|---|
-| Chat | Alpha + Liquid 1.2B | assistant response |
-| Agent | Alpha + execution peers | structured tool execution |
-| Vision | Alpha + local 450M VL | multimodal response |
-| Build | Alpha + agent pool | job and structured workspace changes |
-| Debug | Alpha + agent pool | validation diagnosis or repair job |
-| Deploy | Galileo + deployment boundary | deployment record and snapshot |
-
-The local vision asset is `LFM2.5-VL-450M-Q8_0.gguf` with its multimodal projector. Text execution uses the Liquid 1.2B lane; vision is demand-loaded only for image requests.
-
-## Build job
-
-A Build request must identify its workspace and project:
-
-```json
-{
-  "job_id": "generated-by-alpha",
-  "project_id": "...",
-  "workspace_id": "...",
-  "job_type": "build",
-  "status": "queued",
-  "agent_id": null,
-  "repair_iteration": 0,
-  "max_repair_iterations": 3
-}
-```
-
-The exact limit is configurable, but Alpha owns it. Galileo does not implement retry loops.
-
-## Validation/debug job
-
-Validation runs on Omega/Beta/Delta, where the coding tools and execution environments exist. Input must reference actual state:
-
-```json
-{
-  "job_id": "...",
-  "project_id": "...",
-  "workspace_id": "...",
-  "changed_files": [],
-  "user_request": "...",
-  "agent_result_id": "...",
-  "build_output": "...",
-  "test_output": "...",
-  "runtime_errors": []
-}
-```
-
-The platform result is structured:
-
-```json
-{
-  "status": "passed",
-  "diagnosis": "...",
-  "affected_files": [],
-  "recommended_changes": [],
-  "confidence": 0.0
-}
-```
-
-Agent prose remains user-facing explanation and is never treated as a file-operation protocol.
-
-## Structured file changes
-
-```json
-{
-  "path": "src/App.tsx",
-  "action": "modify",
-  "content_ref": "...",
-  "diff_ref": "..."
-}
-```
-
-The contents or diff are separately addressable. Galileo applies structured changes to the live WebContainer workspace.
-
-## Event vocabulary
-
-```text
-job.created
-job.queued
-job.started
-job.progress
-job.file_changed
-job.validation_started
-job.validation_failed
-job.repair_started
-job.completed
-job.failed
-job.cancelled
-deployment.started
-deployment.completed
-deployment.failed
-```
-
-Events should include IDs and timestamps but never prompts, credentials, cookies, full responses, or file contents in logs.
-
-## Workspace and deployment
-
-- Galileo WebContainer is authoritative during development.
-- Agents operate against a named workspace.
+- The Galileo WebContainer is authoritative during development.
 - Browser reload or close does not deploy automatically.
 - Explicit deployment captures a workspace snapshot.
 - AshatHub stores the durable snapshot and deployment record.
 - A later deployment creates a new snapshot; earlier deployments are not mutated.
 
-Projects, workspaces, snapshots, checkpoints, and deployments are separate concepts and identifiers.
+Projects, workspaces, snapshots, checkpoints, and deployments are separate concepts and
+identifiers.
 
 ## Conversation history
 
-Conversation history is account-backed and available across sessions. Galileo may maintain a local cache, but account history is authoritative. Users can download their history in a documented export format.
+Conversation history is account-backed and available across sessions. Galileo may maintain a
+local cache, but account history is authoritative. Users can download their history in a
+documented export format.
 
 ## Telemetry
 
-AshatHub owns per-agent telemetry. Galileo consumes Alpha-managed aggregate state and renders job/deployment events. No frontend component probes or routes directly to Omega, Beta, or Delta.
+AshatHub owns per-peer telemetry for the Omega/Beta/Delta fleet. Galileo consumes
+Alpha-managed aggregate state (`/status`, `/workers`) and renders agent events. No frontend
+component probes or routes directly to Omega, Beta, or Delta.
+
+## Security rules
+
+- Never log prompts, credentials, cookies, full responses, or file contents in events.
+- Provider and gateway keys are service credentials: they never leave the server, and are
+  never returned to Galileo, Alpha, Omega, Beta, Delta, browser storage, logs, or API
+  responses.
+- Galileo resolves gateway credentials from runtime environment variables or
+  `config.json`; real credentials are never committed.
 
 ## Open implementation decisions
 
 These remain intentionally unresolved until their implementation phases:
 
-- exact second-worker capacity is not needed; validation remains on the agent hosts;
 - deployment API placement and authentication;
 - account-history schema and export format;
 - workspace ID lifecycle;
-- agent repository access and downstream protocol verification.
+- distributed peer admission and failure matrix across Liquid-capable nodes.

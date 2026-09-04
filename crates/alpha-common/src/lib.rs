@@ -4,10 +4,6 @@
 pub struct Config {
     pub server: ServerConfig,
     pub models: ModelsConfig,
-    pub omega: OmegaConfig,
-    /// IP-based Omega/Beta/Delta failover endpoints.
-    #[serde(default)]
-    pub agents: AgentPoolConfig,
     pub queue: QueueConfig,
     pub pool: PoolConfig,
     pub liquid: LiquidConfig,
@@ -58,26 +54,6 @@ impl Default for VisionConfig {
 }
 
 #[derive(serde::Deserialize, Clone)]
-pub struct OmegaConfig {
-    pub url: String,
-    pub api_key: String,
-    pub auth_header: String,
-    pub model: String,
-}
-
-#[derive(serde::Deserialize, Clone, Default)]
-pub struct AgentPoolConfig {
-    #[serde(default)]
-    pub endpoints: Vec<AgentEndpoint>,
-}
-
-#[derive(serde::Deserialize, Clone)]
-pub struct AgentEndpoint {
-    pub id: String,
-    pub url: String,
-}
-
-#[derive(serde::Deserialize, Clone)]
 pub struct QueueConfig {
     pub max_requests: usize,
     pub max_concurrent: usize,
@@ -93,6 +69,24 @@ pub struct PoolConfig {
 pub struct ChatMessage {
     pub role: String,
     pub content: MessageContent,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub tool_calls: Option<Vec<ToolCall>>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub tool_call_id: Option<String>,
+}
+
+#[derive(Debug, Clone, serde::Deserialize, serde::Serialize)]
+pub struct ToolCall {
+    pub id: String,
+    #[serde(rename = "type")]
+    pub kind: String,
+    pub function: ToolCallFunction,
+}
+
+#[derive(Debug, Clone, serde::Deserialize, serde::Serialize)]
+pub struct ToolCallFunction {
+    pub name: String,
+    pub arguments: String,
 }
 
 /// Message content: plain text, or OpenAI-style multimodal parts

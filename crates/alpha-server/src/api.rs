@@ -85,8 +85,7 @@ async fn chat_completions(
 
     let capacity = match intent {
         Intent::Vision => state.vision_slots.clone(),
-        Intent::Liquid => state.agent_slots.clone(),
-        Intent::RemoteExecution => state.agent_slots.clone(),
+        Intent::Liquid => state.liquid_slots.clone(),
     };
     let _permit = match timeout(Duration::from_secs(30), capacity.acquire_owned()).await {
         Ok(Ok(permit)) => permit,
@@ -134,7 +133,6 @@ async fn chat_completions(
                 },
                 Err(error) => completion_response(true, StatusCode::BAD_GATEWAY, serde_json::json!({"error": error.to_string()})),
             },
-            _ => {}
         }
     }
 
@@ -147,21 +145,6 @@ async fn chat_completions(
                     tracing::error!("Vision inference failed: {}", e);
                     completion_response(request.stream, StatusCode::BAD_GATEWAY, serde_json::json!({
                         "error": "Vision inference failed",
-                        "message": e.to_string()
-                    }))
-                }
-            }
-        }
-
-        // ── Coding: Omega/Beta/Delta ───────────────────────────
-        Intent::RemoteExecution => {
-            let remote = alpha_core::inference::RemoteInference::new(state.router.config().clone());
-            match remote.infer(&request).await {
-                Ok(response) => completion_response(request.stream, StatusCode::OK, serde_json::to_value(response).unwrap_or_default()),
-                Err(e) => {
-                    tracing::error!("Omega inference failed: {}", e);
-                    completion_response(request.stream, StatusCode::BAD_GATEWAY, serde_json::json!({
-                        "error": "Inference failed",
                         "message": e.to_string()
                     }))
                 }
@@ -343,7 +326,6 @@ struct StatusResponse {
     max_queue: usize,
     active_requests: usize,
     available_liquid_slots: usize,
-    available_agent_slots: usize,
     available_vision_slots: usize,
     running_vision_instances: usize,
     max_vision_instances: usize,
@@ -351,17 +333,14 @@ struct StatusResponse {
 
 async fn status(State(state): State<AppState>) -> impl IntoResponse {
     let queue = state.queue.read().await;
-    let text_available = state.agent_slots.available_permits();
-    let agent_available = state.agent_slots.available_permits();
+    let liquid_available = state.liquid_slots.available_permits();
     let vision_available = state.vision_slots.available_permits();
     Json(StatusResponse {
         queued_requests: queue.queue_size(),
         max_queue: queue.max_queue_size(),
-        active_requests: text_available.max(1) - text_available
-            + agent_available.max(1) - agent_available
+        active_requests: liquid_available.max(1) - liquid_available
             + vision_available.max(1) - vision_available,
-        available_liquid_slots: text_available,
-        available_agent_slots: agent_available,
+        available_liquid_slots: liquid_available,
         available_vision_slots: vision_available,
         running_vision_instances: state.vision_pool.running_count().await,
         max_vision_instances: state.config.models.max_instances as usize,
@@ -371,12 +350,14 @@ async fn status(State(state): State<AppState>) -> impl IntoResponse {
 #[derive(Serialize)]
 struct WorkersResponse {
     liquid_backend_configured: bool,
+    liquid_backend_healthy: bool,
     vision_worker_active: bool,
 }
 
 async fn workers(State(state): State<AppState>) -> impl IntoResponse {
     Json(WorkersResponse {
         liquid_backend_configured: !state.router.config().liquid.endpoint.is_empty(),
+        liquid_backend_healthy: state.liquid.health_check().await,
         vision_worker_active: state.vision_pool.has_running().await,
     })
 }

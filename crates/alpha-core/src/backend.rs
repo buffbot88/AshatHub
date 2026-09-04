@@ -22,6 +22,11 @@ impl LiquidBackend {
         })
     }
 
+    pub async fn health_check(&self) -> bool {
+        let endpoint = format!("{}/health", self.config.endpoint.trim_end_matches('/'));
+        self.client.get(endpoint).send().await.map(|response| response.status().is_success()).unwrap_or(false)
+    }
+
     async fn request(&self, request: &ChatRequest) -> anyhow::Result<ChatStream> {
         let response = self.client
             .post(format!("{}/v1/chat/completions", self.config.endpoint.trim_end_matches('/')))

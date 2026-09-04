@@ -2,7 +2,6 @@
 
 pub mod backend;
 pub mod demand;
-pub mod inference;
 pub mod proxy;
 pub mod queue;
 pub mod router;
